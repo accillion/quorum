@@ -1,0 +1,26 @@
+[package]
+name = "quorum-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Quorum core: review pipeline, bundle assembly, JSON archive. Synchronous; no async runtime, no HTTP client."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
+url = "2"
+time = { version = "0.3", features = ["formatting", "macros"] }
+toml = "0.8"
+
+[dev-dependencies]
+insta = { version = "1", features = ["json"] }
+tempfile = "3"

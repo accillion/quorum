@@ -1,0 +1,28 @@
+[package]
+name = "quorum-lippa-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Quorum Lippa API client: cookie auth, Consensus sessions, keyring storage."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { version = "1", features = ["time", "rt"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart", "cookies"] }
+url = "2"
+keyring = "3"
+rand = "0.8"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time", "test-util"] }
+mockito = "1"
+tempfile = "3"
