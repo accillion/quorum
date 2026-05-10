@@ -91,6 +91,16 @@ Live observation: a fresh session begins `models_active: 3, rounds=0/3`, transit
 
 ---
 
+## Concept-spec re-validation
+
+Lippa's always-multi-model architecture with agreement-cluster output matches the **original Quorum concept spec** ("Consensus across frontier models") more directly than the Phase 1A spec did. Phase 1A's "single-model" framing was a self-imposed scope reduction — an artifact of pre-recon assumption, not a Lippa constraint. Now that we know the API always returns multi-model output, the v1.1 roadmap should drop **Phase 1C (multi-model Consensus)** as a separate milestone: Phase 1A already delivers it. Phase 1B-and-after can focus on interactive dismissal, hook installation, CI auth, and the dismissals store without the "still single-model" caveat.
+
+## Determinism for stable rendering
+
+`Review.model_names: Vec<String>` MUST be **alphabetically sorted** (case-insensitive). Lippa's `models[]` array ordering is not guaranteed stable across sessions, so without sorting AC 17's stdout and `tests/render.rs` snapshot tests would flake on order shuffles. The sort happens in `quorum-core::review_from_json` at the mapping boundary, not at render time. This is the same pattern applied to JSON archive serialization (deterministic key ordering, §4.3.3) — single fixpoint per pipeline.
+
+---
+
 ## Recommended v1.1 patches (post-session, for Rolf)
 
 | ID | Section | Patch |
@@ -99,8 +109,10 @@ Live observation: a fresh session begins `models_active: 3, rounds=0/3`, transit
 | V1.1-2 | §4.3.1, §4.5 | Update `Finding` struct to drop `file`/`line_range`/`suggestion`; add `FindingSource` enum; document severity-synthesis rules. Update markdown renderer to drop file refs and add `## Summary` + supported_by lines. |
 | V1.1-3 | §4.2.4 | Add note: `model_roles` field is `Option<HashMap<String, String>>` (display labels keyed by model UUID), not a selection mechanism. Phase 1A sends `None`. |
 | V1.1-4 | §4.6 tests | Update `bundle_assembly.rs` fixtures and `render.rs` snapshots to reflect new `Finding` shape. Drop file/line assertions; add `FindingSource` assertions. |
-| V1.1-5 | §6.1 ACs | Acceptance criterion 17: rendered output mentions `<model count> models` or vendor list rather than single `<model_name>`. AC 20 message remains correct. AC 22 truncation markers remain correct. |
+| V1.1-5 | §6.1 ACs | Acceptance criterion 17: rendered output mentions vendor list rather than single `<model_name>`; vendors alphabetized for stability. AC 20 message remains correct. AC 22 truncation markers remain correct. |
 | V1.1-6 | §4.5 | If `assumptions[]` is empty and `divergence[]` is empty (high agreement session), renderer emits only `## Summary` + `## Agreement (N)` sections; no zero-count headers. |
+| V1.1-7 | §11 roadmap | Drop Phase 1C as a separate milestone. Multi-model is Phase 1A. |
+| V1.1-8 | §4.3.1 | `Review.model_names: Vec<String>` is alphabetically sorted (case-insensitive) at the `review_from_json` mapping boundary. |
 
 ---
 
