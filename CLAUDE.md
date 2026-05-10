@@ -162,43 +162,56 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** Phase 0 — Reconnaissance.
+**Active:** Phase 1A — implementation complete, awaiting spec v1.1 backfill.
 
-`Quorum-Recon-v0` is the first work product. CC is inspecting the Lippa
-repo (read-only) to confirm:
-- Consensus REST API auth model (JWT today vs. PAT when shipped)
-- Memory propose endpoint external-client viability
-- M-MCPLaunch / PAT infrastructure status in Lippa
-- Whether the Consensus result detail includes per-model raw findings
-  or only aggregated cluster output
+Phase 0 (Recon-v0) closed at SHA `0f33969` (GO-PAT-PARTIAL branch).
+Phase 1A preflight closed at `86c8d3f` / `68ba169`: 4/4 blockers passed,
+Blocker 4 reduced-scope. Implementation milestones: workspace + crates
+(`3b67ad5`), test suites + wire fixture (`eaeae74`). 60 tests passing;
+`cargo clippy -- -D warnings` and `cargo fmt --check` clean.
 
-Deliverable: `specs/Quorum-Recon-v0_findings.md` with branch decision
-(GO-JWT / GO-PAT-PARTIAL / WAIT / DEGRADED) and any Lippa-side specs
-Quorum needs Lippa to ship.
+**Spec divergences applied during implementation** (full detail in
+`specs/Quorum-Phase1A-Preflight-notes.md`):
+- D1: Lippa always-multi-model; `model_roles` is display labels, not
+  selection. Phase 1A renders aggregated findings across whatever
+  models Lippa picks. Phase 1C drops as a separate milestone in v1.1.
+- D2: Detail response is debate-shaped (`summary_text` + agreement /
+  divergence / assumptions clusters), not findings-shaped. `Finding`
+  collapses to `{severity, title, body, source}` with severity
+  synthesized from cluster type and confidence.
+- D3: `create_session` uses `multipart::Form` per recon-v0.
 
-**Next:** Phase 1A spec written from recon findings. Walking skeleton —
-single-model review, plain stdout, reads `.quorum/conventions.md` and
-target repo's `CLAUDE.md`, no TUI, no Consensus, no memory write.
+**Live verification status:** Smoke-tested ACs 1, 8, 11, 13, 14 against
+the release binary (`target/release/quorum.exe`). Full happy-path
+review (ACs 17, 22, 25, 30) is blocked on Rolf's account: sessions
+submitted with `project_id` consistently fail in ~5s due to a server-
+side seeding-context exception on this project. Mockito-driven
+integration tests cover the full client + bundle + render contract.
 
-**Strict gate before Phase 1A code:** the recon must complete and Rolf
-must sign off on the branch decision. CC does not proceed to
-implementation without explicit approval.
+**Next:** Rolf backfills `Quorum-Phase1A-Spec-v1_1.md` reflecting the
+four divergences from preflight notes, then Phase 1B drafting.
 
 ---
 
-## Common Commands (TBD — fills in as tooling lands)
+## Common Commands
 
 ```bash
-# Build (once Phase 1A lands)
+# Build & test
 cargo build --release
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --check --all
 
-# Run review on staged diff (once Phase 1A lands)
-./target/release/quorum review
+# First-time setup against Lippa
+./target/release/quorum auth login                        # interactive
+./target/release/quorum link --project <project_id>       # writes .quorum/config.toml
 
-# Test
-cargo test
+# Run a review on staged diff
+git add <files>
+./target/release/quorum review                            # markdown to stdout
+./target/release/quorum review --json                     # same buffer to stdout + .quorum/reviews/<ISO>.json
 
-# Lint
-cargo clippy -- -D warnings
-cargo fmt --check
+# Auth status / logout
+./target/release/quorum auth status
+./target/release/quorum auth logout
 ```
