@@ -1,0 +1,18 @@
+# Cargo
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Local CC prompts
+prompts/
+
+# Local Quorum state (when it exists)
+.quorum/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
