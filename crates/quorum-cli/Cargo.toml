@@ -29,6 +29,8 @@ rpassword = "7"
 toml = "0.8"
 time = { version = "0.3", features = ["formatting", "macros"] }
 rand = "0.8"
+ratatui = "0.29"
+crossterm = "0.28"
 
 [dev-dependencies]
 tempfile = "3"
@@ -38,3 +40,5 @@ predicates = "3"
 git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
+ratatui = "0.29"
+crossterm = "0.28"

@@ -30,6 +30,11 @@ pub struct ReviewOptions {
     /// (`expires_at = NULL`). Default expiry is 365 days; this flag is
     /// surfaced via `quorum review --no-expire`.
     pub no_expire: bool,
+    /// Phase 1B Stage 2: enter the interactive TUI after the review
+    /// converges and the filter site runs. TTY check happens upstream
+    /// of bundle assembly (`main.rs`) so this flag is only ever true
+    /// when stdout is a real terminal.
+    pub tui: bool,
 }
 
 pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliError> {
@@ -248,7 +253,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         }
     };
     let review_session_id = review.session_id.clone();
-    let (suppressed_summaries, dismissals_applied) = if let Some(store) = &store {
+    let (mut suppressed_summaries, mut dismissals_applied) = if let Some(store) = &store {
         match store.load_active_dismissals() {
             Ok(active) => apply_dismissals_filter(&mut review, &active, store, &review_session_id),
             Err(e) => {
@@ -260,11 +265,53 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         (Vec::new(), 0u32)
     };
 
+    // ===== TUI (Phase 1B Stage 2) =====
+    //
+    // Empty-filtered shortcut: if no findings remain after the filter
+    // site, the TUI is *not* entered. Print a one-line summary, write
+    // archive, exit 0 — same path the normal exit takes
+    // (spec §4.3.1 empty-state).
+    if opts.tui {
+        if review.findings.is_empty() {
+            println!(
+                "No visible findings ({} dismissed).",
+                suppressed_summaries.len()
+            );
+        } else if let Some(store) = &store {
+            match crate::tui::run(
+                &review,
+                store,
+                &facts.head_sha,
+                &facts.branch,
+                opts.no_expire,
+            ) {
+                Ok(outcome) => {
+                    review.findings = outcome.kept_findings;
+                    let new_count = outcome.newly_suppressed.len() as u32;
+                    suppressed_summaries.extend(outcome.newly_suppressed);
+                    dismissals_applied += new_count;
+                }
+                Err(e) => {
+                    eprintln!("warning: TUI error: {e}");
+                }
+            }
+        } else {
+            eprintln!(
+                "warning: TUI requested but dismissals store unavailable; falling back to markdown."
+            );
+        }
+    }
+
     // ===== Render markdown =====
-    let md = render_review_markdown(&review);
-    print!("{md}");
-    if let Some(note) = warn_if_large(&review) {
-        eprintln!("{note}");
+    //
+    // Under --tui we suppress the markdown stdout dump (the TUI is the
+    // user-facing surface). The archive is written either way.
+    if !opts.tui {
+        let md = render_review_markdown(&review);
+        print!("{md}");
+        if let Some(note) = warn_if_large(&review) {
+            eprintln!("{note}");
+        }
     }
 
     // ===== Archive =====

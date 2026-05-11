@@ -3,6 +3,7 @@
 mod commands;
 mod exit;
 mod render;
+mod tui;
 
 use clap::{Parser, Subcommand};
 use exit::{CliError, Exit};
@@ -85,6 +86,10 @@ struct ReviewArgs {
     /// Default expiry is 365 days.
     #[arg(long)]
     no_expire: bool,
+    /// Launch the interactive findings/dismiss TUI after the review
+    /// converges. Requires a TTY; non-TTY exits 2 before bundle assembly.
+    #[arg(long)]
+    tui: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -150,6 +155,14 @@ async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
             } else {
                 None
             };
+            // TTY check happens BEFORE bundle assembly and any network
+            // round-trip (v1.0 §4.4 P17, AC 65). Non-TTY `--tui` fails
+            // in milliseconds with exit 2.
+            if args.tui && !is_tty() {
+                return Err(CliError::Config(
+                    "--tui requires an interactive terminal; omit --tui for stdout markdown".into(),
+                ));
+            }
             let diff_source = match args.range {
                 Some(spec) => {
                     let (base, head) = parse_range_spec(&spec)?;
@@ -164,6 +177,7 @@ async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
                     no_keyring_storage: storage,
                     diff_source,
                     no_expire: args.no_expire,
+                    tui: args.tui,
                 },
             )
             .await
