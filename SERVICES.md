@@ -96,13 +96,21 @@ just point to here.
   `Set-Cookie: session=<value>` from the login response. Empty values
   return `CookieParseError`; absent header returns `NoSessionCookie`.
   The value is wrapped in `Secret` at this site, never afterward.
-- **Use:** `LippaClient::auth_apply` injects
-  `Cookie: session=<value>` on every outgoing authenticated request,
-  reading from the in-memory mirror (not from the `AuthMethod` snapshot)
-  so renewals propagate immediately within a single invocation.
-- **Renewal capture:** Every authenticated response is inspected for
-  `Set-Cookie: session=<new>`. If different from the in-memory value,
-  the mirror is updated atomically (`std::sync::Mutex`).
+- **Use (jar-driven):** `LippaClient::new` seeds a `reqwest::cookie::Jar`
+  with `session=<value>; Path=/` scoped to the parsed `base_url`. The
+  reqwest client is built with `.cookie_provider(jar)`, so every outgoing
+  request auto-carries the cookie. `auth_apply` is a near-noop for the
+  Cookie arm (it still gates Bearer behind `BearerNotYetSupported`).
+  Manual `Cookie: ...` header injection is no longer used: the Lippa
+  edge (observed 2026-05-11 during Phase 1B preflight) rejects manually-
+  attached cookies with HTTP 403; the jar path is the supported pattern.
+  See Phase 1B preflight D7 for the discovery trail.
+- **Renewal capture (jar + mirror):** reqwest automatically writes
+  every response's `Set-Cookie: session=<new>` back into the jar, so
+  subsequent outbound requests carry the renewed value without further
+  code. In parallel, `capture_renewed_cookie` continues to scan response
+  headers and update the in-memory `Mutex<Secret>` mirror — the mirror
+  is what `LippaClient::renewed_cookie` reports for keyring persistence.
 - **Persistence at clean exit:** `LippaClient::renewed_cookie` returns
   `Some(secret)` only when the final mirror differs from the value the
   client was constructed with. The CLI writes it to the active

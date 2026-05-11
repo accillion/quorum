@@ -4,8 +4,11 @@ use crate::auth::{AuthError, AuthMethod};
 use crate::consensus::{SessionCreateRequest, SessionStatus};
 use crate::secret::Secret;
 use crate::wire;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use reqwest::cookie::Jar;
+use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionId(pub String);
@@ -62,14 +65,28 @@ pub struct LippaClient {
 
 impl LippaClient {
     pub fn new(base_url: String, auth: AuthMethod) -> Result<Self, ClientError> {
-        let inner = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|e| ClientError::Transport(e.to_string()))?;
         let initial = match &auth {
             AuthMethod::Cookie(s) => s.clone(),
             AuthMethod::Bearer(s) => s.clone(),
         };
+        // Cookie carriage: jar-based. The Lippa edge tier (observed 2026-05-11,
+        // Phase 1B preflight D7) rejects requests that attach `Cookie: ...`
+        // via a manually-set header; only the cookie_store path is accepted.
+        // We seed a fresh jar with the captured `session=<value>` scoped to
+        // the base_url host, hand it to the reqwest builder, and reqwest
+        // replays it on every authenticated request AND captures `Set-Cookie`
+        // renewals back into the jar automatically.
+        let parsed_url = Url::parse(&base_url)
+            .map_err(|e| ClientError::Transport(format!("base_url parse: {e}")))?;
+        let jar = Arc::new(Jar::default());
+        if let AuthMethod::Cookie(secret) = &auth {
+            jar.add_cookie_str(&format!("session={}; Path=/", secret.expose()), &parsed_url);
+        }
+        let inner = reqwest::Client::builder()
+            .cookie_provider(jar)
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| ClientError::Transport(e.to_string()))?;
         Ok(Self {
             inner,
             base_url,
@@ -83,17 +100,10 @@ impl LippaClient {
         &self,
         builder: reqwest::RequestBuilder,
     ) -> Result<reqwest::RequestBuilder, ClientError> {
-        // Re-apply with current cookie value (auth_method snapshots at
-        // construction; reissues mutate the in-memory mirror, not the
-        // AuthMethod). So we override Cookie header here when in cookie mode.
+        // Cookie mode: jar handles outbound carriage; nothing to inject here.
+        // Bearer arm stays gated until M-ExternalAuth lands.
         match &self.auth {
-            AuthMethod::Cookie(_) => {
-                let cookie = self.session_cookie.lock().unwrap().clone();
-                Ok(builder.header(
-                    reqwest::header::COOKIE,
-                    format!("session={}", cookie.expose()),
-                ))
-            }
+            AuthMethod::Cookie(_) => Ok(builder),
             AuthMethod::Bearer(_) => Err(ClientError::Auth(AuthError::BearerNotYetSupported)),
         }
     }
