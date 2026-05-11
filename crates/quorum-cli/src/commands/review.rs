@@ -20,6 +20,29 @@ use quorum_lippa_client::{
 use std::path::Path;
 use std::time::Instant;
 
+/// What kind of invocation the review pipeline is serving. Drives
+/// output framing (markdown vs stderr finding lines), the no-auth
+/// fail-open branch, and skips the markdown stdout dump under hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookMode {
+    /// Direct user invocation: `quorum review` (with or without
+    /// `--tui` / `--range`). Full markdown output, errors propagate.
+    None,
+    /// `quorum review --hook-mode=pre-commit`. No markdown stdout;
+    /// one-line stderr per high-severity finding; no-auth skips with
+    /// exit 0 + stderr note so the shell template's fail-open
+    /// semantics apply.
+    PreCommit,
+    /// `quorum review --hook-mode=pre-push`. Same hook framing as
+    /// pre-commit; one pre-push invocation may call into the review
+    /// pipeline N times (once per stdin tuple) — the outer
+    /// `commands::hook_mode::run_pre_push` handles the loop. Each
+    /// tuple writes its own archive at the
+    /// `<push-start-ISO>.tuple-<N>.json` filename supplied via
+    /// `archive_filename_override`.
+    PrePush,
+}
+
 #[derive(Debug, Clone)]
 pub struct ReviewOptions {
     pub json_to_stdout: bool,
@@ -35,6 +58,13 @@ pub struct ReviewOptions {
     /// of bundle assembly (`main.rs`) so this flag is only ever true
     /// when stdout is a real terminal.
     pub tui: bool,
+    /// Phase 1B Stage 3: pre-commit / pre-push framing.
+    pub hook_mode: HookMode,
+    /// Phase 1B Stage 3: override the archive filename for this run
+    /// (used by `pre-push` to write
+    /// `<push-start-ISO>.tuple-<N>.json`). When `None`, the Phase 1A
+    /// `<started_at>.json` naming is used.
+    pub archive_filename_override: Option<String>,
 }
 
 pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliError> {
@@ -49,12 +79,23 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     };
 
     // ===== Storage / cookie =====
+    //
+    // Under hook modes (pre-commit / pre-push) the absence of auth is
+    // NOT a hard error — we exit 0 with a single stderr "not
+    // authenticated" line so the shell template's fail-open path
+    // proceeds. Spec §4.4 / AC 87.
     let storage = opts
         .no_keyring_storage
         .clone()
         .unwrap_or(Storage::OsKeyring);
     let cookie = match keyring::load_cookie(&storage, &cfg.base_url) {
         Ok(Some(c)) => c,
+        Ok(None) if opts.hook_mode != HookMode::None => {
+            eprintln!(
+                "quorum: not authenticated — hook reviews are being skipped; run quorum auth login"
+            );
+            return Ok(Exit::Ok);
+        }
         Ok(None) => return Err(CliError::NotAuthenticated),
         Err(e) => return Err(CliError::Keyring(e.to_string())),
     };
@@ -304,13 +345,35 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
 
     // ===== Render markdown =====
     //
-    // Under --tui we suppress the markdown stdout dump (the TUI is the
-    // user-facing surface). The archive is written either way.
-    if !opts.tui {
+    // Under --tui OR hook mode we suppress the markdown stdout dump
+    // (the TUI is the user-facing surface; the hook script consumes
+    // exit codes, not stdout). The archive is written either way.
+    if !opts.tui && opts.hook_mode == HookMode::None {
         let md = render_review_markdown(&review);
         print!("{md}");
         if let Some(note) = warn_if_large(&review) {
             eprintln!("{note}");
+        }
+    } else if opts.hook_mode != HookMode::None {
+        // Spec §4.5.2: one-line stderr per remaining high-severity
+        // finding (post-filter) plus a footer pointing the user to
+        // the interactive surface. Pre-push uses the same framing.
+        let highs: Vec<&quorum_core::Finding> = review
+            .findings
+            .iter()
+            .filter(|f| f.severity == quorum_core::Severity::High)
+            .collect();
+        if !highs.is_empty() {
+            let head = match opts.hook_mode {
+                HookMode::PreCommit => "quorum review (pre-commit)",
+                HookMode::PrePush => "quorum review (pre-push)",
+                HookMode::None => unreachable!(),
+            };
+            eprintln!("{head} — {} high-severity finding(s):", highs.len());
+            for f in &highs {
+                eprintln!("  [H] {}", f.title);
+            }
+            eprintln!("       run `quorum review --tui` to dismiss interactively.");
         }
     }
 
@@ -334,10 +397,15 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     let buf = build_archive(&review, &archive_inputs);
     let reviews_dir = workdir.join(".quorum").join("reviews");
     std::fs::create_dir_all(&reviews_dir).map_err(|e| CliError::Io(e.to_string()))?;
-    let filename = archive_filename(started_at);
+    let filename = opts
+        .archive_filename_override
+        .clone()
+        .unwrap_or_else(|| archive_filename(started_at));
     let archive_path = reviews_dir.join(&filename);
     std::fs::write(&archive_path, &buf).map_err(|e| CliError::Io(e.to_string()))?;
-    println!("\n## Archive\nJSON archive written to .quorum/reviews/{filename}");
+    if opts.hook_mode == HookMode::None && !opts.tui {
+        println!("\n## Archive\nJSON archive written to .quorum/reviews/{filename}");
+    }
 
     if opts.json_to_stdout {
         // Same buffer, byte-identical (AC 26).

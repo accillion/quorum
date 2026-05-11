@@ -2,6 +2,7 @@
 
 mod commands;
 mod exit;
+mod hooks;
 mod render;
 mod tui;
 
@@ -29,6 +30,15 @@ enum Cmd {
     Auth(AuthArgs),
     Link(LinkArgs),
     Review(ReviewArgs),
+    Install(HookArgs),
+    Uninstall(HookArgs),
+}
+
+#[derive(clap::Args, Debug)]
+struct HookArgs {
+    /// Hook kind: `pre-commit` or `pre-push`.
+    #[arg(long, value_name = "KIND")]
+    hook: String,
 }
 
 #[derive(clap::Args, Debug)]
@@ -90,6 +100,13 @@ struct ReviewArgs {
     /// converges. Requires a TTY; non-TTY exits 2 before bundle assembly.
     #[arg(long)]
     tui: bool,
+    /// Run in hook mode (`pre-commit` or `pre-push`). Suppresses
+    /// markdown stdout; emits one-line stderr per high-severity
+    /// finding; under `pre-push` reads ref tuples from stdin.
+    /// Internally consumed by the shell templates emitted by
+    /// `quorum install --hook=<type>`.
+    #[arg(long, value_name = "KIND")]
+    hook_mode: Option<String>,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -163,6 +180,24 @@ async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
                     "--tui requires an interactive terminal; omit --tui for stdout markdown".into(),
                 ));
             }
+            // Hook-mode routes to dedicated dispatchers — pre-push
+            // reads stdin and loops per tuple; pre-commit is a thin
+            // shim over the standard review pipeline with output
+            // suppressed and stderr findings.
+            if let Some(mode) = args.hook_mode {
+                return match mode.as_str() {
+                    "pre-commit" => {
+                        commands::hook_mode::run_pre_commit(&repo_root, args.json, storage).await
+                    }
+                    "pre-push" => {
+                        commands::hook_mode::run_pre_push(&repo_root, std::io::stdin(), storage)
+                            .await
+                    }
+                    other => Err(CliError::Config(format!(
+                        "unknown --hook-mode value: {other:?}; expected pre-commit or pre-push"
+                    ))),
+                };
+            }
             let diff_source = match args.range {
                 Some(spec) => {
                     let (base, head) = parse_range_spec(&spec)?;
@@ -178,9 +213,19 @@ async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
                     diff_source,
                     no_expire: args.no_expire,
                     tui: args.tui,
+                    hook_mode: commands::review::HookMode::None,
+                    archive_filename_override: None,
                 },
             )
             .await
+        }
+        Cmd::Install(args) => {
+            let repo_root = std::env::current_dir().map_err(|e| CliError::Io(e.to_string()))?;
+            commands::hooks::install(&repo_root, &args.hook)
+        }
+        Cmd::Uninstall(args) => {
+            let repo_root = std::env::current_dir().map_err(|e| CliError::Io(e.to_string()))?;
+            commands::hooks::uninstall(&repo_root, &args.hook)
         }
     }
 }

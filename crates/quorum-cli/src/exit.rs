@@ -19,6 +19,18 @@ impl Exit {
     pub fn code(self) -> ExitCode {
         ExitCode::from(self as u8)
     }
+
+    /// Pick the "more severe" of two exits per the stable taxonomy.
+    /// Used by the pre-push aggregator to combine per-tuple results
+    /// (spec §4.5.5: overall exit is the max severity across tuples).
+    pub fn max(self, other: Exit) -> Exit {
+        // Severity order matches the numeric variant values: 0 < 1 < 2 < 3.
+        if (other as u8) > (self as u8) {
+            other
+        } else {
+            self
+        }
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
