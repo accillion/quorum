@@ -10,8 +10,13 @@ pub mod conventions;
 pub mod deny_list;
 pub mod discovery;
 pub mod git;
+pub mod memory;
 pub mod review;
 
+pub use memory::{
+    finding_identity_hash, Dismissal, DismissalId, DismissalReason, FindingIdentityHash,
+    LocalSqliteMemoryStore, MemoryError, MemoryStore, PromotionState,
+};
 pub use review::{
     review_from_json, Finding, FindingSource, ParseError, RepoMetadata, Review, Severity,
 };

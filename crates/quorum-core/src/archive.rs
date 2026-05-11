@@ -23,6 +23,32 @@ pub struct ArchiveInputs {
     pub remote_url: Option<String>, // None if `remote_url = false` in config
     pub branch: String,
     pub head_sha: String,
+    /// Number of dismissals that filtered out findings from this review.
+    /// Equals `suppressed_findings.len()` plus any newly-dismissed-in-TUI
+    /// entries (which are also in `suppressed_findings`).
+    pub dismissals_applied: u32,
+    /// Per-row audit trail of dismissals that hid findings (or that were
+    /// applied during the TUI session). Carries hash + title + reason +
+    /// timestamp — never note text, never body_snapshot. v1.0 §4.10.2.
+    pub suppressed_findings: Vec<SuppressionSummary>,
+}
+
+/// What lands in the archive's `suppressed_findings[]`. v1.0 §4.10.2.
+/// Note: deliberately excludes `note` and `body_snapshot` — those stay in
+/// SQLite. The archive surfaces an audit trail without leaking free-text
+/// dismissal notes to a file that might accidentally be committed.
+#[derive(Debug, Clone)]
+pub struct SuppressionSummary {
+    /// Hex-encoded SHA-256, 64 chars.
+    pub finding_identity_hash: String,
+    /// Title at dismissal time (`title_snapshot` column).
+    pub title_snapshot: String,
+    /// "divergence" | "agreement" | "assumption".
+    pub source_type_snapshot: String,
+    /// Reason token: false_positive | intentional | out_of_scope | wont_fix | other.
+    pub reason: String,
+    /// RFC 3339 UTC timestamp.
+    pub dismissed_at: String,
 }
 
 /// Serialize a `Review` plus inputs into a deterministic, pretty-printed
@@ -70,11 +96,26 @@ pub fn build(review: &Review, inp: &ArchiveInputs) -> Vec<u8> {
         })
         .collect();
 
+    let suppressed_json: Vec<serde_json::Value> = inp
+        .suppressed_findings
+        .iter()
+        .map(|s| {
+            json!({
+                "dismissed_at": s.dismissed_at,
+                "finding_identity_hash": s.finding_identity_hash,
+                "reason": s.reason,
+                "source_type_snapshot": s.source_type_snapshot,
+                "title_snapshot": s.title_snapshot,
+            })
+        })
+        .collect();
+
     let mut top = serde_json::Map::new();
     // schema_version first by *insertion* order in the buffer.
     // We use a manual pretty-printer to enforce field order.
-    top.insert("schema_version".into(), json!(1));
+    top.insert("schema_version".into(), json!(2));
     top.insert("base_url".into(), json!(inp.base_url));
+    top.insert("dismissals_applied".into(), json!(inp.dismissals_applied));
     top.insert("elapsed_seconds".into(), json!(inp.elapsed.as_secs_f64()));
     top.insert("findings".into(), json!(findings_json));
     if let Some(s) = review.final_agreement_score {
@@ -90,12 +131,17 @@ pub fn build(review: &Review, inp: &ArchiveInputs) -> Vec<u8> {
     if let Some(s) = &review.summary_text {
         top.insert("summary_text".into(), json!(s));
     }
+    top.insert(
+        "suppressed_findings".into(),
+        serde_json::Value::Array(suppressed_json),
+    );
 
     write_ordered(
         &serde_json::Value::Object(top),
         &[
             "schema_version",
             "base_url",
+            "dismissals_applied",
             "elapsed_seconds",
             "findings",
             "final_agreement_score",
@@ -105,6 +151,7 @@ pub fn build(review: &Review, inp: &ArchiveInputs) -> Vec<u8> {
             "session_id",
             "started_at",
             "summary_text",
+            "suppressed_findings",
         ],
     )
 }
@@ -264,6 +311,8 @@ mod tests {
             remote_url: Some("https://github.com/o/r".into()),
             branch: "main".into(),
             head_sha: "abc1234".into(),
+            dismissals_applied: 0,
+            suppressed_findings: Vec::new(),
         }
     }
 

@@ -21,8 +21,10 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
 url = "2"
-time = { version = "0.3", features = ["formatting", "macros"] }
+time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 toml = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }

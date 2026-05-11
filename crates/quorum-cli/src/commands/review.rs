@@ -2,12 +2,17 @@
 
 use crate::exit::{CliError, Exit};
 use crate::render::{render_review_markdown, warn_if_large};
-use quorum_core::archive::{archive_filename, build as build_archive, ArchiveInputs};
+use quorum_core::archive::{
+    archive_filename, build as build_archive, ArchiveInputs, SuppressionSummary,
+};
 use quorum_core::bundle::{assemble, BundleInputs, MemoryInput};
 use quorum_core::conventions::{load as load_conventions, ConventionsState};
 use quorum_core::discovery::discover;
-use quorum_core::git::{repo_metadata, staged_diff};
-use quorum_core::review::{review_from_json, RepoMetadata};
+use quorum_core::git::{diff_for_source, repo_metadata, DiffSource};
+use quorum_core::memory::{
+    finding_identity_hash, FindingIdentityHash, LocalSqliteMemoryStore, MemoryStore,
+};
+use quorum_core::review::{review_from_json, Finding, RepoMetadata};
 use quorum_lippa_client::keyring::Storage;
 use quorum_lippa_client::{
     keyring, AuthMethod, ClientError, LippaClient, SessionCreateRequest, SessionStatus,
@@ -19,6 +24,12 @@ use std::time::Instant;
 pub struct ReviewOptions {
     pub json_to_stdout: bool,
     pub no_keyring_storage: Option<Storage>,
+    /// Phase 1B: `StagedIndex` (default) or `CommitRange { base, head }`.
+    pub diff_source: DiffSource,
+    /// Phase 1B: when true, dismissals from this session are permanent
+    /// (`expires_at = NULL`). Default expiry is 365 days; this flag is
+    /// surfaced via `quorum review --no-expire`.
+    pub no_expire: bool,
 }
 
 pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliError> {
@@ -44,11 +55,19 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     };
 
     // ===== Git, diff, repo metadata =====
-    let (repo, staged) = staged_diff(repo_start).map_err(|e| CliError::Git(e.to_string()))?;
+    let (repo, staged) =
+        diff_for_source(repo_start, &opts.diff_source).map_err(|e| CliError::Git(e.to_string()))?;
     if staged.is_empty {
-        println!("No staged changes — nothing to review");
+        let label = match &opts.diff_source {
+            DiffSource::StagedIndex => "staged",
+            DiffSource::CommitRange { .. } => "commit-range",
+        };
+        println!("No {label} changes — nothing to review");
         return Ok(Exit::Ok);
     }
+    // `no_expire` flag is consumed by the TUI/dismiss path (Stage 2); the
+    // CLI surface accepts it now (AC 60) so existing call sites work.
+    let _no_expire = opts.no_expire;
     let facts = repo_metadata(&repo).map_err(|e| CliError::Git(e.to_string()))?;
     let workdir = repo
         .workdir()
@@ -214,6 +233,33 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         review_from_json(&detail, &repo_meta).map_err(|e| CliError::Malformed(e.to_string()))?;
     review.elapsed = start_clock.elapsed();
 
+    // ===== Dismissals filter site (Phase 1B Stage 1) =====
+    //
+    // Open the local SQLite store, fetch active (non-expired) dismissals
+    // keyed by identity hash, drop matching findings from the rendered
+    // surface, and bump `record_seen` for the matched hashes in one
+    // transaction. A failure to open the store warns and proceeds
+    // without filtering so we never block reviews on a local DB issue.
+    let store = match LocalSqliteMemoryStore::new(&workdir) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            eprintln!("warning: dismissals store unavailable; proceeding without filter: {e}");
+            None
+        }
+    };
+    let review_session_id = review.session_id.clone();
+    let (suppressed_summaries, dismissals_applied) = if let Some(store) = &store {
+        match store.load_active_dismissals() {
+            Ok(active) => apply_dismissals_filter(&mut review, &active, store, &review_session_id),
+            Err(e) => {
+                eprintln!("warning: load_active_dismissals failed: {e}");
+                (Vec::new(), 0u32)
+            }
+        }
+    } else {
+        (Vec::new(), 0u32)
+    };
+
     // ===== Render markdown =====
     let md = render_review_markdown(&review);
     print!("{md}");
@@ -235,6 +281,8 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         },
         branch: facts.branch.clone(),
         head_sha: facts.head_sha.clone(),
+        dismissals_applied,
+        suppressed_findings: suppressed_summaries,
     };
     let buf = build_archive(&review, &archive_inputs);
     let reviews_dir = workdir.join(".quorum").join("reviews");
@@ -269,4 +317,51 @@ fn truncate(s: &str, max: usize) -> String {
     } else {
         format!("{}…", &s[..max])
     }
+}
+
+/// Drop findings whose identity hash matches an active dismissal; emit a
+/// [`SuppressionSummary`] for each matched row; call `record_seen` once
+/// for all matches in one transaction (idempotent per session id).
+///
+/// Returns `(suppressed_summaries, dismissals_applied_count)`. The count
+/// matches `suppressed_summaries.len()` cast to `u32`.
+fn apply_dismissals_filter(
+    review: &mut quorum_core::Review,
+    active: &std::collections::HashMap<FindingIdentityHash, quorum_core::Dismissal>,
+    store: &LocalSqliteMemoryStore,
+    review_session_id: &str,
+) -> (Vec<SuppressionSummary>, u32) {
+    let mut summaries: Vec<SuppressionSummary> = Vec::new();
+    let mut matched_hashes: Vec<FindingIdentityHash> = Vec::new();
+    let original = std::mem::take(&mut review.findings);
+    let mut kept: Vec<Finding> = Vec::with_capacity(original.len());
+    for f in original {
+        let h = finding_identity_hash(&f);
+        if let Some(d) = active.get(&h) {
+            matched_hashes.push(h);
+            summaries.push(SuppressionSummary {
+                finding_identity_hash: d.finding_identity_hash.to_hex(),
+                title_snapshot: d.title_snapshot.clone(),
+                source_type_snapshot: d.source_type_snapshot.clone(),
+                reason: d.reason.as_db_str().to_string(),
+                dismissed_at: d
+                    .dismissed_at
+                    .format(&time::format_description::well_known::Rfc3339)
+                    .unwrap_or_default(),
+            });
+        } else {
+            kept.push(f);
+        }
+    }
+    review.findings = kept;
+
+    if !matched_hashes.is_empty() {
+        let now = time::OffsetDateTime::now_utc();
+        if let Err(e) = store.record_seen(&matched_hashes, review_session_id, now) {
+            eprintln!("warning: record_seen failed: {e}");
+        }
+    }
+
+    let n = summaries.len() as u32;
+    (summaries, n)
 }

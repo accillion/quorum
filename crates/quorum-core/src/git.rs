@@ -38,14 +38,31 @@ pub enum FileStatus {
     Other,
 }
 
-/// Result of inspecting the staged diff.
+/// Result of inspecting the staged diff (or a commit-range diff —
+/// Phase 1B extends the same shape to cover `DiffSource::CommitRange`).
 pub struct StagedDiff {
-    /// Unified diff text (HEAD vs index), 3 context lines, full repo scope.
+    /// Unified diff text (3 context lines, full repo scope). Under
+    /// `DiffSource::StagedIndex` this is `HEAD..index`; under
+    /// `DiffSource::CommitRange { base, head }` this is `base..head`.
     pub unified: String,
-    /// Per-file entries with index blob contents (post deny-list, post binary).
+    /// Per-file entries with blob contents from the **right side** of
+    /// the diff (the index for staged; the `head` tree for commit-range).
+    /// Filtered for binary / deleted via the same rules either way.
     pub files: Vec<StagedFile>,
-    /// `true` if no staged changes exist.
+    /// `true` if no diff entries exist.
     pub is_empty: bool,
+}
+
+/// Phase 1B P07: bundle source is a parameter, not a hardcoded git op.
+/// The CLI picks the variant at invocation; `quorum-core::bundle` is
+/// agnostic — it receives a `StagedDiff` either way and budgets/deny-lists
+/// identically.
+#[derive(Debug, Clone)]
+pub enum DiffSource {
+    /// HEAD vs index — Phase 1A behavior, pre-commit hook semantics.
+    StagedIndex,
+    /// `base..head` revision range — pre-push hook + `quorum review --range`.
+    CommitRange { base: String, head: String },
 }
 
 const BINARY_DETECTION_NULLBYTE_WINDOW: usize = 8192;
@@ -161,6 +178,110 @@ fn compute(repo: &git2::Repository) -> Result<StagedDiff, GitError> {
 fn detect_binary(bytes: &[u8]) -> bool {
     let window_end = bytes.len().min(BINARY_DETECTION_NULLBYTE_WINDOW);
     bytes[..window_end].contains(&0)
+}
+
+/// Discover the repo and dispatch on a [`DiffSource`]. Returns the same
+/// `StagedDiff` shape so downstream bundle assembly is source-agnostic.
+pub fn diff_for_source(
+    start: &Path,
+    source: &DiffSource,
+) -> Result<(git2::Repository, StagedDiff), GitError> {
+    let repo =
+        git2::Repository::discover(start).map_err(|_| GitError::NotARepo(start.to_path_buf()))?;
+    let diff = match source {
+        DiffSource::StagedIndex => compute(&repo)?,
+        DiffSource::CommitRange { base, head } => compute_range(&repo, base, head)?,
+    };
+    Ok((repo, diff))
+}
+
+/// `base..head` revision range. Both refs are resolved via
+/// `revparse_single` so callers can pass SHAs, branches, tags, or
+/// arbitrary rev expressions (`HEAD~3`, `origin/main`, etc.).
+fn compute_range(repo: &git2::Repository, base: &str, head: &str) -> Result<StagedDiff, GitError> {
+    let base_commit = repo.revparse_single(base)?.peel_to_commit()?;
+    let head_commit = repo.revparse_single(head)?.peel_to_commit()?;
+    let base_tree = base_commit.tree()?;
+    let head_tree = head_commit.tree()?;
+
+    let mut opts = git2::DiffOptions::new();
+    opts.context_lines(3)
+        .include_untracked(false)
+        .ignore_submodules(true);
+    let mut diff = repo.diff_tree_to_tree(Some(&base_tree), Some(&head_tree), Some(&mut opts))?;
+    let mut find_opts = git2::DiffFindOptions::new();
+    find_opts.renames(true).copies(false);
+    diff.find_similar(Some(&mut find_opts))?;
+
+    let mut unified = String::new();
+    diff.print(git2::DiffFormat::Patch, |_d, _h, line| {
+        match line.origin() {
+            'F' | 'H' => unified.push_str(std::str::from_utf8(line.content()).unwrap_or("")),
+            c => {
+                unified.push(c);
+                unified.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
+            }
+        }
+        true
+    })?;
+
+    let mut files: Vec<StagedFile> = Vec::new();
+    let n = diff.deltas().len();
+    for i in 0..n {
+        let delta = match diff.get_delta(i) {
+            Some(d) => d,
+            None => continue,
+        };
+        let path = match delta
+            .new_file()
+            .path()
+            .and_then(|p| p.to_str())
+            .map(|s| s.replace('\\', "/"))
+        {
+            Some(p) => p,
+            None => continue,
+        };
+        let status = match delta.status() {
+            git2::Delta::Added => FileStatus::Added,
+            git2::Delta::Modified => FileStatus::Modified,
+            git2::Delta::Deleted => FileStatus::Deleted,
+            git2::Delta::Renamed => FileStatus::Renamed,
+            git2::Delta::Typechange => FileStatus::TypeChange,
+            _ => FileStatus::Other,
+        };
+        let new_file = delta.new_file();
+        let oid = new_file.id();
+
+        let (blob_bytes, is_binary, size_bytes) = if status == FileStatus::Deleted {
+            (None, false, 0)
+        } else if let Ok(blob) = repo.find_blob(oid) {
+            let content = blob.content().to_vec();
+            let detected_binary = blob.is_binary() || detect_binary(&content);
+            let size = content.len() as u64;
+            if detected_binary {
+                (None, true, size)
+            } else {
+                (Some(content), false, size)
+            }
+        } else {
+            (None, false, 0)
+        };
+
+        files.push(StagedFile {
+            path,
+            status,
+            index_blob: blob_bytes,
+            is_binary,
+            size_bytes,
+        });
+    }
+
+    let is_empty = files.is_empty();
+    Ok(StagedDiff {
+        unified,
+        files,
+        is_empty,
+    })
 }
 
 /// Extract the repo metadata `quorum review` needs for the JSON archive.

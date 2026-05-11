@@ -76,6 +76,15 @@ struct ReviewArgs {
     json: bool,
     #[arg(long)]
     no_keyring: bool,
+    /// Review a commit range instead of the staged diff.
+    /// Accepts any `git rev-parse`-compatible expression, e.g.
+    /// `HEAD~3..HEAD`, `main..feature`, `<base-sha>..<head-sha>`.
+    #[arg(long, value_name = "REF-EXPR")]
+    range: Option<String>,
+    /// Dismissals from this session do not expire (`expires_at = NULL`).
+    /// Default expiry is 365 days.
+    #[arg(long)]
+    no_expire: bool,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -141,15 +150,48 @@ async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
             } else {
                 None
             };
+            let diff_source = match args.range {
+                Some(spec) => {
+                    let (base, head) = parse_range_spec(&spec)?;
+                    quorum_core::git::DiffSource::CommitRange { base, head }
+                }
+                None => quorum_core::git::DiffSource::StagedIndex,
+            };
             commands::review::run(
                 &repo_root,
                 commands::review::ReviewOptions {
                     json_to_stdout: args.json,
                     no_keyring_storage: storage,
+                    diff_source,
+                    no_expire: args.no_expire,
                 },
             )
             .await
         }
+    }
+}
+
+/// Parse a `--range` argument. Accepts the canonical `base..head` form;
+/// rejects single-ref or `base...head` (symmetric-difference) for now —
+/// the bundle pipeline reviews `head` content against `base` tree only.
+fn parse_range_spec(spec: &str) -> Result<(String, String), CliError> {
+    if let Some((base, head)) = spec.split_once("..") {
+        if base.is_empty() || head.is_empty() {
+            return Err(CliError::Config(format!(
+                "--range expects `<base>..<head>`; got `{spec}`"
+            )));
+        }
+        if head.starts_with('.') {
+            // matched `...` — symmetric-difference form
+            return Err(CliError::Config(
+                "--range does not support `...` (symmetric-difference); use `base..head`".into(),
+            ));
+        }
+        Ok((base.to_string(), head.to_string()))
+    } else {
+        Err(CliError::Config(format!(
+            "--range expects `<base>..<head>`; got `{spec}`"
+        )))
     }
 }
 
