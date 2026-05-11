@@ -7,14 +7,17 @@ repository.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 description = "Quorum CLI: the quorum binary."
+readme = "README.md"
+keywords = ["code-review", "consensus", "git", "cli"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "quorum"
 path = "src/main.rs"
 
 [dependencies]
-quorum-core = { path = "../quorum-core" }
-quorum-lippa-client = { path = "../quorum-lippa-client" }
+quorum-core = { path = "../quorum-core", version = "0.2.0" }
+quorum-lippa-client = { path = "../quorum-lippa-client", version = "0.2.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

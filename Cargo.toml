@@ -8,11 +8,11 @@ members = [
 
 [workspace.package]
 edition = "2021"
-license = "MIT"
+license = "Apache-2.0"
 repository = "https://github.com/accillion/quorum"
 authors = ["Rolf Larsen"]
 rust-version = "1.74"
-version = "0.1.0"
+version = "0.2.0"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

@@ -1,12 +1,15 @@
 [package]
 name = "quorum-lippa-client"
-version = "0.1.1"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 description = "Quorum Lippa API client: cookie auth, Consensus sessions, keyring storage."
+readme = "README.md"
+keywords = ["code-review", "consensus", "git", "cli"]
+categories = ["api-bindings", "development-tools"]
 
 [lib]
 path = "src/lib.rs"

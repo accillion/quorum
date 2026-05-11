@@ -120,4 +120,4 @@ If the binary is already gone, clean up the keychain manually:
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+Apache-2.0 — see [LICENSE](./LICENSE).

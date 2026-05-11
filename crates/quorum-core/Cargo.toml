@@ -7,6 +7,9 @@ repository.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 description = "Quorum core: review pipeline, bundle assembly, JSON archive. Synchronous; no async runtime, no HTTP client."
+readme = "README.md"
+keywords = ["code-review", "consensus", "git", "cli"]
+categories = ["development-tools"]
 
 [lib]
 path = "src/lib.rs"
