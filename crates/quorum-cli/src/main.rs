@@ -17,8 +17,8 @@ const DEFAULT_BASE_URL: &str = "https://app.lippa.ai";
 #[derive(Parser, Debug)]
 #[command(
     name = "quorum",
-    version,
-    about = "Quorum: multi-model code reviewer (Phase 1A)"
+    version = concat!(env!("CARGO_PKG_VERSION"), " (", env!("GIT_SHORT_SHA"), ")"),
+    about = "Quorum: multi-model code reviewer"
 )]
 struct Cli {
     #[command(subcommand)]
