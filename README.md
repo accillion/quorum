@@ -1,5 +1,7 @@
 # Quorum
 
+[![crates.io](https://img.shields.io/crates/v/quorum-cli.svg)](https://crates.io/crates/quorum-cli)
+
 Multi-model code reviewer for the developer's machine.
 
 Quorum reviews staged git diffs using consensus across frontier LLMs (via
@@ -11,11 +13,23 @@ binaries for 5 platforms, and crates.io publish all live. Sigstore
 attestation (AC 132 second half) is deferred to 0.2.1 per
 [`BACKLOG.md`](./BACKLOG.md). See [`HISTORY.md`](./HISTORY.md) for
 the milestone log and [`SERVICES.md`](./SERVICES.md) for service-level
-behavioural rules.
+behavioural rules. For per-version change details, see
+[GitHub Releases](https://github.com/accillion/quorum/releases).
 
 **Upstream:** consumes Lippa via its public `/api/v1/*` surface. Quorum
 makes no Lippa-side changes. See [`CLAUDE.md`](./CLAUDE.md) for full
 project context.
+
+## Documentation
+
+API docs are published on docs.rs:
+
+- [`quorum-core`](https://docs.rs/quorum-core) — review pipeline,
+  aggregator, memory loop.
+- [`quorum-lippa-client`](https://docs.rs/quorum-lippa-client) — Lippa
+  API client (Consensus, memory).
+- [`quorum-cli`](https://docs.rs/quorum-cli) — binary entry point,
+  command parsing, output, hooks.
 
 ## Build
 
@@ -42,7 +56,8 @@ quorum link --project <your-lippa-project-id>
 # the same Lippa project binding; .gitignore it otherwise.
 ```
 
-`auth login` requires an interactive terminal in Phase 1A. The session
+By default, `auth login` requires an interactive terminal. For CI flows,
+see "Non-interactive auth" below. The session
 cookie goes into your OS keychain (Windows Credential Manager / macOS
 Keychain / Linux Secret Service). On headless boxes pass `--no-keyring`
 to fall back to a per-host file at `~/.config/quorum/sessions/<host>.session`
@@ -136,10 +151,10 @@ the release:
 ```bash
 # Linux / macOS
 curl --proto '=https' --tlsv1.2 -LsSf \
-    https://github.com/accillion/quorum/releases/download/v0.2.0/quorum-cli-installer.sh | sh
+    https://github.com/accillion/quorum/releases/latest/download/quorum-cli-installer.sh | sh
 
 # Windows (PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://github.com/accillion/quorum/releases/download/v0.2.0/quorum-cli-installer.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/accillion/quorum/releases/latest/download/quorum-cli-installer.ps1 | iex"
 ```
 
 ### Homebrew
@@ -208,6 +223,12 @@ stage. Phase 2 introduces customizable redaction patterns.
   `base_url`, `remote_url` flag.
 - `.quorum/reviews/<ISO>.json` — one file per review, deterministic
   schema (`schema_version: 1` first, alphabetical thereafter).
+- `.quorum/dismissals.sqlite` (plus `-wal` / `-shm` sidecars) —
+  written on first dismissal via TUI or CLI. Auto-appended to
+  `.gitignore` on first creation. Contains finding identity hashes,
+  title snapshots, dismissal reasons, and any free-text notes you
+  type at the dismiss prompt. Never holds session cookies, passwords,
+  or any other auth material.
 - OS keychain entry: service `quorum`, account `lippa-session@<host>`.
 
 ## Non-interactive auth (CI bootstrap)
