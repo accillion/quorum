@@ -162,52 +162,29 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** 0.2.1 release-engineering pass in flight; ship pending Rolf gate.
-Phase 1B closed at `v0.2.0`; AC 132 sigstore tracked in `BACKLOG.md` for 0.2.1.
+**Active:** **0.2.1 closed; AC 132 FULL; Phase 1C scoping next.**
 
-Phase 1B spec: `specs/Quorum-Phase1B-Spec-v1_0.md`. Preflight notes +
-divergence-gate adjudication: `specs/Quorum-Phase1B-Preflight-notes.md`
-(8 divergences D1–D8; full close detail in `HISTORY.md`). 197 tests
-pass across `cargo test --workspace`; clippy `-D warnings` + fmt
-`--check` clean throughout.
+Phase 0.2.1 was a release-engineering pass on top of Phase 1B —
+cargo-dist sigstore attestation + workflow-driven crates.io publish,
+plus a README polish pass. AC 132 PARTIAL → FULL via live `gh
+attestation verify`. AC 93 / AC 94 re-verified on the new version.
+Full close detail (commit graph, recovery narrative, six process
+learnings) in `HISTORY.md`. `BACKLOG.md` has no open items.
 
-**Public release:** [crates.io `quorum-cli` 0.2.0](https://crates.io/crates/quorum-cli/0.2.0) (plus `quorum-core` and `quorum-lippa-client` at the same version); [GitHub Release `v0.2.0`](https://github.com/accillion/quorum/releases/tag/v0.2.0) with 5 prebuilt platform binaries + 4 cargo-dist installers + aggregate `sha256.sum`. AC 93 and AC 94 live-verified; AC 132 PARTIAL (sigstore deferred).
+**Public release:**
+- crates.io: [`quorum-core 0.2.1`](https://crates.io/crates/quorum-core/0.2.1), [`quorum-lippa-client 0.2.1`](https://crates.io/crates/quorum-lippa-client/0.2.1), [`quorum-cli 0.2.1`](https://crates.io/crates/quorum-cli/0.2.1).
+- GitHub Release: [`v0.2.1`](https://github.com/accillion/quorum/releases/tag/v0.2.1) — 19 assets + per-target sigstore bundles.
+- CI run: [`25744528118`](https://github.com/accillion/quorum/actions/runs/25744528118) attempt 2 — attestation half end-to-end green; publish-crates half recovered out-of-band (fix at `5a658ef` ships from next tag onward).
 
-**Closing tip:** `a92037f` (the doc commit immediately before tag).  Commits since Phase 1A close:
+**Repo state since Phase 1B close:**
+- 197 tests pass; clippy `-D warnings` + fmt `--check` clean throughout 0.2.1.
+- `accillion/quorum` flipped private → public mid-0.2.1 (permanent). GitHub repo-attestations are billing-plan-gated on private repos; public closes the gate for free. Pre-flip secret scan was clean.
+- Tag `v0.2.1` points at `c052593`; not rewritten across the recovery.
 
-```
-f5b92ae feat(render): markdown header dismissed-count suffix (AC 53)
-725d323 chore(release): cargo-dist init + workspace config + release.yml
-d00affb chore(cli): build.rs GIT_SHORT_SHA + version string
-b3b541f feat: Phase 1B Stage 4 — non-interactive auth + QUORUM_LIPPA_SESSION + security README
-0770936 feat: Phase 1B Stage 3 — hook installer + split pre-commit/pre-push templates
-fc6cb31 feat: Phase 1B Stage 2 — TUI (ratatui + crossterm) with dismiss/undo + restoration
-28da5ec feat: Phase 1B Stage 1 — dismissals foundation + DiffSource + archive v2
-83ea3c1 chore: license Apache-2.0; publish metadata gaps
-f4d3ef6 fix(client): use reqwest cookie_store for session lifecycle
-a0b84e5 recon: preflight notes — divergence-gate adjudication D1-D8
-```
-
-**New since Phase 1A:** `quorum-core::memory` (dismissals SQLite +
-3-input identity hash); `quorum-core::git::DiffSource`; archive v2;
-`quorum-cli::tui` (ratatui+crossterm + panic-restoration); `quorum-cli::hooks`
-(install/uninstall + split templates + stdin parser per D4/D5);
-non-interactive auth (`--non-interactive`, `--show-session [-y]`,
-`QUORUM_LIPPA_SESSION` env var with P31 precedence note); distribution
-scaffolding (`build.rs` `GIT_SHORT_SHA`, `cargo-dist 0.31.0`,
-`release.yml`, WiX MSI). Workspace MSRV bumped 1.74 → 1.81
-(`std::panic::PanicHookInfo` stabilization).
-
-**Live verification:** D7 cookie fix confirmed end-to-end against
-`app.lippa.ai` (`/api/v1/me` round-trip). D8 (Lippa edge rejects
-`project_id` with 403) still blocks any AC requiring project context;
-mockito coverage is comprehensive; live ACs deferred.
-
-**Next:** 0.2.1 release-engineering pass per `BACKLOG.md` —
-sigstore attestation (`github-attestations = true`) + workflow-driven
-publish (`publish-jobs = ["./publish-crates"]`) added to
-`dist-workspace.toml`; closes AC 132 fully. Requires
-`CARGO_REGISTRY_TOKEN` repo secret. Phase 1C scoping starts after.
+**Next:** Phase 1C scoping. The conventions-promotion state machine
+(`candidate` → `local_only` → `promoted_convention` with cloud-write
+discipline) is the natural next milestone; spec authoring lives in a
+separate session.
 
 ---
 

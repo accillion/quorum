@@ -4,6 +4,68 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
+## Phase 0.2.1 — Release engineering: sigstore attestation + workflow-driven publish ✦ 2026-05-12
+
+**Spec:** `BACKLOG.md` 0.2.1 entry (now closed and removed).
+**Status:** **Closed at `v0.2.1`**. AC 132 flips PARTIAL → FULL via live sigstore attestation. AC 93 / AC 94 re-verified on the new version. All three crates published to crates.io; GitHub Release shipped with the same 19-asset shape as v0.2.0 plus per-target sigstore bundles.
+
+**Public release:**
+- crates.io: [`quorum-core`](https://crates.io/crates/quorum-core/0.2.1), [`quorum-lippa-client`](https://crates.io/crates/quorum-lippa-client/0.2.1), [`quorum-cli`](https://crates.io/crates/quorum-cli/0.2.1).
+- GitHub Release: [`v0.2.1`](https://github.com/accillion/quorum/releases/tag/v0.2.1).
+- CI run (release workflow, attempt 2): [`25744528118`](https://github.com/accillion/quorum/actions/runs/25744528118) — attestation + Release flow green; `custom-publish-crates` job failed, recovered out-of-band.
+
+### Commit graph
+
+```
+<close>  doc: Phase 0.2.1 close — sigstore attestation LIVE + AC 132 FULL
+5a658ef  fix(ci): drop nonexistent cargo publish --wait-for-publish flag
+c052593  doc: track 0.2.1 scope in flight
+f56ca69  doc: README polish for 0.2.1
+d1229d8  chore(cli): bump versions to 0.2.1
+286b1be  chore(release): enable cargo-dist sigstore attestation + publish-jobs
+```
+
+Tag `v0.2.1` points at `c052593`; not rewritten across the session.
+
+### What shipped
+
+- **cargo-dist sigstore attestation (`github-attestations = true`).** `dist-workspace.toml` opts in; cargo-dist 0.31 automatically emits per-matrix-target `permissions: { attestations: write, contents: read, id-token: write }` and an `Attest` step using `actions/attest-build-provenance@v3` with `subject-path: "target/distrib/*${{ join(matrix.targets, ', ') }}*"`. Sigstore bundles attached to each platform tarball verify via `gh attestation verify <file> --owner accillion` against Fulcio + RFC3161 timestamp authority.
+- **Workflow-driven crates.io publish (`publish-jobs = ["./publish-crates"]`).** cargo-dist 0.31 emits the `custom-publish-crates` call site in `release.yml`; the called reusable workflow (`.github/workflows/publish-crates.yml`) is user-authored. Quorum's authoring publishes `quorum-core` → `quorum-lippa-client` → `quorum-cli` sequentially via `cargo publish -p <crate>`. `CARGO_REGISTRY_TOKEN` is plumbed via `env:` from `secrets: inherit`. Default cargo blocks until the new version is index-resolvable — no opt-in flag needed.
+- **Version bump to 0.2.1.** Workspace `[workspace.package].version` + `quorum-cli`'s path-dep versions for `quorum-core` and `quorum-lippa-client`. `cargo publish --dry-run` clean for `quorum-core` + `quorum-lippa-client`; `quorum-cli` dry-run fails resolving `quorum-core ^0.2.1` against crates.io — expected for the chain-published workspace.
+- **README polish (5 items).** crates.io version badge after H1; "Documentation" subsection linking docs.rs/{quorum-core,quorum-lippa-client,quorum-cli}; `.quorum/dismissals.sqlite` + WAL/SHM sidecars documented under "Files Quorum writes locally"; cargo-dist installer one-liners moved from `/releases/download/v0.2.0/` to `/releases/latest/download/` (no more per-release README bumps); `auth login Phase 1A` framing replaced with `By default ... see "Non-interactive auth" below`; changelog pointer to GitHub Releases.
+
+### Live verification
+
+- **AC 132 LIVE ✓** — `gh attestation verify quorum-cli-x86_64-unknown-linux-gnu.tar.xz --owner accillion` exits 0. `--format json` dump confirms: Fulcio cert issuer (`CN=Fulcio Intermediate l2, O=GitHub, Inc.`), OIDC issuer `token.actions.githubusercontent.com`, build signer `release.yml@refs/tags/v0.2.1`, source SHA `c0525932261c59bcf300c703cc42b9888d653e8d`, RFC3161 timestamp `2026-05-12T15:53:31Z` from `timestamp.githubapp.com`, SLSA provenance v1, `sourceRepositoryVisibilityAtSigning=public`. AC 132 PARTIAL → **FULL**.
+- **AC 93 LIVE re-verified ✓** — `cargo install --root /tmp/q021-install --force quorum-cli` resolves `quorum-cli v0.2.1` from crates.io and produces a binary reporting `quorum 0.2.1 (unknown)` (`build.rs` GIT_SHORT_SHA fallback unchanged from v0.2.0).
+- **AC 94 LIVE re-verified ✓** — downloaded `quorum-cli-x86_64-unknown-linux-gnu.tar.xz` from the v0.2.1 Release; computed SHA256 `92261a4b5d21954d9ebfcb4e9215eb07643c58da9805b2c49cc9a50507803fa9` matches the entry in `sha256.sum`.
+
+### Recovery narrative
+
+Two CI incidents this session, both root-caused and resolved without rewriting the v0.2.1 tag:
+
+1. **Attempt 1 — repo-attestations 403 on every matrix target.** `actions/attest-build-provenance@v3` 403s on private repos when the org is on a billing plan below Team/Enterprise. Flipped `accillion/quorum` from private to public (`gh repo edit --visibility public`); attestations are free on public repos. Pre-flip precaution: `gh api .../actions/secrets` + `dependabot/secrets` + `environments` all returned `total_count: 0` (no secrets that would now be exposed) and the repo tree was confirmed not to carry sensitive material. The flip is permanent for this project — see learning #4 below.
+2. **Attempt 2 — `cargo publish --wait-for-publish` parse error on the publish-crates job.** I had presented `--wait-for-publish` as a real cargo flag during preflight; it isn't. cargo 1.95.0 (and every preceding stable) errors with `unexpected argument`. Default `cargo publish` already blocks until the new version is index-resolvable, so the flag is unneeded. Fixed on `main` in `5a658ef` so the workflow ships clean from 0.2.2 onward; v0.2.1's three publishes were issued out-of-band by `cargo publish -p quorum-{core,lippa-client,cli}` from the local 0.2.1 tree (diff vs the v0.2.1 tag was only `.github/workflows/publish-crates.yml`, which cargo doesn't package — so the published tarballs are functionally identical to what the in-CI workflow would have produced).
+
+The GitHub Release `v0.2.1` was created by attempt 2's `host` job before the publish-crates failure, so all 19 artifacts (5 platform tarballs × 2 + aggregate `sha256.sum` + MSI + `.sha256` + 2 installers + Homebrew formula + dist-manifest + source + `.sha256`) plus the cargo-dist-emitted sigstore bundles are present on the Release as-shipped.
+
+### Process learnings
+
+- **Attest `subject-path` is coupled to one-target-per-matrix-entry.** cargo-dist 0.31 emits `subject-path: "target/distrib/*${{ join(matrix.targets, ', ') }}*"`. This works because every matrix entry in Quorum's `dist-workspace.toml` has exactly one target. If a multi-target entry is ever added (e.g. universal macOS, or cross-compile-grouped Linux variants), the glob will silently fail to match the additional targets and those artifacts will ship without attestation — without erroring. Anyone restructuring the matrix should review the attest subject-path at the same time.
+- **Reusable-workflow refs are pinned to the caller's commit, not to the default branch.** `uses: ./.github/workflows/publish-crates.yml` resolves from the same ref as the calling workflow (so for tag-triggered runs, from the tagged commit). A bug at the tagged commit cannot be fixed by landing a patch on `main` and `gh run rerun`-ing — the rerun reads the called workflow from the same commit. Recovery requires either tag rewrite (avoid when crates.io is involved — yank-not-delete) or out-of-band execution outside the workflow. This is a structural property of GitHub Actions reusable workflows; document explicitly so future ship-checklists don't bet on a `main`-side hotfix.
+- **`cargo publish --wait-for-publish` is not a cargo flag.** It exists in some adjacent tooling and proposals but not as `cargo publish` CLI surface. Modern cargo (1.66+) already blocks on the post-publish index wait by default. Preflight that surfaces "should we wait?" questions should grep `cargo publish --help` against the version that will run in CI before recommending a flag — the CC-Recon-0.2.1-3 question presented `--wait-for-publish` as a real option and the CI failure flowed from accepting that answer uncritically.
+- **GitHub repo-attestations are gated on private repos.** `actions/attest-build-provenance@v3` calls `POST /repos/{owner}/{repo}/attestations`, which 403s on private repos unless the org is on Enterprise Cloud / Team. Public repos get it for free. If sigstore attestation is required and the org is on Pro/Free, the repo has to be public; plan this constraint into milestone scoping rather than discovering it at first tag push.
+- **Workflow-driven publish half is unproven live.** v0.2.1's attestation half validated end-to-end via the workflow (attempt 2's `build-local-artifacts` + `Attest` steps all green, sigstore bundles attached to the Release). The crates.io publish half went out-of-band — the workflow's `custom-publish-crates` failed on the `--wait-for-publish` parse error before any `cargo publish` call landed, so the fix at `5a658ef` won't be exercised until the next tag push. The next release is the first true end-to-end validation of the publish-crates workflow. Does not affect AC 132 FULL status, but future readers should not assume the full pipeline shipped clean from v0.2.1.
+- **Repo visibility is now permanently public.** The mid-0.2.1 private → public flip was justified by the attestations-on-private-repo gate, but it's irreversible in practice for this project: the v0.2.0 and v0.2.1 binary distributions now assume public Releases (cargo-dist installers, attestation verifications, the README's `releases/latest` URLs). Any future private-only material cannot land in this repo. The pre-flip secret scan (`actions/secrets` / `dependabot/secrets` / `environments` all `total_count: 0`; tree audit) was the right precaution; subsequent work that wants to touch genuinely sensitive material needs a separate private repo or an Lippa-side equivalent.
+
+### Stats
+
+- **197 tests passing** at close — unchanged from Phase 1B close. 0.2.1 added zero new tests; this is release engineering only.
+- `cargo build --release` / `cargo test --workspace` / `cargo clippy --workspace --all-targets -- -D warnings` / `cargo fmt --check --all` all green throughout.
+- 5 commits land on `main` for the milestone (4 in Phase 0.2.1-A + 1 in 0.2.1-B + 1 close commit = 6 total; `c052593` was the tag base).
+
+---
+
 ## Phase 1B — Dismissals, TUI, hooks, CI auth, v0.2.0 release ✦ 2026-05-11 → 2026-05-12
 
 **Spec:** `specs/Quorum-Phase1B-Spec-v1_0.md`.
