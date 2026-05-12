@@ -1,7 +1,7 @@
 //! `quorum review` — the main pipeline.
 
 use crate::exit::{CliError, Exit};
-use crate::render::{render_review_markdown, warn_if_large};
+use crate::render::{render_review_markdown_with_dismissed, warn_if_large};
 use quorum_core::archive::{
     archive_filename, build as build_archive, ArchiveInputs, SuppressionSummary,
 };
@@ -379,7 +379,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     // (the TUI is the user-facing surface; the hook script consumes
     // exit codes, not stdout). The archive is written either way.
     if !opts.tui && opts.hook_mode == HookMode::None {
-        let md = render_review_markdown(&review);
+        let md = render_review_markdown_with_dismissed(&review, dismissals_applied);
         print!("{md}");
         if let Some(note) = warn_if_large(&review) {
             eprintln!("{note}");
