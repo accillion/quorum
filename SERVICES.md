@@ -151,6 +151,151 @@ just point to here.
   some Java/.NET projects. This is an accepted defense-in-depth
   trade-off; Phase 2's customizable patterns will let users opt out.
 
+## 6. Dismissals store (Phase 1B)
+
+**Crate:** `quorum-core::memory`.
+
+- **Location:** `<repo_root>/.quorum/dismissals.sqlite`. Auto-created
+  on first `quorum review`; auto-gitignored via `.gitignore` write
+  on first open. Stderr warning if the DB is currently tracked by
+  git (its free-text `note` column must not be shared).
+- **Pragmas applied at open:** `journal_mode=WAL` with fallback to
+  `journal_mode=DELETE` + stderr warning on filesystems without
+  shared-memory support (NFS / SMB / sandboxed); `synchronous=NORMAL`;
+  `foreign_keys=ON`; `busy_timeout=5000`.
+- **Schema v1:** `schema_version` + `dismissals` tables. CHECK
+  constraints enforce `recurrence_count >= 1`, `reason IN
+  {false_positive, intentional, out_of_scope, wont_fix, other}`,
+  `reason != 'other' OR note IS NOT NULL`, `promotion_state IN
+  {candidate, local_only, promoted_convention}`. Phase 1B writes only
+  `'candidate'`; Phase 1C adds the state-transition logic.
+- **`MemoryStore` trait is sync.** Phase 1B has one impl
+  (`LocalSqliteMemoryStore`); Phase 2 layers an async outbox on top
+  via the existing trait surface — the trait stays sync, the worker
+  is what's async.
+- **Two operations, not one (P01).** `dismiss()` is INSERT-only;
+  duplicates return `MemoryError::AlreadyDismissed`. `record_seen()`
+  is the filter-side bulk update — bumps `recurrence_count` +
+  `last_seen_at` exactly once per `(hash, review_session_id)`.
+  Conflating the two produced v0.1's upsert-vs-UNIQUE bug.
+- **Default expiry:** `expires_in = Some(365 days)` on dismiss unless
+  `quorum review --no-expire` is passed (writes `expires_at = NULL`,
+  permanent). `load_active_dismissals` predicate is
+  `WHERE expires_at IS NULL OR expires_at > now()` — permanent rows
+  always returned.
+- **Body truncation (P29).** `dismiss` truncates `finding.body` to
+  2KB at a UTF-8 codepoint boundary before storing as `body_snapshot`.
+  Caller passes the full `&Finding`; truncation is the storage
+  layer's responsibility.
+- **Note validation.** Free-text notes ≤ 2KB UTF-8 bytes;
+  embedded `\n`/`\r` rejected (single-line modal); control chars
+  other than `\t` stripped; empty note rejected when
+  `reason == Other`. Trait + TUI layers both enforce.
+- **Finding identity hash (3-input, post-D2/D3 adjudication).**
+  SHA-256 over `title || 0x1F || source.type || 0x1F || sorted_models`
+  with model elements joined by `0x1F`. `body_opener` and P39 (`file`
+  swap) were dropped: Lippa's wire format exposes no rich cluster
+  body and no per-cluster `file` reference, and `cluster_id` is
+  session-random (preflight measured 0% stability across 5 reruns
+  of the same diff). The residual cross-finding collision risk is
+  guarded by an integration test asserting ≤ 2% collision rate on
+  the v1.0 fixture set (`dismissals_filter::cross_finding_collision_rate`,
+  measured at 0/190 = 0.0%).
+- **Audit trail leak surface.** Archive's `suppressed_findings[]`
+  carries only `finding_identity_hash`, `title_snapshot`,
+  `source_type_snapshot`, `reason`, `dismissed_at`. Free-text
+  `note` and `body_snapshot` stay in SQLite, never on disk
+  outside the `.gitignore`-d store.
+
+## 7. Hook installer (Phase 1B)
+
+**Crate:** `quorum-cli::hooks` + `quorum-cli::commands::hook_mode`.
+
+- **Path resolution** uses libgit2 explicitly: `Repository::discover`
+  then `repo.path().join("hooks").join(<name>)`. `repo.path()` is
+  the literal `.git/` directory — correct under worktrees and
+  custom `--git-dir`. We never use `path().parent()` inference.
+- **Idempotency marker** is `# quorum-managed-hook`, scanned in
+  the first 5 lines of an existing hook. Found → overwrite
+  (idempotent re-install). Not found → exit 2; the user must
+  remove the foreign hook manually.
+- **Unix mode** is `0o755` via `std::os::unix::fs::PermissionsExt`.
+  On Windows the inheriting ACL of `.git/hooks/` governs execution;
+  Git for Windows runs hooks via `sh.exe` regardless of NTFS
+  executable bit.
+- **Templates** are POSIX `#!/bin/sh`. Both consume `QUORUM_SKIP=1`
+  (echo "skipped" + exit 0) and `command -v quorum` (echo "binary
+  not on PATH; skipping" + exit 0, fail-open) before invoking
+  `quorum review --hook-mode=<type>`. Both honor
+  `QUORUM_HOOK_POLICY ∈ {fail-open, fail-closed, warn}`:
+  - `fail-open` (default): only exit 1 (high-severity findings)
+    blocks.
+  - `fail-closed`: exit 2 (tooling) and exit 3 (auth) also block.
+  - `warn`: nothing blocks regardless of exit code.
+  Bypass for one operation: `env QUORUM_SKIP=1 git commit ...`
+  or `env QUORUM_SKIP=1 git push ...`.
+- **Hook policy is env-var-only.** Templates read
+  `QUORUM_HOOK_POLICY` directly; the Rust binary emits the standard
+  0/1/2/3 exit codes (Phase 1A stable taxonomy) and the shell
+  template performs the policy translation. Config-file alternative
+  is deferred to Phase 1B v2.
+- **Pre-push stdin parsing (per D4/D5 preflight adjudication).**
+  Each stdin line is `<local-ref> <local-sha> <remote-ref> <remote-sha>`
+  whitespace-separated. Classification:
+  - `local_ref == "(delete)"` (literal) → SkipDeletion with stderr
+    note. The local-ref field is NOT a real ref name in this case;
+    parsers must rely on the literal, not on zero-sha.
+  - `local_ref` starts with `refs/tags/` → SkipTag with stderr note
+    `quorum: tag push detected; skipping review (code review not
+    applicable to refs/tags/*)`. Tag pushes carry no commit-range
+    semantics for review.
+  - `remote_sha` all zeros (40 `0`s) → NewBranch. Base resolved via
+    `merge_base(local_sha, refs/remotes/origin/HEAD)`. If unresolvable
+    (no upstream HEAD), review the tip commit only via
+    `<head>^..<head>` with stderr note.
+  - Otherwise → standard/force-push: `DiffSource::CommitRange {
+    base: remote_sha, head: local_sha }`. Git's range semantics
+    handle force-push correctly; no special marker in the stdin
+    shape.
+- **Per-tuple archive naming.** Pre-push writes
+  `.quorum/reviews/<push-start-ISO>.tuple-<N>.json` per non-skipped
+  tuple (1-indexed `N`, shared `push-start-ISO` across one push).
+  All other invocation modes use the Phase 1A `<ISO>.json` shape.
+  Push's overall exit code is `Exit::max` across all per-tuple
+  exits (spec §4.5.5: max severity across tuples).
+- **No-auth in hook mode.** Under `--hook-mode=*`, the absence of
+  any auth (no keyring entry AND no `QUORUM_LIPPA_SESSION`) is NOT
+  a hard error — emits stderr `quorum: not authenticated — hook
+  reviews are being skipped; run quorum auth login` and returns
+  exit 0 so the shell template's fail-open path proceeds.
+
+## 8. Diff source & bundle assembly extension (Phase 1B)
+
+**Crate:** `quorum-core::git` + `quorum-core::bundle`.
+
+- **`DiffSource` enum:** `StagedIndex` (Phase 1A behavior — HEAD vs
+  index) or `CommitRange { base, head }` (Phase 1B). The bundle
+  layer (`quorum-core::bundle::assemble`) is agnostic — receives a
+  `StagedDiff` value regardless of source, budgets and deny-list
+  identically.
+- **`diff_for_source(repo, &DiffSource)`** dispatches:
+  - `StagedIndex` → `staged_diff()` (Phase 1A, unchanged).
+  - `CommitRange { base, head }` → `commit_range_diff()`. Both refs
+    are resolved via `revparse_single` so callers can pass SHAs,
+    branch names, tags, or arbitrary rev expressions (`HEAD~3`,
+    `origin/main`, …). Diff is computed via `diff_tree_to_tree`;
+    file blobs come from the `head` tree.
+- **Symmetric-difference (`base...head`) is rejected** by the CLI
+  `--range` parser. The bundle pipeline diffs `head` content against
+  `base` tree; the spread-three-dot form is not a single base
+  reference and produces ambiguous review semantics. The two-dot
+  form is the supported shape.
+- **CLI surface:** `quorum review --range <ref-expr>` for manual
+  invocation; `quorum review --hook-mode=pre-push` dispatches per
+  stdin tuple internally. `quorum review` without `--range` and
+  without `--hook-mode=pre-push` uses `DiffSource::StagedIndex`
+  (Phase 1A regression baseline preserved).
+
 ---
 
 ## Cross-cutting: no instructions from repo content

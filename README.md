@@ -5,10 +5,11 @@ Multi-model code reviewer for the developer's machine.
 Quorum reviews staged git diffs using consensus across frontier LLMs (via
 [Lippa](https://app.lippa.ai)) plus codebase memory accumulated from prior reviews.
 
-**Status:** Phase 1A walking skeleton — `quorum auth login`, `quorum link`,
-`quorum review` work end-to-end. Interactive dismissal, hook installer,
-binary distribution, and memory write-back are Phase 1B+. See
-[`HISTORY.md`](./HISTORY.md) for milestone history and
+**Status:** Phase 1B Stage 5a — interactive dismiss TUI, pre-commit /
+pre-push hook installer, non-interactive CI auth, and the
+`cargo-dist`-driven release pipeline are all in tree. Live publish
+(`v0.2.0` on crates.io + GitHub Releases) is Stage 5b, pending review.
+See [`HISTORY.md`](./HISTORY.md) for the milestone log and
 [`SERVICES.md`](./SERVICES.md) for service-level behavioural rules.
 
 **Upstream:** consumes Lippa via its public `/api/v1/*` surface. Quorum
@@ -52,7 +53,62 @@ to fall back to a per-host file at `~/.config/quorum/sessions/<host>.session`
 git add <files-you-want-reviewed>
 quorum review                  # markdown to stdout, archive to .quorum/reviews/<ISO>.json
 quorum review --json           # same buffer to stdout AND to disk (byte-identical)
+quorum review --tui            # interactive TUI: navigate, dismiss with reason, undo (Phase 1B)
+quorum review --range HEAD~3..HEAD   # review a commit range instead of staged diff
+quorum review --no-expire      # dismissals from this session do not auto-expire (default: 365d)
 ```
+
+The TUI surfaces findings in a list + body pane with a status bar.
+Keys: `j`/`k` navigate, `g`/`G` jump to first/last, `PgDn`/`PgUp`
+scroll the body, `d` (or `Enter`) opens the dismiss-reason prompt
+(`f` false positive, `i` intentional, `s` out of scope, `w` won't
+fix, `o` free-text), `u` undoes the most recent in-session dismissal
+(unbounded undo stack), `q` or `Esc` quits, `?` shows help. Body
+rendering is plain wrapped text — no markdown styling parser. The
+terminal is restored on every exit path including panic.
+
+Subsequent reviews suppress findings matching active dismissals via
+the local `.quorum/dismissals.sqlite` store (auto-gitignored on
+first creation). Dismissed findings appear in the archive's
+`suppressed_findings[]` audit trail with hash + title + reason +
+timestamp — never the free-text note.
+
+## Git hooks
+
+```bash
+quorum install --hook=pre-commit    # writes .git/hooks/pre-commit
+quorum install --hook=pre-push      # writes .git/hooks/pre-push
+quorum uninstall --hook=pre-commit  # idempotent; refuses non-Quorum hooks
+```
+
+Hook templates are POSIX `#!/bin/sh`, marked with
+`# quorum-managed-hook v1` in the first 5 lines. Re-running `install`
+overwrites a Quorum-managed file idempotently; refuses to overwrite
+a hook of unknown provenance.
+
+Hook policy via `QUORUM_HOOK_POLICY` env var:
+- `fail-open` (default): only exit 1 (high-severity findings) blocks
+  the commit / push. Auth and tooling failures fail open.
+- `fail-closed`: also block on exit 2 (tooling) and exit 3 (auth).
+- `warn`: nothing blocks regardless of exit code.
+
+Bypass for one operation: `env QUORUM_SKIP=1 git commit ...` or
+`env QUORUM_SKIP=1 git push ...`.
+
+Pre-push reviews each ref tuple Git sends on stdin as a commit range
+(`base..head`). Branch deletions and tag pushes are skipped with a
+stderr note (code review is not meaningful for either). Each tuple
+produces its own archive at
+`.quorum/reviews/<push-start-ISO>.tuple-<N>.json`.
+
+## Install
+
+Phase 1B Stage 5a ships the distribution scaffolding (`cargo-dist`
+config, GitHub Actions release workflow, MSI definition for Windows).
+**Stage 5b ships `v0.2.0` to crates.io + GitHub Releases pending
+review.** Until that lands, build from source per the [Build](#build)
+section above. Watch [Releases](https://github.com/accillion/quorum/releases)
+for the first prebuilt binaries.
 
 Exit codes:
 - `0` — review completed; no high-severity findings (or auth/link command succeeded).

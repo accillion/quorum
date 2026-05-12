@@ -162,34 +162,48 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** Phase 1A — implementation complete, awaiting spec v1.1 backfill.
+**Active:** Phase 1B Stage 5a complete; Stage 5b (live ship) pending Rolf gate.
 
-Phase 0 (Recon-v0) closed at SHA `0f33969` (GO-PAT-PARTIAL branch).
-Phase 1A preflight closed at `86c8d3f` / `68ba169`: 4/4 blockers passed,
-Blocker 4 reduced-scope. Implementation milestones: workspace + crates
-(`3b67ad5`), test suites + wire fixture (`eaeae74`). 60 tests passing;
-`cargo clippy -- -D warnings` and `cargo fmt --check` clean.
+Phase 1B spec: `specs/Quorum-Phase1B-Spec-v1_0.md`. Preflight notes +
+divergence-gate adjudication: `specs/Quorum-Phase1B-Preflight-notes.md`
+(8 divergences D1–D8; full close detail in `HISTORY.md`). 197 tests
+pass across `cargo test --workspace`; clippy `-D warnings` + fmt
+`--check` clean throughout.
 
-**Spec divergences applied during implementation** (full detail in
-`specs/Quorum-Phase1A-Preflight-notes.md`):
-- D1: Lippa always-multi-model; `model_roles` is display labels, not
-  selection. Phase 1A renders aggregated findings across whatever
-  models Lippa picks. Phase 1C drops as a separate milestone in v1.1.
-- D2: Detail response is debate-shaped (`summary_text` + agreement /
-  divergence / assumptions clusters), not findings-shaped. `Finding`
-  collapses to `{severity, title, body, source}` with severity
-  synthesized from cluster type and confidence.
-- D3: `create_session` uses `multipart::Form` per recon-v0.
+**Stage 5a tip:** `f5b92ae`. Commits since Phase 1A close:
 
-**Live verification status:** Smoke-tested ACs 1, 8, 11, 13, 14 against
-the release binary (`target/release/quorum.exe`). Full happy-path
-review (ACs 17, 22, 25, 30) is blocked on Rolf's account: sessions
-submitted with `project_id` consistently fail in ~5s due to a server-
-side seeding-context exception on this project. Mockito-driven
-integration tests cover the full client + bundle + render contract.
+```
+f5b92ae feat(render): markdown header dismissed-count suffix (AC 53)
+725d323 chore(release): cargo-dist init + workspace config + release.yml
+d00affb chore(cli): build.rs GIT_SHORT_SHA + version string
+b3b541f feat: Phase 1B Stage 4 — non-interactive auth + QUORUM_LIPPA_SESSION + security README
+0770936 feat: Phase 1B Stage 3 — hook installer + split pre-commit/pre-push templates
+fc6cb31 feat: Phase 1B Stage 2 — TUI (ratatui + crossterm) with dismiss/undo + restoration
+28da5ec feat: Phase 1B Stage 1 — dismissals foundation + DiffSource + archive v2
+83ea3c1 chore: license Apache-2.0; publish metadata gaps
+f4d3ef6 fix(client): use reqwest cookie_store for session lifecycle
+a0b84e5 recon: preflight notes — divergence-gate adjudication D1-D8
+```
 
-**Next:** Rolf backfills `Quorum-Phase1A-Spec-v1_1.md` reflecting the
-four divergences from preflight notes, then Phase 1B drafting.
+**New since Phase 1A:** `quorum-core::memory` (dismissals SQLite +
+3-input identity hash); `quorum-core::git::DiffSource`; archive v2;
+`quorum-cli::tui` (ratatui+crossterm + panic-restoration); `quorum-cli::hooks`
+(install/uninstall + split templates + stdin parser per D4/D5);
+non-interactive auth (`--non-interactive`, `--show-session [-y]`,
+`QUORUM_LIPPA_SESSION` env var with P31 precedence note); distribution
+scaffolding (`build.rs` `GIT_SHORT_SHA`, `cargo-dist 0.31.0`,
+`release.yml`, WiX MSI). Workspace MSRV bumped 1.74 → 1.81
+(`std::panic::PanicHookInfo` stabilization).
+
+**Live verification:** D7 cookie fix confirmed end-to-end against
+`app.lippa.ai` (`/api/v1/me` round-trip). D8 (Lippa edge rejects
+`project_id` with 403) still blocks any AC requiring project context;
+mockito coverage is comprehensive; live ACs deferred.
+
+**Stage 5b deliverables (Rolf-gated):** dep-order `cargo publish`
+(`quorum-core` → `quorum-lippa-client` → `quorum-cli`); `v0.2.0`
+tag push triggers GitHub Actions; post-release verification of ACs
+93, 94, 132.
 
 ---
 
