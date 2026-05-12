@@ -162,7 +162,8 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** Phase 1B **closed at `v0.2.0`**. AC 132 sigstore tracked in `BACKLOG.md` for 0.2.1.
+**Active:** 0.2.1 release-engineering pass in flight; ship pending Rolf gate.
+Phase 1B closed at `v0.2.0`; AC 132 sigstore tracked in `BACKLOG.md` for 0.2.1.
 
 Phase 1B spec: `specs/Quorum-Phase1B-Spec-v1_0.md`. Preflight notes +
 divergence-gate adjudication: `specs/Quorum-Phase1B-Preflight-notes.md`
