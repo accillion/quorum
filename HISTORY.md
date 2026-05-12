@@ -4,15 +4,21 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
-## Phase 1B Stages 1–4 + 5a — Dismissals, TUI, hooks, CI auth, distribution scaffolding ✦ 2026-05-11 → 2026-05-12
+## Phase 1B — Dismissals, TUI, hooks, CI auth, v0.2.0 release ✦ 2026-05-11 → 2026-05-12
 
 **Spec:** `specs/Quorum-Phase1B-Spec-v1_0.md`.
 **Preflight:** `specs/Quorum-Phase1B-Preflight-notes.md` (8 documented divergences D1–D8; adjudication appended after Rolf review).
-**Status:** Stage 5a complete; Stage 5b (live `cargo publish` + `v0.2.0` tag push + release artifacts) Rolf-gated.
+**Status:** **Closed at `v0.2.0`** — all three crates published to crates.io; GitHub Release shipped with 19 artifacts across 5 platforms + 4 installers. AC 132 PARTIAL (SHA256SUMS verified; sigstore deferred to 0.2.1 per `BACKLOG.md`).
+
+**Public release:**
+- crates.io: [`quorum-core`](https://crates.io/crates/quorum-core/0.2.0), [`quorum-lippa-client`](https://crates.io/crates/quorum-lippa-client/0.2.0), [`quorum-cli`](https://crates.io/crates/quorum-cli/0.2.0).
+- GitHub Release: [`v0.2.0`](https://github.com/accillion/quorum/releases/tag/v0.2.0).
+- CI run (release workflow): [`25732283892`](https://github.com/accillion/quorum/actions/runs/25732283892) — 9/9 jobs green.
 
 ### Commit graph
 
 ```
+a92037f doc: track AC 132 PARTIAL + cargo-dist defaults learning
 f5b92ae feat(render): markdown header dismissed-count suffix (AC 53)
 725d323 chore(release): cargo-dist init + workspace config + release.yml
 d00affb chore(cli): build.rs GIT_SHORT_SHA + version string
@@ -49,18 +55,22 @@ a0b84e5 recon: preflight notes — divergence-gate adjudication D1-D8 + memory/p
 - **`cargo publish --dry-run` semantics for path-deps.** Even with `version = "X"` declared on path-deps in `quorum-cli/Cargo.toml`, the dry-run fails at "no matching package on crates.io" until the dep crates have actually been published. The dependency-order publish sequence (`quorum-core` → `quorum-lippa-client` → `quorum-cli`) is mandatory; Stage 5a's rehearsal confirms the first two go through cleanly and documents the expected failure shape for the third.
 - **Test isolation against the OS keychain.** Phase 1B's auth tests are hermetic against the host's real keychain by redirecting `APPDATA` (Windows) / `XDG_CONFIG_HOME` (Linux) to a tempdir and using `--no-keyring`. Worth adopting as the default test pattern for any future code that touches `keyring::Storage`.
 - **cargo-dist 0.31 defaults vs spec promises.** v1.0 §4.8.3 stated that tag-push triggers crates.io publish + sigstore attestation via GitHub OIDC. The Stage 5b.1 workflow inspection found cargo-dist 0.31's `dist init -y` defaults ship binaries + SHA256SUMS only; `publish-jobs` and `github-attestations` must be opted into via `dist-workspace.toml`. v0.2.0 ships with **AC 132 PARTIAL** (SHA256SUMS present, sigstore deferred); the follow-up is tracked in `BACKLOG.md` under 0.2.1 release engineering. Lesson: verify generated workflow against spec promises at preflight, not at ship time.
+- **GitHub Actions registers workflows from the default branch, not from tags.** Stage 5b.2 pushed `v0.2.0` and got a silent no-op: zero workflow runs queued. Diagnosis: remote `main` was at `7189e7c` (pre-Phase-1A), so the workflow file existed at the tagged commit but was not in GitHub's "registered workflows" index, which sources from `main`. Fix: `git push origin main` to register the workflow file, then delete + recreate the tag at the same SHA. The retag at the same SHA was cosmetically ugly but mechanically clean — crates.io v0.2.0 was already final, so the second tag push only kicked the GitHub-Release workflow into life. Lesson: preflight of a tag-triggered workflow must include `git ls-tree origin/<default-branch> -- .github/workflows/` to confirm server-side registration; local file inspection alone is insufficient.
+- **crates.io index propagation is fast on this account/connection.** Each `cargo publish` returned `Published quorum-X v0.2.0 at registry crates-io` synchronously; the 30s pause + `cargo search` verification step in the ship checklist was confirmed-by-design rather than tested-empirically (no propagation lag observed). The retry-once-after-60s contingency was not needed.
+- **crates.io publish requires a verified email.** First attempt at `cargo publish -p quorum-core` returned HTTP 400 with `A verified email address is required to publish crates to crates.io`. This is account-hygiene at the registry, not a code or token issue. New publishers (or accounts that never had publishable crates) must complete the email-verify round trip at `https://crates.io/settings/profile` before the first publish. Document for future contributors: first-time publisher checklist includes the verified-email step.
+- **AC 95's `(unknown)` fallback is the contract for crates.io installs.** `cargo install quorum-cli` from crates.io produces a binary whose `quorum --version` reports `quorum 0.2.0 (unknown)` rather than the tagged SHA. Expected: published source tarballs have no `.git/`, so `build.rs`'s `git rev-parse --short HEAD` fails and the `unknown` fallback fires. Local source builds embed the real SHA. The contract matches spec AC 95 verbatim; users on `cargo install` see the version + literal `unknown`, users on a git checkout see the version + real SHA.
 
 ### Stats
 
-- **194 tests passing** across the workspace (Phase 1A close was 60; Phase 1B Stages 1–4 added 134; Stage 5a/6.1 added 3 render unit tests for AC 53 → **197 tests** at this entry's close).
+- **197 tests passing** across the workspace at close (Phase 1A close was 60; Phase 1B Stages 1–4 added 134; Stage 5a/6.1 added 3 render unit tests for AC 53).
 - Workspace `cargo build --release`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --check --all` all green throughout.
 - 5 production crates / modules added or substantially modified: `quorum-core::memory`, `quorum-core::git::DiffSource`, `quorum-core::archive` v2, `quorum-cli::tui`, `quorum-cli::hooks`. The `quorum-lippa-client` crate gained no new public surface (the D7 fix was a transport-layer change).
 
-### Pending for Stage 5b (Rolf-gated)
+### Live verification (post-Stage-5b)
 
-- `quorum-core` then `quorum-lippa-client` then `quorum-cli` actual `cargo publish` in dep order (the `dry-run` rehearsal confirms the metadata; Stage 5b adds `publish-jobs = ["./publish-crates"]` to `dist-workspace.toml`).
-- `v0.2.0` tag push triggers the GitHub Actions workflow; produces SHA256SUMS + sigstore/OIDC attestation per AC 132.
-- Post-release live verification of ACs 93 (`cargo install` round-trip from crates.io) + 94 (release artifacts present for all five targets) + 132 (attestation present).
+- **AC 93 LIVE ✓** — `cargo install quorum-cli --root <tempdir>` from crates.io completes in ~27s release build; `quorum --version` reports `quorum 0.2.0 (unknown)` (per the documented tarball-fallback path, AC 95).
+- **AC 94 LIVE ✓** — downloaded `quorum-cli-x86_64-pc-windows-msvc.zip` (4180825 bytes) and `quorum-cli-x86_64-unknown-linux-gnu.tar.xz` (3076148 bytes); SHA256 of each matches its per-file sidecar AND the aggregate `sha256.sum` entry. 7 entries in `sha256.sum` cover all 5 platform tarballs + MSI + source.
+- **AC 132 PARTIAL** — SHA256SUMS shipped + verified. Sigstore attestation deferred to 0.2.1 per `BACKLOG.md`.
 
 ---
 

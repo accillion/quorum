@@ -162,7 +162,7 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** Phase 1B Stage 5a complete; Stage 5b (live ship) pending Rolf gate.
+**Active:** Phase 1B **closed at `v0.2.0`**. AC 132 sigstore tracked in `BACKLOG.md` for 0.2.1.
 
 Phase 1B spec: `specs/Quorum-Phase1B-Spec-v1_0.md`. Preflight notes +
 divergence-gate adjudication: `specs/Quorum-Phase1B-Preflight-notes.md`
@@ -170,7 +170,9 @@ divergence-gate adjudication: `specs/Quorum-Phase1B-Preflight-notes.md`
 pass across `cargo test --workspace`; clippy `-D warnings` + fmt
 `--check` clean throughout.
 
-**Stage 5a tip:** `f5b92ae`. Commits since Phase 1A close:
+**Public release:** [crates.io `quorum-cli` 0.2.0](https://crates.io/crates/quorum-cli/0.2.0) (plus `quorum-core` and `quorum-lippa-client` at the same version); [GitHub Release `v0.2.0`](https://github.com/accillion/quorum/releases/tag/v0.2.0) with 5 prebuilt platform binaries + 4 cargo-dist installers + aggregate `sha256.sum`. AC 93 and AC 94 live-verified; AC 132 PARTIAL (sigstore deferred).
+
+**Closing tip:** `a92037f` (the doc commit immediately before tag).  Commits since Phase 1A close:
 
 ```
 f5b92ae feat(render): markdown header dismissed-count suffix (AC 53)
@@ -200,10 +202,11 @@ scaffolding (`build.rs` `GIT_SHORT_SHA`, `cargo-dist 0.31.0`,
 `project_id` with 403) still blocks any AC requiring project context;
 mockito coverage is comprehensive; live ACs deferred.
 
-**Stage 5b deliverables (Rolf-gated):** dep-order `cargo publish`
-(`quorum-core` → `quorum-lippa-client` → `quorum-cli`); `v0.2.0`
-tag push triggers GitHub Actions; post-release verification of ACs
-93, 94, 132.
+**Next:** 0.2.1 release-engineering pass per `BACKLOG.md` —
+sigstore attestation (`github-attestations = true`) + workflow-driven
+publish (`publish-jobs = ["./publish-crates"]`) added to
+`dist-workspace.toml`; closes AC 132 fully. Requires
+`CARGO_REGISTRY_TOKEN` repo secret. Phase 1C scoping starts after.
 
 ---
 

@@ -5,12 +5,13 @@ Multi-model code reviewer for the developer's machine.
 Quorum reviews staged git diffs using consensus across frontier LLMs (via
 [Lippa](https://app.lippa.ai)) plus codebase memory accumulated from prior reviews.
 
-**Status:** Phase 1B Stage 5a — interactive dismiss TUI, pre-commit /
-pre-push hook installer, non-interactive CI auth, and the
-`cargo-dist`-driven release pipeline are all in tree. Live publish
-(`v0.2.0` on crates.io + GitHub Releases) is Stage 5b, pending review.
-See [`HISTORY.md`](./HISTORY.md) for the milestone log and
-[`SERVICES.md`](./SERVICES.md) for service-level behavioural rules.
+**Status:** Phase 1B **shipped at `v0.2.0`** — interactive dismiss TUI,
+pre-commit / pre-push hook installer, non-interactive CI auth, prebuilt
+binaries for 5 platforms, and crates.io publish all live. Sigstore
+attestation (AC 132 second half) is deferred to 0.2.1 per
+[`BACKLOG.md`](./BACKLOG.md). See [`HISTORY.md`](./HISTORY.md) for
+the milestone log and [`SERVICES.md`](./SERVICES.md) for service-level
+behavioural rules.
 
 **Upstream:** consumes Lippa via its public `/api/v1/*` surface. Quorum
 makes no Lippa-side changes. See [`CLAUDE.md`](./CLAUDE.md) for full
@@ -103,12 +104,62 @@ produces its own archive at
 
 ## Install
 
-Phase 1B Stage 5a ships the distribution scaffolding (`cargo-dist`
-config, GitHub Actions release workflow, MSI definition for Windows).
-**Stage 5b ships `v0.2.0` to crates.io + GitHub Releases pending
-review.** Until that lands, build from source per the [Build](#build)
-section above. Watch [Releases](https://github.com/accillion/quorum/releases)
-for the first prebuilt binaries.
+**v0.2.0** is the first public release. Pick the path that fits.
+
+### Cargo
+
+```bash
+cargo install quorum-cli
+quorum --version    # quorum 0.2.0 (unknown)
+```
+
+The `(unknown)` SHA is by design — crates.io tarballs ship without
+a `.git/` directory, so the embedded build-SHA falls back to the
+literal string `unknown`. Local source builds embed the actual SHA.
+
+### Prebuilt binaries (cargo-dist)
+
+Five platform builds attached to each release, each with a per-file
+SHA256 sidecar plus an aggregate `sha256.sum`:
+
+- `quorum-cli-x86_64-unknown-linux-gnu.tar.xz`
+- `quorum-cli-aarch64-unknown-linux-gnu.tar.xz`
+- `quorum-cli-x86_64-apple-darwin.tar.xz`
+- `quorum-cli-aarch64-apple-darwin.tar.xz`
+- `quorum-cli-x86_64-pc-windows-msvc.zip` + `.msi`
+
+Direct download from
+[the v0.2.0 release](https://github.com/accillion/quorum/releases/tag/v0.2.0),
+or one-line install via the cargo-dist installers also attached to
+the release:
+
+```bash
+# Linux / macOS
+curl --proto '=https' --tlsv1.2 -LsSf \
+    https://github.com/accillion/quorum/releases/download/v0.2.0/quorum-cli-installer.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/accillion/quorum/releases/download/v0.2.0/quorum-cli-installer.ps1 | iex"
+```
+
+### Homebrew
+
+A formula (`quorum-cli.rb`) is built by cargo-dist and attached to
+each release. A Homebrew tap is **not yet published**; until it is,
+install via `cargo install` or the prebuilt binaries above.
+Tracked for the 0.2.1 release engineering pass.
+
+### Verifying downloads
+
+```bash
+sha256sum -c sha256.sum             # Linux / macOS
+Get-FileHash -Algorithm SHA256 ...  # Windows
+```
+
+Sigstore / cosign attestation is **not present** on v0.2.0 (deferred
+to 0.2.1; see [BACKLOG.md](./BACKLOG.md)). SHA256 verification
+against the per-file sidecars or the aggregate `sha256.sum` is the
+supported integrity check for this release.
 
 Exit codes:
 - `0` — review completed; no high-severity findings (or auth/link command succeeded).
