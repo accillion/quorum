@@ -54,6 +54,12 @@ enum AuthCmd {
         url: Option<String>,
         #[arg(long)]
         no_keyring: bool,
+        /// Consume `QUORUM_LIPPA_EMAIL` + `QUORUM_LIPPA_PASSWORD` from
+        /// the environment instead of prompting on the TTY. Suitable
+        /// for CI bootstrap; cookie persists to keyring (or to the
+        /// `--no-keyring` file fallback) per Phase 1A policy.
+        #[arg(long)]
+        non_interactive: bool,
     },
     Logout {
         #[arg(long)]
@@ -66,6 +72,15 @@ enum AuthCmd {
         url: Option<String>,
         #[arg(long)]
         no_keyring: bool,
+        /// Print the raw session cookie value to stdout. Asks for
+        /// confirmation on stderr first; pass `-y` to skip the
+        /// prompt. Non-TTY without `-y` exits 2.
+        #[arg(long)]
+        show_session: bool,
+        /// Skip the `--show-session` confirm prompt. No-op without
+        /// `--show-session`.
+        #[arg(short = 'y', long = "yes")]
+        yes: bool,
     },
 }
 
@@ -131,11 +146,24 @@ async fn main() -> ExitCode {
 async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
     match cli.cmd {
         Cmd::Auth(args) => match args.cmd {
-            AuthCmd::Login { url, no_keyring } => {
+            AuthCmd::Login {
+                url,
+                no_keyring,
+                non_interactive,
+            } => {
                 let url = url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
                 let storage = storage_for(no_keyring)?;
-                let tty = is_tty();
-                commands::auth::login(&url, &storage, tty).await?;
+                if non_interactive {
+                    // Skips the TTY check entirely (AC 90). Env-var
+                    // capture happens inside login_non_interactive,
+                    // both values Secret-wrapped at read; the
+                    // password is dropped immediately after
+                    // login_with_cookie returns (AC 128).
+                    commands::auth::login_non_interactive(&url, &storage).await?;
+                } else {
+                    let tty = is_tty();
+                    commands::auth::login(&url, &storage, tty).await?;
+                }
                 Ok(Exit::Ok)
             }
             AuthCmd::Logout { url, no_keyring } => {
@@ -144,10 +172,19 @@ async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
                 commands::auth::logout(&url, &storage).await?;
                 Ok(Exit::Ok)
             }
-            AuthCmd::Status { url, no_keyring } => {
+            AuthCmd::Status {
+                url,
+                no_keyring,
+                show_session,
+                yes,
+            } => {
                 let url = url.unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
                 let storage = storage_for(no_keyring)?;
-                commands::auth::status(&url, &storage).await?;
+                if show_session {
+                    commands::auth::status_show_session(&url, &storage, is_tty(), yes)?;
+                } else {
+                    commands::auth::status(&url, &storage).await?;
+                }
                 Ok(Exit::Ok)
             }
         },

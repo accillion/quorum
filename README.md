@@ -103,6 +103,98 @@ stage. Phase 2 introduces customizable redaction patterns.
   schema (`schema_version: 1` first, alphabetical thereafter).
 - OS keychain entry: service `quorum`, account `lippa-session@<host>`.
 
+## Non-interactive auth (CI bootstrap)
+
+Phase 1B Stage 4 adds three CI-friendly auth shapes, prioritized by
+preference:
+
+1. **`QUORUM_LIPPA_SESSION` (preferred).** Already-captured cookie
+   passed directly via environment. `quorum review` consumes it
+   without touching the keyring and without an `auth login` step.
+
+   ```bash
+   # one-time on a trusted workstation (interactive):
+   quorum auth status --show-session -y
+   # ... copy the printed value into your CI secret manager,
+   # then in CI:
+   export QUORUM_LIPPA_SESSION=<value>
+   quorum review --hook-mode=pre-commit   # or just `quorum review`
+   ```
+
+   When both `QUORUM_LIPPA_SESSION` and a keyring entry are present,
+   the env var wins. A one-line stderr note is emitted in interactive
+   `quorum review` invocations only — suppressed under `--hook-mode=*`
+   so CI logs stay clean.
+
+2. **`QUORUM_LIPPA_EMAIL` + `QUORUM_LIPPA_PASSWORD` (fallback).** For
+   environments without session-injection tooling. Consumed by
+   `quorum auth login --non-interactive`; the cookie persists per
+   the usual keyring / `--no-keyring` policy.
+
+   ```bash
+   export QUORUM_LIPPA_EMAIL=you@example.com
+   export QUORUM_LIPPA_PASSWORD=...
+   quorum auth login --non-interactive
+   ```
+
+3. **Interactive TTY login (default, Phase 1A behavior).** Unchanged.
+
+## Security threat model
+
+The non-interactive paths above trade one operational property
+(unattended auth) for several attack surfaces you should be aware of.
+Phase 1B `0.2.0` ships honest, narrow defenses; deeper hardening is
+deferred to Phase 2+ (the redaction layer is the natural place).
+
+**Process inspection.** On Linux any process running as the same uid
+can read `/proc/<pid>/environ`. On macOS the equivalent requires
+`task_for_pid` (gated by entitlements / SIP). On Windows
+`OpenProcessToken` is the analog. `QUORUM_LIPPA_SESSION` and
+`QUORUM_LIPPA_PASSWORD` are environment variables; they are visible
+in the process's environment for the lifetime of the process.
+**Mitigation:** Quorum runs as a short-lived CLI; the env values live
+only as long as `quorum review` / `quorum auth login --non-interactive`
+takes to complete. Long-running daemons that inherit these env vars
+broaden the window — don't export them globally if you can avoid it.
+
+**Shell history leakage.** `export QUORUM_LIPPA_SESSION=eyJ...`
+written into `.bash_history` / `.zsh_history` is a common foot-gun.
+**Recommendation:** in shells, read the secret from stdin with
+`-s` so it never lands in history:
+
+```bash
+read -rs QUORUM_LIPPA_SESSION
+export QUORUM_LIPPA_SESSION
+```
+
+Or store the secret in a file with 0600 mode and `set -a; source
+~/.quorum.env; set +a` it just before the `quorum` invocation. CI
+secret managers (GitHub Actions secrets, GitLab CI variables, etc.)
+inject the env var directly without a shell history hop.
+
+**Logging.** Quorum redacts all secret material at every `tracing`
+level. The cookie value is wrapped in the `Secret` newtype at the
+parse boundary; its `Debug` and `Display` impls emit
+`Secret(<redacted>)` / `<redacted>`. The password is wrapped at the
+`std::env::var` call site in non-interactive login, only `expose()`'d
+once when passed to `login_with_cookie`, and explicitly dropped
+immediately afterward — no in-memory mirror beyond the login call
+site. Verified by the `secret_redaction.rs` suite under
+`RUST_LOG=trace`.
+
+**Persistence semantics.** Under `QUORUM_LIPPA_SESSION` mode the env
+var IS the persistence — Quorum does NOT write the env-provided
+cookie to the keyring. The cookie is read once per process. This
+keeps your CI's "rotate the secret" workflow as a single env-var
+update, not an env update plus a `quorum auth login` step.
+
+`quorum auth logout` performs a best-effort `POST /api/v1/auth/logout`
+against Lippa with a 5-second timeout, then removes the local entry.
+If the server-side call fails (network drop, transient 5xx), the
+cookie remains valid on the Lippa side until its 14-day natural
+expiry — the local entry is gone either way. Rotate the cookie if
+the host was compromised.
+
 ## Uninstalling
 
 ```bash

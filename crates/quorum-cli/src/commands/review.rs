@@ -80,6 +80,18 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
 
     // ===== Storage / cookie =====
     //
+    // Resolution order per spec §4.4 / §4.6.1 (P11):
+    //   1. QUORUM_LIPPA_SESSION env var — direct cookie passthrough,
+    //      no keyring read. Cookie wrapped in Secret at env read.
+    //   2. Keyring entry for host.
+    //   3. --no-keyring file fallback (still under `storage`).
+    //
+    // When BOTH the env var AND a keyring entry exist, the env var
+    // wins with a stderr info note — emitted ONLY in interactive
+    // `quorum review` invocations. Suppressed under `--hook-mode=*`
+    // (and any future `--non-interactive`) so CI output stays clean.
+    // Spec P31.
+    //
     // Under hook modes (pre-commit / pre-push) the absence of auth is
     // NOT a hard error — we exit 0 with a single stderr "not
     // authenticated" line so the shell template's fail-open path
@@ -88,16 +100,34 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         .no_keyring_storage
         .clone()
         .unwrap_or(Storage::OsKeyring);
-    let cookie = match keyring::load_cookie(&storage, &cfg.base_url) {
-        Ok(Some(c)) => c,
-        Ok(None) if opts.hook_mode != HookMode::None => {
-            eprintln!(
-                "quorum: not authenticated — hook reviews are being skipped; run quorum auth login"
-            );
-            return Ok(Exit::Ok);
+    let env_session = std::env::var("QUORUM_LIPPA_SESSION")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(quorum_lippa_client::Secret::new);
+    let cookie = if let Some(env_secret) = env_session {
+        // Probe keyring strictly to decide whether to emit the
+        // precedence note; the env value wins regardless.
+        if opts.hook_mode == HookMode::None {
+            if let Ok(Some(_keyring_cookie)) = keyring::load_cookie(&storage, &cfg.base_url) {
+                eprintln!(
+                    "quorum: using QUORUM_LIPPA_SESSION env var (a keyring entry for {} also exists; env var takes precedence)",
+                    cfg.base_url
+                );
+            }
         }
-        Ok(None) => return Err(CliError::NotAuthenticated),
-        Err(e) => return Err(CliError::Keyring(e.to_string())),
+        env_secret
+    } else {
+        match keyring::load_cookie(&storage, &cfg.base_url) {
+            Ok(Some(c)) => c,
+            Ok(None) if opts.hook_mode != HookMode::None => {
+                eprintln!(
+                    "quorum: not authenticated — hook reviews are being skipped; run quorum auth login"
+                );
+                return Ok(Exit::Ok);
+            }
+            Ok(None) => return Err(CliError::NotAuthenticated),
+            Err(e) => return Err(CliError::Keyring(e.to_string())),
+        }
     };
 
     // ===== Git, diff, repo metadata =====
