@@ -8,8 +8,15 @@ authors.workspace = true
 rust-version.workspace = true
 description = "Quorum CLI: the quorum binary."
 readme = "README.md"
+homepage = "https://github.com/accillion/quorum"
 keywords = ["code-review", "consensus", "git", "cli"]
 categories = ["command-line-utilities", "development-tools"]
+
+[package.metadata.wix]
+upgrade-guid = "D13F6C4C-80EE-4A36-9CA5-9A5A24430604"
+path-guid = "7269039C-65BA-42BF-860E-819421A98817"
+license = false
+eula = false
 
 [[bin]]
 name = "quorum"
