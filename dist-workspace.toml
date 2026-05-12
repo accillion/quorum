@@ -1,27 +1,23 @@
 [workspace]
 members = ["cargo:."]
 
-# Config for 'dist' — Quorum Phase 1B Stage 5a per v1.0 §4.8.3.
-#
-# Live publish + v0.2.0 tag is Stage 5b (Rolf-gated). This file is
-# present in the tree so the workflow renders and cross-compile
-# rehearsals can run before the public release.
+# Config for 'dist'
 [dist]
-# Pinned per CC-Recon-1B-6.
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
 cargo-dist-version = "0.31.0"
-# CI backends to support.
+# CI backends to support
 ci = "github"
-# Installers per spec §4.8.3.
+# The installers to generate for each app
 installers = ["shell", "powershell", "homebrew", "msi"]
-# Target platforms to build apps for (Rust target-triple syntax).
-# Matches v1.0 §4.8.3 verbatim; aarch64-linux exists to satisfy the
-# CC-Recon-1B-10 cross-toolchain check (see release.yml).
-targets = [
-    "x86_64-unknown-linux-gnu",
-    "aarch64-unknown-linux-gnu",
-    "x86_64-apple-darwin",
-    "aarch64-apple-darwin",
-    "x86_64-pc-windows-msvc",
-]
-# Extra files to include in the release artifact tarballs.
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# Extra static files to include in each App (path relative to this Cargo.toml's dir)
 include = ["LICENSE", "README.md"]
+# Whether to enable GitHub Attestations
+github-attestations = true
+# Publish jobs to run in CI
+publish-jobs = ["./publish-crates"]
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Whether to install an updater program
+install-updater = false

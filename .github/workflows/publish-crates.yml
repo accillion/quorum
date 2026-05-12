@@ -1,0 +1,46 @@
+# Custom publish job referenced from release.yml via cargo-dist's
+# publish-jobs = ["./publish-crates"]. Runs after host has cut the
+# GitHub Release and publishes the workspace crates to crates.io in
+# dependency order:
+#
+#   1. quorum-core           (no internal deps)
+#   2. quorum-lippa-client   (no internal deps)
+#   3. quorum-cli            (depends on both)
+#
+# `cargo publish --wait-for-publish` (stable since cargo 1.66) blocks
+# until the new version is queryable on the registry index, so the
+# next publish in the chain resolves the just-published path-dep
+# version. CARGO_REGISTRY_TOKEN is inherited via `secrets: inherit`
+# from release.yml.
+
+name: publish-crates
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  publish-crates:
+    runs-on: ubuntu-22.04
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustc --version
+          cargo --version
+      - name: Publish quorum-core
+        run: cargo publish -p quorum-core --wait-for-publish
+      - name: Publish quorum-lippa-client
+        run: cargo publish -p quorum-lippa-client --wait-for-publish
+      - name: Publish quorum-cli
+        run: cargo publish -p quorum-cli --wait-for-publish
