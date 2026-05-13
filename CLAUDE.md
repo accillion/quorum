@@ -162,24 +162,32 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **Phase 1C Stage 1 complete; awaiting Rolf signoff before Stage 2 dispatch.**
+**Active:** **Phase 1C Stage 2 complete; awaiting Rolf signoff before Stage 3 dispatch.**
 
-Stage 1 landed the load-bearing data-model + state-machine spine:
-SQLite v1→v2 migration, `state_transitions` / `conventions` /
-`schema_meta` tables, binary-side forward-compat check, T1
-(`candidate → local_only`) auto-transition inside `record_seen()`,
-`TransitionEvent` returned-value channel (no callback, C3 boundary
-intact), `[memory]` config section with range validation, CLI stderr
-emission gated under `--hook-mode=*`. ACs 134–136, 144–146, 151,
-164–165, 174 landed. See `specs/Quorum-Phase1C-Impl-Plan.md` §"Stage
-1" for plan; commits `d0eabae → fb1668d` for the close window.
+Stage 2 landed the bundle's `## Local conventions (auto-derived)`
+subsection inside the shared 20 KB `BUDGET_MEMORY`, plus the §6.2
+promote-but-uncommitted bridge (a `promoted_convention` row whose
+`.quorum/conventions.md` is dirty/uncommitted/missing renders in the
+memory section instead of the conventions section, per-row at render
+time, no SQLite write). `ConventionsState::is_trusted()` is the
+once-per-bundle helper; the existing Phase 1A `load_conventions()`
+call is reused so Stage 2 adds zero libgit2 cost. ACs 152, 153, 154,
+155, 156, 170 landed; partial 173 (render-side toggle) landed; full
+173 closes at Stage 4. See `specs/Quorum-Phase1C-Impl-Plan.md`
+§"Stage 2" for plan.
 
-Stage 2 (bundle assembly + §6.2 bridge) is the next dispatch.
-`MemoryStore::load_local_only_conventions` already exists from
-Stage 1 and is ready for Stage 2 to consume.
+Stage 1 (data-model + state-machine spine) landed at commits
+`d0eabae → fb1668d`: SQLite v1→v2 migration, state_transitions /
+conventions / schema_meta tables, forward-compat check, T1 auto-
+transition inside `record_seen()`, TransitionEvent returned-value
+channel, `[memory]` config section, CLI stderr emission. ACs 134–136,
+144–146, 151, 164–165, 174 landed there.
 
-**Repo state at Stage 1 close:**
-- 213 tests pass (197 Phase 1B baseline + 16 Phase 1C Stage 1).
+Stage 3 (CLI read paths + conventions.md parser + orphan detection)
+is the next dispatch.
+
+**Repo state at Stage 2 close:**
+- 228 tests pass (213 Stage 1 baseline + 15 Phase 1C Stage 2).
 - `cargo clippy --workspace --all-targets -- -D warnings` clean.
 - `cargo fmt --check --all` clean.
 - C3 boundary intact: `grep -r quorum_cli crates/quorum-core/src/` empty.
