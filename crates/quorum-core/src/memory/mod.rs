@@ -84,8 +84,7 @@ impl DismissalReason {
 /// Phase 1B writes only [`PromotionState::Candidate`]. Phase 1C adds the
 /// state machine that transitions through [`PromotionState::LocalOnly`] →
 /// [`PromotionState::PromotedConvention`] based on `recurrence_count`
-/// thresholds + user approval. The variants exist now so the schema is
-/// forward-compatible.
+/// thresholds + user approval.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PromotionState {
     Candidate,
@@ -101,6 +100,54 @@ impl PromotionState {
             PromotionState::PromotedConvention => "promoted_convention",
         }
     }
+}
+
+/// Phase 1C: the `trigger` enum on `state_transitions.trigger`. T4 (prune)
+/// and T5 (undismiss) are audit-trail-silent and do not appear here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum TransitionTrigger {
+    /// T1 — `candidate` → `local_only`, fired inside `record_seen()` when
+    /// `recurrence_count` reaches `candidate_threshold`.
+    AutoRecurrence,
+    /// T2 — `local_only` → `promoted_convention`, fired by
+    /// `quorum convention promote` / TUI `p`. (Stage 4 wires up the write
+    /// site; the variant ships in Stage 1 so the audit-row CHECK enum is
+    /// covered.)
+    ExplicitPromote,
+    /// T3 — `promoted_convention` → `local_only`, fired by
+    /// `quorum convention demote`. (Stage 4 — same as above.)
+    ExplicitDemote,
+}
+
+impl TransitionTrigger {
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            TransitionTrigger::AutoRecurrence => "auto_recurrence",
+            TransitionTrigger::ExplicitPromote => "explicit_promote",
+            TransitionTrigger::ExplicitDemote => "explicit_demote",
+        }
+    }
+}
+
+/// Phase 1C — an audited state transition. Returned by
+/// [`MemoryStore::record_seen`] alongside its existing return shape so the
+/// CLI binary can emit a stderr informational note (§5.3 returned-event
+/// pattern). Owned + `Clone` so the CLI can format-and-emit without
+/// lifetime entanglement with the SQLite transaction that produced it.
+///
+/// One event per fired transition; `Vec` is empty in the common case.
+/// `short_hash` is the 12-char hex prefix of the identity hash, suitable
+/// for direct interpolation into the user-visible message text from
+/// §3.2 T1.
+#[derive(Debug, Clone)]
+pub struct TransitionEvent {
+    pub finding_identity_hash: FindingIdentityHash,
+    pub short_hash: String,
+    pub from_state: PromotionState,
+    pub to_state: PromotionState,
+    pub trigger: TransitionTrigger,
+    pub recurrence_at_transition: u32,
+    pub ts_ms: i64,
 }
 
 /// One row of the dismissals table, decoded back into a Rust value.
@@ -199,12 +246,19 @@ pub trait MemoryStore {
     /// pair — back-to-back calls with the same session id do not
     /// double-bump within a single process. Cross-process race is a
     /// documented residual risk (§4.2.2 P30).
+    ///
+    /// Phase 1C: returns a `Vec<TransitionEvent>` describing any state
+    /// transitions that fired inside this call (T1
+    /// `candidate → local_only` when `recurrence_count` crosses
+    /// `candidate_threshold`). The CLI consumes this value to emit the
+    /// §5.3 stderr informational note. Empty vec is the common case.
     fn record_seen(
         &self,
         hashes: &[FindingIdentityHash],
         review_session_id: &str,
         seen_at: time::OffsetDateTime,
-    ) -> Result<(), MemoryError>;
+        candidate_threshold: u32,
+    ) -> Result<Vec<TransitionEvent>, MemoryError>;
 
     /// Permanent removal by id. Returns `Ok(false)` if the id is not
     /// present; the caller (TUI undo, `quorum dismissals remove`) is
@@ -214,6 +268,16 @@ pub trait MemoryStore {
 
     fn list_all(&self) -> Result<Vec<Dismissal>, MemoryError>;
     fn get(&self, id: DismissalId) -> Result<Option<Dismissal>, MemoryError>;
+
+    /// Phase 1C — read surface for the bundle-assembly stage (Stage 2).
+    /// Returns the rows in state `local_only` plus any
+    /// `promoted_convention` rows that will be rendered into the memory
+    /// section via the §6.2 bridge (Stage 2 makes the bridge decision
+    /// per-row at render time; this surface returns the raw candidates).
+    ///
+    /// Sorted by `recurrence_count DESC, last_seen_at DESC` (spec §6.1)
+    /// so the bundle assembler doesn't have to re-sort.
+    fn load_local_only_conventions(&self) -> Result<Vec<Dismissal>, MemoryError>;
 }
 
 /// Trait-layer validation of a free-text note. Returns `()` if the note

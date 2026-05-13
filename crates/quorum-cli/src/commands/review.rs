@@ -326,7 +326,14 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     let review_session_id = review.session_id.clone();
     let (mut suppressed_summaries, mut dismissals_applied) = if let Some(store) = &store {
         match store.load_active_dismissals() {
-            Ok(active) => apply_dismissals_filter(&mut review, &active, store, &review_session_id),
+            Ok(active) => apply_dismissals_filter(
+                &mut review,
+                &active,
+                store,
+                &review_session_id,
+                cfg.memory.candidate_threshold,
+                opts.hook_mode,
+            ),
             Err(e) => {
                 eprintln!("warning: load_active_dismissals failed: {e}");
                 (Vec::new(), 0u32)
@@ -475,6 +482,8 @@ fn apply_dismissals_filter(
     active: &std::collections::HashMap<FindingIdentityHash, quorum_core::Dismissal>,
     store: &LocalSqliteMemoryStore,
     review_session_id: &str,
+    candidate_threshold: u32,
+    hook_mode: HookMode,
 ) -> (Vec<SuppressionSummary>, u32) {
     let mut summaries: Vec<SuppressionSummary> = Vec::new();
     let mut matched_hashes: Vec<FindingIdentityHash> = Vec::new();
@@ -502,8 +511,25 @@ fn apply_dismissals_filter(
 
     if !matched_hashes.is_empty() {
         let now = time::OffsetDateTime::now_utc();
-        if let Err(e) = store.record_seen(&matched_hashes, review_session_id, now) {
-            eprintln!("warning: record_seen failed: {e}");
+        match store.record_seen(&matched_hashes, review_session_id, now, candidate_threshold) {
+            Ok(transitions) => {
+                // Phase 1C §3.2 T1 / §5.3 / Q14 lean: emit one stderr
+                // line per fired auto-promote transition. Suppress under
+                // any hook mode (parity with the Phase 1B
+                // QUORUM_LIPPA_SESSION precedence note); the transition
+                // itself still fires — only the user-visible note is
+                // gated. Stage 2 picks up the local_only entry on the
+                // next bundle assembly.
+                if hook_mode == HookMode::None {
+                    for ev in &transitions {
+                        eprintln!(
+                            "quorum: dismissal {} auto-promoted to local convention (recurrence={})",
+                            ev.short_hash, ev.recurrence_at_transition,
+                        );
+                    }
+                }
+            }
+            Err(e) => eprintln!("warning: record_seen failed: {e}"),
         }
     }
 

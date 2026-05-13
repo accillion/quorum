@@ -170,15 +170,19 @@ fn record_seen_idempotent_per_session_and_bumps_per_new_session() {
     let h = finding_identity_hash(&f);
     let now = time::OffsetDateTime::now_utc();
 
-    store.record_seen(&[h], "session-A", now).unwrap();
+    // Use a very high threshold so T1 doesn't fire in this Phase 1B
+    // regression test — we're checking the per-session idempotency
+    // contract, not the new auto-promote behavior.
+    let high = 1_000_000u32;
+    store.record_seen(&[h], "session-A", now, high).unwrap();
     store
-        .record_seen(&[h], "session-A", now + time::Duration::seconds(1))
+        .record_seen(&[h], "session-A", now + time::Duration::seconds(1), high)
         .unwrap();
     let row = store.load_active_dismissals().unwrap()[&h].clone();
     assert_eq!(row.recurrence_count, 2, "session-A bumps once total");
 
     store
-        .record_seen(&[h], "session-B", now + time::Duration::seconds(2))
+        .record_seen(&[h], "session-B", now + time::Duration::seconds(2), high)
         .unwrap();
     let row = store.load_active_dismissals().unwrap()[&h].clone();
     assert_eq!(row.recurrence_count, 3, "session-B bumps once more");

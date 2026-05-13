@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use time::format_description::well_known::Rfc3339;
 
 use super::gitignore;
@@ -15,7 +15,8 @@ use super::identity::FindingIdentityHash;
 use super::schema;
 use super::{
     truncate_at_codepoint_boundary, validate_note, Dismissal, DismissalId, DismissalReason,
-    MemoryError, MemoryStore, PromotionState, BODY_SNAPSHOT_MAX_BYTES,
+    MemoryError, MemoryStore, PromotionState, TransitionEvent, TransitionTrigger,
+    BODY_SNAPSHOT_MAX_BYTES,
 };
 use crate::review::Finding;
 
@@ -337,43 +338,115 @@ impl MemoryStore for LocalSqliteMemoryStore {
         hashes: &[FindingIdentityHash],
         review_session_id: &str,
         seen_at: time::OffsetDateTime,
-    ) -> Result<(), MemoryError> {
+        candidate_threshold: u32,
+    ) -> Result<Vec<TransitionEvent>, MemoryError> {
         if hashes.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let seen_at_s = rfc3339(seen_at)?;
+        // Spec §3.2 T1 audit row stamps `ts` in unix epoch millis.
+        let seen_at_ms: i64 = (seen_at.unix_timestamp_nanos() / 1_000_000) as i64;
         let mut conn = self.conn.lock().unwrap();
         let tx = conn
             .transaction()
             .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-        {
-            // For idempotency per (hash, session_id), the UPDATE only fires
-            // when last_seen_session_id IS NULL OR != session_id. Subsequent
-            // calls with the same session_id are silent no-ops.
-            let hex_hashes: Vec<String> = hashes.iter().map(|h| h.to_hex()).collect();
-            let placeholders: Vec<String> = (0..hex_hashes.len())
-                .map(|i| format!("?{}", i + 3))
-                .collect();
-            let sql = format!(
-                "UPDATE dismissals
-                 SET recurrence_count = recurrence_count + 1,
-                     last_seen_at = ?1,
-                     last_seen_session_id = ?2
-                 WHERE finding_identity_hash IN ({})
-                   AND (last_seen_session_id IS NULL OR last_seen_session_id != ?2)",
-                placeholders.join(",")
-            );
-            let mut param_vec: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(hex_hashes.len() + 2);
-            param_vec.push(&seen_at_s);
-            param_vec.push(&review_session_id);
-            for h in &hex_hashes {
-                param_vec.push(h);
-            }
-            tx.execute(&sql, params_from_iter(param_vec.iter().copied()))
+
+        let mut transitions: Vec<TransitionEvent> = Vec::new();
+
+        // Step 1: bump recurrence_count + last_seen_at for any rows we
+        // haven't already seen under this session. The per-session
+        // idempotency guard (Phase 1B behavior, unchanged) is the
+        // `last_seen_session_id != ?2` clause.
+        //
+        // We do this row-by-row instead of with an `IN (...)` bulk UPDATE
+        // so we can read each row's post-bump `recurrence_count` and
+        // `promotion_state` to decide whether T1 (auto-promote) fires.
+        // This is the spec §3.2 T1 pattern: UPDATE → check
+        // `rows_affected` → conditionally fire the second UPDATE for the
+        // state transition + audit insert.
+        for h in hashes {
+            let hex = h.to_hex();
+            let bumped = tx
+                .execute(
+                    "UPDATE dismissals
+                     SET recurrence_count = recurrence_count + 1,
+                         last_seen_at = ?1,
+                         last_seen_session_id = ?2
+                     WHERE finding_identity_hash = ?3
+                       AND (last_seen_session_id IS NULL OR last_seen_session_id != ?2)",
+                    params![seen_at_s, review_session_id, hex],
+                )
                 .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+            if bumped == 0 {
+                // Either: (a) hash not present in dismissals (caller
+                // passed an unknown hash — Phase 1B contract treats this
+                // as a no-op), or (b) same-session idempotent suppression
+                // already counted this hash. Either way, no transition.
+                continue;
+            }
+
+            // Read the post-bump count + current promotion_state. If
+            // the row is no longer `candidate` (already past the
+            // threshold), we skip T1 — the WHERE clause on the next
+            // UPDATE will be a no-op anyway, but reading first lets us
+            // avoid the redundant statement and emit a clean event.
+            let (rc, state): (i64, String) = tx
+                .query_row(
+                    "SELECT recurrence_count, promotion_state FROM dismissals
+                     WHERE finding_identity_hash = ?1",
+                    [&hex],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+            let threshold_i64 = candidate_threshold as i64;
+            if state == "candidate" && rc >= threshold_i64 {
+                // T1 trigger: try to flip state to local_only.
+                let rows_affected = tx
+                    .execute(
+                        "UPDATE dismissals
+                         SET promotion_state = 'local_only'
+                         WHERE finding_identity_hash = ?1
+                           AND promotion_state = 'candidate'",
+                        [&hex],
+                    )
+                    .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+                if rows_affected == 1 {
+                    // §3.2 T1 audit insert, gated on rows_affected > 0.
+                    // The UNIQUE (hash, from, to, ts) is a defense-in-depth
+                    // guard for same-millisecond collisions; the
+                    // rows_affected gate above is the primary protection.
+                    tx.execute(
+                        "INSERT INTO state_transitions
+                            (finding_identity_hash, from_state, to_state, trigger, ts,
+                             by_review_session_id, recurrence_at_transition)
+                         VALUES (?1, 'candidate', 'local_only', 'auto_recurrence',
+                                 ?2, ?3, ?4)",
+                        params![hex, seen_at_ms, review_session_id, rc],
+                    )
+                    .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+                    let mut short_hash = hex.clone();
+                    short_hash.truncate(12);
+                    transitions.push(TransitionEvent {
+                        finding_identity_hash: *h,
+                        short_hash,
+                        from_state: PromotionState::Candidate,
+                        to_state: PromotionState::LocalOnly,
+                        trigger: TransitionTrigger::AutoRecurrence,
+                        recurrence_at_transition: rc.max(0) as u32,
+                        ts_ms: seen_at_ms,
+                    });
+                }
+                // rows_affected == 0: another writer (different process /
+                // thread) beat us between the SELECT and the UPDATE.
+                // §3.2 T1 — skip audit insert, emit no event.
+            }
         }
+
         tx.commit().map_err(|e| MemoryError::Backend(Box::new(e)))?;
-        Ok(())
+        Ok(transitions)
     }
 
     fn delete(&self, id: DismissalId) -> Result<bool, MemoryError> {
@@ -406,6 +479,33 @@ impl MemoryStore for LocalSqliteMemoryStore {
         conn.query_row(&sql, [id.0], row_to_dismissal)
             .optional()
             .map_err(|e| MemoryError::Backend(Box::new(e)))
+    }
+
+    fn load_local_only_conventions(&self) -> Result<Vec<Dismissal>, MemoryError> {
+        // §6.1: sort by recurrence_count DESC, last_seen_at DESC so the
+        // bundle assembler doesn't have to re-sort. Also includes
+        // `promoted_convention` rows — Stage 2's bridge (§6.2) decides at
+        // render time whether each one rides in the memory section
+        // (conventions.md dirty/missing) or the conventions section
+        // (committed-and-clean). Returning both states here keeps the
+        // bridge logic in the bundle layer rather than the storage layer.
+        let conn = self.conn.lock().unwrap();
+        let sql = format!(
+            "SELECT {SELECT_COLUMNS} FROM dismissals
+             WHERE promotion_state IN ('local_only', 'promoted_convention')
+             ORDER BY recurrence_count DESC, last_seen_at DESC"
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        let rows = stmt
+            .query_map([], row_to_dismissal)
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| MemoryError::Backend(Box::new(e)))?);
+        }
+        Ok(out)
     }
 }
 
@@ -549,9 +649,12 @@ mod tests {
             .unwrap();
         let key = super::super::identity::finding_identity_hash(&f);
         let now = time::OffsetDateTime::now_utc();
-        store.record_seen(&[key], "session-A", now).unwrap();
+        // Threshold raised out of reach — Phase 1B regression test that
+        // covers per-session idempotency, not Phase 1C auto-promotion.
+        let high = 1_000_000u32;
+        store.record_seen(&[key], "session-A", now, high).unwrap();
         store
-            .record_seen(&[key], "session-A", now + time::Duration::seconds(1))
+            .record_seen(&[key], "session-A", now + time::Duration::seconds(1), high)
             .unwrap();
         // Same session should not double-bump.
         let active = store.load_active_dismissals().unwrap();
@@ -559,7 +662,7 @@ mod tests {
         assert_eq!(row.recurrence_count, 2, "exactly one bump for session-A");
         // Different session bumps once more.
         store
-            .record_seen(&[key], "session-B", now + time::Duration::seconds(2))
+            .record_seen(&[key], "session-B", now + time::Duration::seconds(2), high)
             .unwrap();
         let active = store.load_active_dismissals().unwrap();
         let row = active.get(&key).unwrap();
