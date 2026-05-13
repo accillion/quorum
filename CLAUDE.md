@@ -162,19 +162,27 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **Phase 1C Stage 2 complete; awaiting Rolf signoff before Stage 3 dispatch.**
+**Active:** **Phase 1C Stage 3 complete; awaiting Rolf signoff before Stage 4 dispatch.**
+
+Stage 3 landed the `quorum convention` read surface plus the
+`.quorum/conventions.md` parser used by orphan detection and (in
+Stage 4) the writer. New CLI surface: `list [--state | --orphans |
+--json]`, `show <hash>`, `history <hash>`. Write subcommands
+(`promote`/`demote`/`prune`) remain absent from clap — Stage 4 scope.
+The parser exposes `above_fence` / `below_fence` byte slices so the
+Stage 4 writer can rebuild the file byte-for-byte (AC 149). Short-hash
+resolution (≥ 8 hex chars; full-64 always Exact; ambiguous lists up to
+10 matches) lives in `commands/convention.rs::resolve_short_hash` and
+will be reused by promote/demote. ACs 133 (regression), 162, 163, 166,
+168 (partial — list-side stderr warning), 169 landed.
 
 Stage 2 landed the bundle's `## Local conventions (auto-derived)`
 subsection inside the shared 20 KB `BUDGET_MEMORY`, plus the §6.2
 promote-but-uncommitted bridge (a `promoted_convention` row whose
 `.quorum/conventions.md` is dirty/uncommitted/missing renders in the
 memory section instead of the conventions section, per-row at render
-time, no SQLite write). `ConventionsState::is_trusted()` is the
-once-per-bundle helper; the existing Phase 1A `load_conventions()`
-call is reused so Stage 2 adds zero libgit2 cost. ACs 152, 153, 154,
-155, 156, 170 landed; partial 173 (render-side toggle) landed; full
-173 closes at Stage 4. See `specs/Quorum-Phase1C-Impl-Plan.md`
-§"Stage 2" for plan.
+time, no SQLite write). ACs 152, 153, 154, 155, 156, 170 landed;
+partial 173 (render-side toggle) landed; full 173 closes at Stage 4.
 
 Stage 1 (data-model + state-machine spine) landed at commits
 `d0eabae → fb1668d`: SQLite v1→v2 migration, state_transitions /
@@ -183,14 +191,18 @@ transition inside `record_seen()`, TransitionEvent returned-value
 channel, `[memory]` config section, CLI stderr emission. ACs 134–136,
 144–146, 151, 164–165, 174 landed there.
 
-Stage 3 (CLI read paths + conventions.md parser + orphan detection)
-is the next dispatch.
+Stage 4 (CLI write paths + conventions.md writer + T2/T3/T4/T5) is
+the next dispatch.
 
-**Repo state at Stage 2 close:**
-- 228 tests pass (213 Stage 1 baseline + 15 Phase 1C Stage 2).
+**Repo state at Stage 3 close:**
+- 272 tests pass (228 Stage 2 baseline + 44 Phase 1C Stage 3:
+  13 parser + 9 storage read + 23 CLI integration + 2 Lippa-seam).
 - `cargo clippy --workspace --all-targets -- -D warnings` clean.
 - `cargo fmt --check --all` clean.
 - C3 boundary intact: `grep -r quorum_cli crates/quorum-core/src/` empty.
+- No write methods on `MemoryStore` past Stage 1's T1 UPDATE.
+- No `promote`/`demote`/`prune` clap registrations.
+- No changes under `crates/quorum-cli/src/tui/` or `crates/quorum-lippa-client/src/`.
 - `../lippa` unchanged across the session.
 
 **0.2.1 carryover (last shipped release):**
