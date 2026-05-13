@@ -15,7 +15,8 @@ pub mod review;
 
 pub use memory::{
     finding_identity_hash, Dismissal, DismissalId, DismissalReason, FindingIdentityHash,
-    LocalSqliteMemoryStore, MemoryError, MemoryStore, PromotionState,
+    LocalSqliteMemoryStore, MemoryError, MemoryStore, PromotionState, ShortHashResolution,
+    StateTransitionRow, TransitionTrigger,
 };
 pub use review::{
     review_from_json, Finding, FindingSource, ParseError, RepoMetadata, Review, Severity,

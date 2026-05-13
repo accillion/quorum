@@ -15,8 +15,8 @@ use super::identity::FindingIdentityHash;
 use super::schema;
 use super::{
     truncate_at_codepoint_boundary, validate_note, Dismissal, DismissalId, DismissalReason,
-    MemoryError, MemoryStore, PromotionState, TransitionEvent, TransitionTrigger,
-    BODY_SNAPSHOT_MAX_BYTES,
+    MemoryError, MemoryStore, PromotionState, ShortHashResolution, StateTransitionRow,
+    TransitionEvent, TransitionTrigger, BODY_SNAPSHOT_MAX_BYTES,
 };
 use crate::review::Finding;
 
@@ -479,6 +479,163 @@ impl MemoryStore for LocalSqliteMemoryStore {
         conn.query_row(&sql, [id.0], row_to_dismissal)
             .optional()
             .map_err(|e| MemoryError::Backend(Box::new(e)))
+    }
+
+    fn list_by_state(
+        &self,
+        state: Option<PromotionState>,
+    ) -> Result<Vec<Dismissal>, MemoryError> {
+        let conn = self.conn.lock().unwrap();
+        let order_by = "ORDER BY recurrence_count DESC, last_seen_at DESC";
+        let mut out = Vec::new();
+        match state {
+            None => {
+                let sql =
+                    format!("SELECT {SELECT_COLUMNS} FROM dismissals {order_by}");
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+                let rows = stmt
+                    .query_map([], row_to_dismissal)
+                    .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+                for r in rows {
+                    out.push(r.map_err(|e| MemoryError::Backend(Box::new(e)))?);
+                }
+            }
+            Some(s) => {
+                let sql = format!(
+                    "SELECT {SELECT_COLUMNS} FROM dismissals \
+                     WHERE promotion_state = ?1 {order_by}"
+                );
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+                let rows = stmt
+                    .query_map([s.as_db_str()], row_to_dismissal)
+                    .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+                for r in rows {
+                    out.push(r.map_err(|e| MemoryError::Backend(Box::new(e)))?);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    fn find_by_short_hash(&self, prefix: &str) -> Result<ShortHashResolution, MemoryError> {
+        // Precondition: ≥ 8 hex chars, all-hex. The CLI also enforces this
+        // for a friendlier error surface, but the storage layer is
+        // defensive — a `MemoryError::Backend` here is treated by the CLI
+        // as a config error (exit 2).
+        if prefix.len() < 8 {
+            return Err(MemoryError::Backend(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("short-hash must be ≥ 8 hex chars, got {}", prefix.len()),
+            ))));
+        }
+        if !prefix
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        {
+            return Err(MemoryError::Backend(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("short-hash must be lowercase hex, got '{}'", prefix),
+            ))));
+        }
+        let conn = self.conn.lock().unwrap();
+        // Stored hashes are 64-hex lowercase. The prefix was already
+        // validated as ASCII hex above, so GLOB-special characters
+        // (`*`, `?`, `[`) cannot appear and no escaping is required.
+        let pattern = format!("{prefix}*");
+        let sql = format!(
+            "SELECT {SELECT_COLUMNS} FROM dismissals \
+             WHERE finding_identity_hash GLOB ?1 \
+             ORDER BY recurrence_count DESC, last_seen_at DESC"
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        let rows = stmt
+            .query_map([&pattern], row_to_dismissal)
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        let mut matches: Vec<Dismissal> = Vec::new();
+        for r in rows {
+            matches.push(r.map_err(|e| MemoryError::Backend(Box::new(e)))?);
+        }
+        match matches.len() {
+            0 => Ok(ShortHashResolution::NotFound),
+            1 => Ok(ShortHashResolution::Exact(matches.into_iter().next().unwrap())),
+            _ => Ok(ShortHashResolution::Ambiguous(matches)),
+        }
+    }
+
+    fn load_transitions(
+        &self,
+        hash: &FindingIdentityHash,
+    ) -> Result<Vec<StateTransitionRow>, MemoryError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT from_state, to_state, trigger, ts,
+                        by_review_session_id, recurrence_at_transition
+                 FROM state_transitions
+                 WHERE finding_identity_hash = ?1
+                 ORDER BY ts ASC, id ASC",
+            )
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        let hex = hash.to_hex();
+        let rows = stmt
+            .query_map([&hex], |r| {
+                let from_s: String = r.get(0)?;
+                let to_s: String = r.get(1)?;
+                let trig_s: String = r.get(2)?;
+                let ts_ms: i64 = r.get(3)?;
+                let sess: Option<String> = r.get(4)?;
+                let rec: Option<i64> = r.get(5)?;
+                let from_state = PromotionState::from_db_str(&from_s).ok_or_else(|| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "bad from_state",
+                        )),
+                    )
+                })?;
+                let to_state = PromotionState::from_db_str(&to_s).ok_or_else(|| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "bad to_state",
+                        )),
+                    )
+                })?;
+                let trigger = TransitionTrigger::from_db_str(&trig_s).ok_or_else(|| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "bad trigger",
+                        )),
+                    )
+                })?;
+                Ok(StateTransitionRow {
+                    from_state,
+                    to_state,
+                    trigger,
+                    ts_ms,
+                    by_review_session_id: sess,
+                    recurrence_at_transition: rec.map(|r| r.max(0) as u32),
+                })
+            })
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| MemoryError::Backend(Box::new(e)))?);
+        }
+        Ok(out)
     }
 
     fn load_local_only_conventions(&self) -> Result<Vec<Dismissal>, MemoryError> {

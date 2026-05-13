@@ -100,6 +100,15 @@ impl PromotionState {
             PromotionState::PromotedConvention => "promoted_convention",
         }
     }
+
+    pub fn from_db_str(s: &str) -> Option<PromotionState> {
+        match s {
+            "candidate" => Some(PromotionState::Candidate),
+            "local_only" => Some(PromotionState::LocalOnly),
+            "promoted_convention" => Some(PromotionState::PromotedConvention),
+            _ => None,
+        }
+    }
 }
 
 /// Phase 1C: the `trigger` enum on `state_transitions.trigger`. T4 (prune)
@@ -127,6 +136,47 @@ impl TransitionTrigger {
             TransitionTrigger::ExplicitDemote => "explicit_demote",
         }
     }
+
+    pub fn from_db_str(s: &str) -> Option<TransitionTrigger> {
+        match s {
+            "auto_recurrence" => Some(TransitionTrigger::AutoRecurrence),
+            "explicit_promote" => Some(TransitionTrigger::ExplicitPromote),
+            "explicit_demote" => Some(TransitionTrigger::ExplicitDemote),
+            _ => None,
+        }
+    }
+}
+
+
+/// Phase 1C — one row of the `state_transitions` table, read back for the
+/// `quorum convention show` / `history` CLI surface. Differs from
+/// [`TransitionEvent`] (which is the in-flight event emitted by
+/// `record_seen`): `StateTransitionRow` is what a reader sees after the
+/// audit row was committed and may be `None` on the nullable columns
+/// per §4.2 schema (`by_review_session_id`, `recurrence_at_transition`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateTransitionRow {
+    pub from_state: PromotionState,
+    pub to_state: PromotionState,
+    pub trigger: TransitionTrigger,
+    /// Unix epoch milliseconds.
+    pub ts_ms: i64,
+    pub by_review_session_id: Option<String>,
+    pub recurrence_at_transition: Option<u32>,
+}
+
+/// Outcome of [`MemoryStore::find_by_short_hash`]. The CLI surface (Stage 3
+/// `convention show` / `history`) maps these to exit codes + user-facing
+/// errors; the storage layer just reports what it saw.
+#[derive(Debug, Clone)]
+pub enum ShortHashResolution {
+    /// Exactly one dismissal matches the supplied prefix.
+    Exact(Dismissal),
+    /// More than one dismissal matches; caller must show the
+    /// disambiguation list.
+    Ambiguous(Vec<Dismissal>),
+    /// No dismissal matched the prefix.
+    NotFound,
 }
 
 /// Phase 1C — an audited state transition. Returned by
@@ -278,6 +328,32 @@ pub trait MemoryStore {
     /// Sorted by `recurrence_count DESC, last_seen_at DESC` (spec §6.1)
     /// so the bundle assembler doesn't have to re-sort.
     fn load_local_only_conventions(&self) -> Result<Vec<Dismissal>, MemoryError>;
+
+    /// Phase 1C — read surface for the `quorum convention list` CLI.
+    /// `state == None` returns every row across all three states.
+    /// `state == Some(s)` filters to one state. Sort order matches
+    /// [`MemoryStore::load_local_only_conventions`]: recurrence_count DESC,
+    /// last_seen_at DESC.
+    fn list_by_state(
+        &self,
+        state: Option<PromotionState>,
+    ) -> Result<Vec<Dismissal>, MemoryError>;
+
+    /// Phase 1C — resolve a hex `finding_identity_hash` prefix to a single
+    /// row, an ambiguous match set, or not-found. Callers (`show`,
+    /// `history`) must enforce the ≥ 8-char minimum BEFORE calling — the
+    /// store treats any non-hex / too-short prefix as a precondition error
+    /// and returns it as a `MemoryError::Backend`. A full 64-hex prefix
+    /// always resolves as `Exact` or `NotFound`.
+    fn find_by_short_hash(&self, prefix: &str) -> Result<ShortHashResolution, MemoryError>;
+
+    /// Phase 1C — read the `state_transitions` audit log for one hash,
+    /// oldest-first (ts ASC). Returns an empty vec for pre-v2 dismissals
+    /// (no backfill — spec §4.1). Also empty for an unknown hash.
+    fn load_transitions(
+        &self,
+        hash: &FindingIdentityHash,
+    ) -> Result<Vec<StateTransitionRow>, MemoryError>;
 }
 
 /// Trait-layer validation of a free-text note. Returns `()` if the note

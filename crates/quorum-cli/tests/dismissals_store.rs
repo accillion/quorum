@@ -11,7 +11,7 @@
 use quorum_core::memory::identity::finding_identity_hash;
 use quorum_core::memory::{
     DismissalReason, FindingIdentityHash, LocalSqliteMemoryStore, MemoryError, MemoryStore,
-    PromotionState, BODY_SNAPSHOT_MAX_BYTES,
+    PromotionState, ShortHashResolution, TransitionTrigger, BODY_SNAPSHOT_MAX_BYTES,
 };
 use quorum_core::review::{Finding, FindingSource, Severity};
 use rusqlite::Connection;
@@ -796,4 +796,202 @@ fn no_secret_material_persisted() {
             "dismissals.sqlite must not leak {forbidden}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1C Stage 3 — read-only query coverage.
+//
+// `list_by_state`, `find_by_short_hash`, `load_transitions` are the read
+// surface used by `quorum convention list / show / history`. The CLI
+// surface itself is tested in `convention_read.rs`; here we just confirm
+// the storage-layer contract.
+
+fn dismiss_with_state(
+    store: &LocalSqliteMemoryStore,
+    title: &str,
+    models: &[&str],
+    state: PromotionState,
+) -> FindingIdentityHash {
+    let f = sample_finding(title, models);
+    let h = finding_identity_hash(&f);
+    store
+        .dismiss(
+            &f,
+            "head-sha",
+            "main",
+            DismissalReason::FalsePositive,
+            None,
+            Some(time::Duration::days(365)),
+        )
+        .unwrap();
+    if state != PromotionState::Candidate {
+        let conn = Connection::open(store.path()).unwrap();
+        conn.execute(
+            "UPDATE dismissals SET promotion_state = ?1 WHERE finding_identity_hash = ?2",
+            rusqlite::params![state.as_db_str(), h.to_hex()],
+        )
+        .unwrap();
+    }
+    h
+}
+
+#[test]
+fn list_by_state_filters_and_sorts() {
+    // AC 162 storage-layer contract — sort = recurrence_count DESC,
+    // last_seen_at DESC; `None` returns all states.
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let _h_a = dismiss_with_state(&store, "alpha", &["m"], PromotionState::Candidate);
+    let h_b = dismiss_with_state(&store, "bravo", &["m"], PromotionState::LocalOnly);
+    let _h_c = dismiss_with_state(&store, "charlie", &["m"], PromotionState::PromotedConvention);
+    // Bump bravo's recurrence so it sorts first within local_only.
+    {
+        let conn = Connection::open(store.path()).unwrap();
+        conn.execute(
+            "UPDATE dismissals SET recurrence_count = 7 WHERE finding_identity_hash = ?1",
+            [h_b.to_hex()],
+        )
+        .unwrap();
+    }
+
+    let all = store.list_by_state(None).unwrap();
+    assert_eq!(all.len(), 3, "None returns every row");
+    // Highest recurrence_count first.
+    assert_eq!(all[0].title_snapshot, "bravo");
+
+    let local = store
+        .list_by_state(Some(PromotionState::LocalOnly))
+        .unwrap();
+    assert_eq!(local.len(), 1);
+    assert_eq!(local[0].title_snapshot, "bravo");
+
+    let cand = store
+        .list_by_state(Some(PromotionState::Candidate))
+        .unwrap();
+    assert_eq!(cand.len(), 1);
+    assert_eq!(cand[0].title_snapshot, "alpha");
+
+    let prom = store
+        .list_by_state(Some(PromotionState::PromotedConvention))
+        .unwrap();
+    assert_eq!(prom.len(), 1);
+    assert_eq!(prom[0].title_snapshot, "charlie");
+}
+
+#[test]
+fn find_by_short_hash_exact_ambiguous_notfound_and_full64() {
+    // AC 163 storage-layer contract — exact, ambiguous, not-found,
+    // full-64-hex always exact.
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    // Two rows whose hashes collide on the first 8 hex chars but diverge
+    // beyond. We can't pick those organically — patch the hash column
+    // directly to a known prefix pair.
+    let h1 = dismiss_with_state(&store, "row-1", &["m"], PromotionState::Candidate);
+    let h2 = dismiss_with_state(&store, "row-2", &["m"], PromotionState::Candidate);
+    let prefix = "deadbeef";
+    let full1 = format!("{prefix}{}", &h1.to_hex()[8..]);
+    let full2 = format!("{prefix}{}", &h2.to_hex()[8..]);
+    {
+        let conn = Connection::open(store.path()).unwrap();
+        conn.execute(
+            "UPDATE dismissals SET finding_identity_hash = ?1 WHERE title_snapshot = 'row-1'",
+            [&full1],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE dismissals SET finding_identity_hash = ?1 WHERE title_snapshot = 'row-2'",
+            [&full2],
+        )
+        .unwrap();
+    }
+
+    let res = store.find_by_short_hash(prefix).unwrap();
+    assert!(
+        matches!(res, ShortHashResolution::Ambiguous(ref v) if v.len() == 2),
+        "two rows sharing 8-hex prefix → Ambiguous"
+    );
+
+    // Lengthen the prefix into row-1 only.
+    let exact_prefix = &full1[..16];
+    let res = store.find_by_short_hash(exact_prefix).unwrap();
+    assert!(matches!(res, ShortHashResolution::Exact(ref d) if d.title_snapshot == "row-1"));
+
+    // Full 64-hex always Exact.
+    let res = store.find_by_short_hash(&full1).unwrap();
+    assert!(matches!(res, ShortHashResolution::Exact(_)));
+
+    // Not-found.
+    let res = store.find_by_short_hash("00000000").unwrap();
+    assert!(matches!(res, ShortHashResolution::NotFound));
+}
+
+#[test]
+fn find_by_short_hash_rejects_short_and_nonhex() {
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let err = store.find_by_short_hash("abcd").unwrap_err();
+    assert!(matches!(err, MemoryError::Backend(_)));
+    let err = store.find_by_short_hash("nothexpfx").unwrap_err();
+    assert!(matches!(err, MemoryError::Backend(_)));
+}
+
+#[test]
+fn load_transitions_for_v2_row_returns_audit_log_oldest_first() {
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let h = dismiss_with_state(&store, "audit-row", &["m"], PromotionState::Candidate);
+    // Hand-insert two state_transitions rows for this hash with deliberate
+    // timestamp spread (newer second).
+    {
+        let conn = Connection::open(store.path()).unwrap();
+        conn.execute(
+            "INSERT INTO state_transitions
+                (finding_identity_hash, from_state, to_state, trigger, ts,
+                 by_review_session_id, recurrence_at_transition)
+             VALUES (?1, 'candidate', 'local_only', 'auto_recurrence', 1000, 'sess-1', 3)",
+            [h.to_hex()],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO state_transitions
+                (finding_identity_hash, from_state, to_state, trigger, ts,
+                 by_review_session_id, recurrence_at_transition)
+             VALUES (?1, 'local_only', 'promoted_convention', 'explicit_promote', 5000, NULL, NULL)",
+            [h.to_hex()],
+        )
+        .unwrap();
+    }
+
+    let rows = store.load_transitions(&h).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].ts_ms, 1000, "oldest-first");
+    assert_eq!(rows[0].trigger, TransitionTrigger::AutoRecurrence);
+    assert_eq!(rows[0].by_review_session_id.as_deref(), Some("sess-1"));
+    assert_eq!(rows[0].recurrence_at_transition, Some(3));
+    assert_eq!(rows[1].ts_ms, 5000);
+    assert_eq!(rows[1].trigger, TransitionTrigger::ExplicitPromote);
+    assert!(rows[1].by_review_session_id.is_none());
+    assert!(rows[1].recurrence_at_transition.is_none());
+}
+
+#[test]
+fn load_transitions_for_pre_v2_row_returns_empty() {
+    // Spec §4.1: no backfill of state_transitions for pre-v2 rows. A row
+    // with no audit-log entries returns an empty vec — same code path as
+    // a pre-v2 dismissal would hit.
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let h = dismiss_with_state(&store, "no-audit", &["m"], PromotionState::Candidate);
+    let rows = store.load_transitions(&h).unwrap();
+    assert!(rows.is_empty());
+}
+
+#[test]
+fn load_transitions_for_unknown_hash_returns_empty() {
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let bogus = FindingIdentityHash([0u8; 32]);
+    let rows = store.load_transitions(&bogus).unwrap();
+    assert!(rows.is_empty());
 }
