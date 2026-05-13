@@ -1,7 +1,7 @@
 //! `quorum link` — bind the current repo to a Lippa project.
 
 use crate::exit::CliError;
-use quorum_core::config::{read, write, QuorumConfig};
+use quorum_core::config::{read, write, MemoryConfig, QuorumConfig};
 use std::path::Path;
 
 pub fn link_show(repo_root: &Path) -> Result<(), CliError> {
@@ -27,6 +27,7 @@ pub fn link_write(
         project_id,
         base_url,
         remote_url,
+        memory: MemoryConfig::default(),
     };
     let p = write(repo_root, &cfg).map_err(|e| CliError::Config(e.to_string()))?;
     println!("Wrote {}", p.display());
