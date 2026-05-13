@@ -116,10 +116,7 @@ fn emit_list_text(rows: &[Dismissal]) {
         println!("(no dismissals)");
         return;
     }
-    println!(
-        "{:<12}  {:<20}  {:>5}  {}",
-        "HASH", "STATE", "RECUR", "TITLE"
-    );
+    println!("{:<12}  {:<20}  {:>5}  TITLE", "HASH", "STATE", "RECUR");
     for d in rows {
         let hex = d.finding_identity_hash.to_hex();
         let short = &hex[..12];
@@ -136,14 +133,12 @@ fn emit_list_text(rows: &[Dismissal]) {
 
 fn truncate_for_display(s: &str, max_chars: usize) -> String {
     let mut out = String::new();
-    let mut n = 0;
-    for c in s.chars() {
+    for (n, c) in s.chars().enumerate() {
         if n >= max_chars {
             out.push('…');
             return out;
         }
         out.push(c);
-        n += 1;
     }
     out
 }
@@ -179,12 +174,12 @@ fn format_diagnostic(d: &quorum_core::conventions::ConventionParseError) -> Stri
         UnclosedBlock { id, start_byte } => format!(
             ".quorum/conventions.md: block id={id} at byte {start_byte} has no closing marker"
         ),
-        BadBlockId { raw, start_byte } => format!(
-            ".quorum/conventions.md: bad block id {raw:?} at byte {start_byte}"
-        ),
-        BadBlockVersion { raw, start_byte } => format!(
-            ".quorum/conventions.md: bad block version {raw:?} at byte {start_byte}"
-        ),
+        BadBlockId { raw, start_byte } => {
+            format!(".quorum/conventions.md: bad block id {raw:?} at byte {start_byte}")
+        }
+        BadBlockVersion { raw, start_byte } => {
+            format!(".quorum/conventions.md: bad block version {raw:?} at byte {start_byte}")
+        }
         DuplicateManagedSection { start_byte } => format!(
             ".quorum/conventions.md: duplicate managed-section marker at byte {start_byte}; \
              only the first section is parsed"
@@ -291,14 +286,12 @@ pub fn resolve_short_hash(
         .find_by_short_hash(prefix)
         .map_err(|e| CliError::Io(format!("short-hash lookup failed: {e}")))?
     {
-        ShortHashResolution::Exact(d) => Ok(d),
-        ShortHashResolution::NotFound => Err(CliError::Config(format!(
-            "no dismissal matches '{prefix}'"
-        ))),
+        ShortHashResolution::Exact(d) => Ok(*d),
+        ShortHashResolution::NotFound => {
+            Err(CliError::Config(format!("no dismissal matches '{prefix}'")))
+        }
         ShortHashResolution::Ambiguous(matches) => {
-            let mut msg = format!(
-                "short-hash '{prefix}' is ambiguous; matches:\n"
-            );
+            let mut msg = format!("short-hash '{prefix}' is ambiguous; matches:\n");
             let shown = matches.iter().take(10);
             for d in shown {
                 let hex = d.finding_identity_hash.to_hex();
@@ -399,8 +392,9 @@ fn format_ts_ms(ms: i64) -> String {
     // `ms` is unix epoch millis. Render in ISO-8601 UTC for human read.
     let secs = ms / 1000;
     let nanos = ((ms % 1000) * 1_000_000) as i128;
-    let dt = time::OffsetDateTime::from_unix_timestamp_nanos((secs as i128) * 1_000_000_000 + nanos)
-        .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
+    let dt =
+        time::OffsetDateTime::from_unix_timestamp_nanos((secs as i128) * 1_000_000_000 + nanos)
+            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
     dt.format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| format!("{ms}ms"))
 }

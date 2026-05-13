@@ -114,10 +114,7 @@ fn insert_transition(
 #[test]
 fn convention_help_lists_read_subcommands_only() {
     // Verify Stage 4's write subcommands are NOT yet wired into clap.
-    let out = quorum()
-        .args(["convention", "--help"])
-        .assert()
-        .success();
+    let out = quorum().args(["convention", "--help"]).assert().success();
     let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
     assert!(stdout.contains("list"), "help must mention list");
     assert!(stdout.contains("show"), "help must mention show");
@@ -461,7 +458,15 @@ fn show_renders_all_fields_for_v2_row() {
     let td = init_repo();
     let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
     let h = dismiss_then_force_state(&store, "shown", PromotionState::LocalOnly);
-    insert_transition(&store, &h, "candidate", "local_only", "auto_recurrence", 1000, Some(3));
+    insert_transition(
+        &store,
+        &h,
+        "candidate",
+        "local_only",
+        "auto_recurrence",
+        1000,
+        Some(3),
+    );
 
     let out = quorum()
         .args([
@@ -543,8 +548,24 @@ fn history_renders_transition_log_oldest_first() {
     let td = init_repo();
     let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
     let h = dismiss_then_force_state(&store, "histed", PromotionState::PromotedConvention);
-    insert_transition(&store, &h, "candidate", "local_only", "auto_recurrence", 1000, Some(3));
-    insert_transition(&store, &h, "local_only", "promoted_convention", "explicit_promote", 5000, None);
+    insert_transition(
+        &store,
+        &h,
+        "candidate",
+        "local_only",
+        "auto_recurrence",
+        1000,
+        Some(3),
+    );
+    insert_transition(
+        &store,
+        &h,
+        "local_only",
+        "promoted_convention",
+        "explicit_promote",
+        5000,
+        None,
+    );
 
     let out = quorum()
         .args([

@@ -481,17 +481,13 @@ impl MemoryStore for LocalSqliteMemoryStore {
             .map_err(|e| MemoryError::Backend(Box::new(e)))
     }
 
-    fn list_by_state(
-        &self,
-        state: Option<PromotionState>,
-    ) -> Result<Vec<Dismissal>, MemoryError> {
+    fn list_by_state(&self, state: Option<PromotionState>) -> Result<Vec<Dismissal>, MemoryError> {
         let conn = self.conn.lock().unwrap();
         let order_by = "ORDER BY recurrence_count DESC, last_seen_at DESC";
         let mut out = Vec::new();
         match state {
             None => {
-                let sql =
-                    format!("SELECT {SELECT_COLUMNS} FROM dismissals {order_by}");
+                let sql = format!("SELECT {SELECT_COLUMNS} FROM dismissals {order_by}");
                 let mut stmt = conn
                     .prepare(&sql)
                     .map_err(|e| MemoryError::Backend(Box::new(e)))?;
@@ -563,7 +559,9 @@ impl MemoryStore for LocalSqliteMemoryStore {
         }
         match matches.len() {
             0 => Ok(ShortHashResolution::NotFound),
-            1 => Ok(ShortHashResolution::Exact(matches.into_iter().next().unwrap())),
+            1 => Ok(ShortHashResolution::Exact(Box::new(
+                matches.into_iter().next().unwrap(),
+            ))),
             _ => Ok(ShortHashResolution::Ambiguous(matches)),
         }
     }
@@ -638,9 +636,7 @@ impl MemoryStore for LocalSqliteMemoryStore {
         Ok(out)
     }
 
-    fn list_conventions(
-        &self,
-    ) -> Result<Vec<crate::conventions::ConventionRow>, MemoryError> {
+    fn list_conventions(&self) -> Result<Vec<crate::conventions::ConventionRow>, MemoryError> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
             .prepare(

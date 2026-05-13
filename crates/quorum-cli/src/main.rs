@@ -321,18 +321,14 @@ fn dispatch_convention(args: ConventionArgs) -> Result<Exit, CliError> {
             let state = parse_promotion_state(state.as_deref())?;
             commands::convention::list(args.quorum_dir.as_ref(), state, orphans, json)
         }
-        ConventionCmd::Show { hash } => {
-            commands::convention::show(args.quorum_dir.as_ref(), &hash)
-        }
+        ConventionCmd::Show { hash } => commands::convention::show(args.quorum_dir.as_ref(), &hash),
         ConventionCmd::History { hash } => {
             commands::convention::history(args.quorum_dir.as_ref(), &hash)
         }
     }
 }
 
-fn parse_promotion_state(
-    s: Option<&str>,
-) -> Result<Option<quorum_core::PromotionState>, CliError> {
+fn parse_promotion_state(s: Option<&str>) -> Result<Option<quorum_core::PromotionState>, CliError> {
     match s {
         None => Ok(None),
         Some(raw) => quorum_core::PromotionState::from_db_str(raw)

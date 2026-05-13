@@ -843,7 +843,12 @@ fn list_by_state_filters_and_sorts() {
     let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
     let _h_a = dismiss_with_state(&store, "alpha", &["m"], PromotionState::Candidate);
     let h_b = dismiss_with_state(&store, "bravo", &["m"], PromotionState::LocalOnly);
-    let _h_c = dismiss_with_state(&store, "charlie", &["m"], PromotionState::PromotedConvention);
+    let _h_c = dismiss_with_state(
+        &store,
+        "charlie",
+        &["m"],
+        PromotionState::PromotedConvention,
+    );
     // Bump bravo's recurrence so it sorts first within local_only.
     {
         let conn = Connection::open(store.path()).unwrap();

@@ -110,9 +110,7 @@ const MARKER_BLOCK_CLOSE: &str = "<!-- /quorum:convention -->";
 /// Returns a `ParsedConventionsMd` plus a list of diagnostics for any
 /// malformed blocks. The function never panics on user-supplied content
 /// (Stage 3 dispatch prompt §2 calibration).
-pub fn parse_conventions_md(
-    input: &[u8],
-) -> (ParsedConventionsMd<'_>, Vec<ConventionParseError>) {
+pub fn parse_conventions_md(input: &[u8]) -> (ParsedConventionsMd<'_>, Vec<ConventionParseError>) {
     let mut diags: Vec<ConventionParseError> = Vec::new();
     let first_line_marker_present = file_starts_with_marker(input);
 
@@ -145,9 +143,10 @@ pub fn parse_conventions_md(
     // Locate the close marker AFTER the open marker. If absent, treat the
     // fence as malformed and return everything-below as empty.
     let close_search_start = after_first_open;
-    let Some(rel_close_idx) =
-        find_subslice(&input[close_search_start..], MARKER_CLOSE_SECTION.as_bytes())
-    else {
+    let Some(rel_close_idx) = find_subslice(
+        &input[close_search_start..],
+        MARKER_CLOSE_SECTION.as_bytes(),
+    ) else {
         // Open marker without close — treat as malformed; surface a
         // diagnostic and refuse to recognize the fence. The Stage 4 writer
         // will rewrite a clean fence on the next promote.
@@ -193,19 +192,14 @@ fn file_starts_with_marker(input: &[u8]) -> bool {
         return false;
     }
     // Must be followed by EOF or a line terminator.
-    match input.get(marker.len()) {
-        None | Some(b'\n') | Some(b'\r') => true,
-        _ => false,
-    }
+    matches!(input.get(marker.len()), None | Some(b'\n') | Some(b'\r'))
 }
 
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || haystack.len() < needle.len() {
         return None;
     }
-    haystack
-        .windows(needle.len())
-        .position(|w| w == needle)
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 fn parse_blocks<'a>(
@@ -419,10 +413,7 @@ pub struct ConventionRow {
 /// table joined with the `dismissals.title_snapshot` for diagnostic
 /// rendering. Caller decides the join shape; this fn only consumes the
 /// flattened triple.
-pub fn detect_orphans(
-    conventions_md_path: &Path,
-    db_rows: &[ConventionRow],
-) -> OrphanReport {
+pub fn detect_orphans(conventions_md_path: &Path, db_rows: &[ConventionRow]) -> OrphanReport {
     let bytes = match std::fs::read(conventions_md_path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -465,10 +456,11 @@ pub fn detect_orphans(
     };
 
     let (parsed, parser_diagnostics) = parse_conventions_md(&bytes);
-    let block_ids: std::collections::HashSet<&str> =
-        parsed.blocks.iter().map(|b| b.id).collect();
-    let db_block_ids: std::collections::HashSet<&str> =
-        db_rows.iter().map(|r| r.conventions_md_block_id.as_str()).collect();
+    let block_ids: std::collections::HashSet<&str> = parsed.blocks.iter().map(|b| b.id).collect();
+    let db_block_ids: std::collections::HashSet<&str> = db_rows
+        .iter()
+        .map(|r| r.conventions_md_block_id.as_str())
+        .collect();
 
     let mut file_orphans: Vec<FileOrphan> = parsed
         .blocks
@@ -593,7 +585,9 @@ dismissals on review.
         assert_eq!(parsed.blocks.len(), 2);
         assert_eq!(parsed.blocks[0].id, "a1b2c3d4e5f6");
         assert_eq!(parsed.blocks[0].version, 1);
-        assert!(parsed.blocks[0].header_line.starts_with("### Convention: do not"));
+        assert!(parsed.blocks[0]
+            .header_line
+            .starts_with("### Convention: do not"));
         assert_eq!(parsed.blocks[1].id, "9876fedcba01");
         assert!(diags.is_empty());
         // Byte ranges are inside the input bounds and ordered.
@@ -605,8 +599,7 @@ dismissals on review.
 
     #[test]
     fn first_line_marker_optional_on_read() {
-        let raw_with =
-            "<!-- quorum-managed-conventions-md v=1 -->\n# After marker\n".to_string();
+        let raw_with = "<!-- quorum-managed-conventions-md v=1 -->\n# After marker\n".to_string();
         let (p_with, _) = parse_conventions_md(raw_with.as_bytes());
         assert!(p_with.first_line_marker_present);
 
@@ -642,7 +635,8 @@ body
 
     #[test]
     fn malformed_block_bad_id_emits_diagnostic_and_does_not_panic() {
-        let bad = "\n<!-- quorum:convention id=NOTHEX v=1 -->\n### bad\n<!-- /quorum:convention -->\n";
+        let bad =
+            "\n<!-- quorum:convention id=NOTHEX v=1 -->\n### bad\n<!-- /quorum:convention -->\n";
         let raw = wrap_managed(bad, "", "");
         let (parsed, diags) = parse_conventions_md(raw.as_bytes());
         assert!(parsed.blocks.is_empty());

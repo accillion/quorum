@@ -147,7 +147,6 @@ impl TransitionTrigger {
     }
 }
 
-
 /// Phase 1C — one row of the `state_transitions` table, read back for the
 /// `quorum convention show` / `history` CLI surface. Differs from
 /// [`TransitionEvent`] (which is the in-flight event emitted by
@@ -168,10 +167,14 @@ pub struct StateTransitionRow {
 /// Outcome of [`MemoryStore::find_by_short_hash`]. The CLI surface (Stage 3
 /// `convention show` / `history`) maps these to exit codes + user-facing
 /// errors; the storage layer just reports what it saw.
+///
+/// `Exact` carries a boxed `Dismissal` so the enum stays narrow — the
+/// variant size disparity with `NotFound` / `Ambiguous(Vec<…>)` would
+/// otherwise trip `clippy::large_enum_variant`.
 #[derive(Debug, Clone)]
 pub enum ShortHashResolution {
     /// Exactly one dismissal matches the supplied prefix.
-    Exact(Dismissal),
+    Exact(Box<Dismissal>),
     /// More than one dismissal matches; caller must show the
     /// disambiguation list.
     Ambiguous(Vec<Dismissal>),
@@ -334,10 +337,7 @@ pub trait MemoryStore {
     /// `state == Some(s)` filters to one state. Sort order matches
     /// [`MemoryStore::load_local_only_conventions`]: recurrence_count DESC,
     /// last_seen_at DESC.
-    fn list_by_state(
-        &self,
-        state: Option<PromotionState>,
-    ) -> Result<Vec<Dismissal>, MemoryError>;
+    fn list_by_state(&self, state: Option<PromotionState>) -> Result<Vec<Dismissal>, MemoryError>;
 
     /// Phase 1C — resolve a hex `finding_identity_hash` prefix to a single
     /// row, an ambiguous match set, or not-found. Callers (`show`,
@@ -359,9 +359,7 @@ pub trait MemoryStore {
     /// `dismissals.title_snapshot`. Used by orphan detection. Sort: stable
     /// by `conventions_md_block_id` ASC so callers see deterministic
     /// output.
-    fn list_conventions(
-        &self,
-    ) -> Result<Vec<crate::conventions::ConventionRow>, MemoryError>;
+    fn list_conventions(&self) -> Result<Vec<crate::conventions::ConventionRow>, MemoryError>;
 }
 
 /// Trait-layer validation of a free-text note. Returns `()` if the note
