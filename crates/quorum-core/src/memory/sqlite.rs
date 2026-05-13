@@ -41,7 +41,7 @@ impl LocalSqliteMemoryStore {
         let quorum_dir = repo_root.join(".quorum");
         std::fs::create_dir_all(&quorum_dir).map_err(|e| MemoryError::Backend(Box::new(e)))?;
         let db_path = quorum_dir.join("dismissals.sqlite");
-        let conn = Connection::open(&db_path).map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        let mut conn = Connection::open(&db_path).map_err(|e| MemoryError::Backend(Box::new(e)))?;
 
         // WAL with fallback. `journal_mode = WAL` returns the new mode as
         // a single-column row; we read it and fall back to DELETE if not 'wal'.
@@ -62,7 +62,8 @@ impl LocalSqliteMemoryStore {
         conn.pragma_update(None, "busy_timeout", 5000)
             .map_err(|e| MemoryError::Backend(Box::new(e)))?;
 
-        schema::migrate_to_v1(&conn)?;
+        schema::migrate(&mut conn)?;
+        check_forward_compat(&conn)?;
 
         // .gitignore discipline (warnings only; do not fail open).
         let _ = gitignore::ensure_ignored(repo_root).map(|wrote| {
@@ -88,6 +89,38 @@ impl LocalSqliteMemoryStore {
     pub fn path(&self) -> &Path {
         &self.db_path
     }
+}
+
+/// AC 174 — forward-compat check fired on every DB open, after the
+/// migration runner has had its chance to advance the schema. If the on-
+/// disk `schema_version` is ahead of this binary's [`schema::CURRENT_VERSION`],
+/// or if `schema_meta.forward_compat_min_version` is ahead, refuse to
+/// proceed. The CLI surfaces this as exit 2.
+///
+/// The schema_meta probe tolerates the row being absent (returns 0) so
+/// that a pre-v2 DB that the migration runner couldn't advance — e.g.,
+/// because schema_version is already > CURRENT_VERSION and the runner
+/// bailed out — still hits the schema_version branch below.
+fn check_forward_compat(conn: &Connection) -> Result<(), MemoryError> {
+    let schema_version: i64 = conn
+        .query_row("SELECT version FROM schema_version", [], |r| r.get(0))
+        .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+    let forward_compat_min: i64 = conn
+        .query_row(
+            "SELECT CAST(value AS INTEGER) FROM schema_meta WHERE key = ?1",
+            [schema::FORWARD_COMPAT_MIN_KEY],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| MemoryError::Backend(Box::new(e)))?
+        .unwrap_or(0);
+    if schema_version > schema::CURRENT_VERSION || forward_compat_min > schema::CURRENT_VERSION {
+        return Err(MemoryError::SchemaTooNew {
+            schema_version,
+            forward_compat_min,
+        });
+    }
+    Ok(())
 }
 
 fn now_rfc3339() -> Result<String, MemoryError> {

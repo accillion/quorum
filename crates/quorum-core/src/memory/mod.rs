@@ -151,6 +151,18 @@ pub enum MemoryError {
     OtherWithoutNote,
     #[error("note exceeds 2KB or contains forbidden characters")]
     InvalidNote,
+    /// AC 174: the on-disk SQLite is from a newer Quorum binary; we refuse
+    /// to read or write it. `schema_version` is the version stamped on the
+    /// last migration; `forward_compat_min` is the binary version floor
+    /// that DB declares it requires.
+    #[error(
+        ".quorum/dismissals.sqlite is from a newer Quorum (schema={schema_version}, \
+         forward_compat_min={forward_compat_min}); upgrade your binary"
+    )]
+    SchemaTooNew {
+        schema_version: i64,
+        forward_compat_min: i64,
+    },
 }
 
 /// The dismissals store contract. Phase 1B has one implementor

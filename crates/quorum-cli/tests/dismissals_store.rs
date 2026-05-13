@@ -35,8 +35,10 @@ fn sample_finding(title: &str, models: &[&str]) -> Finding {
 }
 
 #[test]
-fn opens_and_migrates_to_v1() {
-    // AC 104: schema_version row with version=1 exists after first open.
+fn opens_and_migrates_to_current_version() {
+    // AC 104 (1B) + AC 145 (1C): schema_version row exists at the
+    // current binary version after first open. Phase 1B asserted v=1;
+    // Phase 1C bumps it to v=2 with the schema_meta forward-compat row.
     // AC 110: <repo_root>/.quorum/dismissals.sqlite created on first open.
     let td = init_repo();
     let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
@@ -45,7 +47,15 @@ fn opens_and_migrates_to_v1() {
     let version: i64 = conn
         .query_row("SELECT version FROM schema_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 1);
+    assert_eq!(version, 2);
+    let fwd: String = conn
+        .query_row(
+            "SELECT value FROM schema_meta WHERE key = 'forward_compat_min_version'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(fwd, "2");
 }
 
 #[test]
@@ -395,6 +405,359 @@ fn gitignore_written_on_first_open() {
     let gi = std::fs::read_to_string(td.path().join(".gitignore")).unwrap();
     assert!(gi.contains(".quorum/dismissals.sqlite*"));
     assert!(gi.contains("Quorum dismissals store"));
+}
+
+// =================================================================
+// Phase 1C Stage 1 — v2 migration, forward-compat, byte-count CHECK.
+// =================================================================
+
+/// Build a v1-shaped SQLite at `path`, with one Phase 1B dismissal row.
+/// Mirrors the schema Phase 1B shipped, so we can verify the in-place
+/// v1→v2 upgrade path.
+fn build_v1_fixture(path: &std::path::Path) {
+    let conn = Connection::open(path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE schema_version (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        );
+        CREATE TABLE dismissals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            finding_identity_hash TEXT NOT NULL UNIQUE,
+            title_snapshot TEXT NOT NULL,
+            body_snapshot TEXT,
+            source_type_snapshot TEXT NOT NULL,
+            models_snapshot TEXT NOT NULL,
+            branch_snapshot TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            note TEXT,
+            dismissed_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            last_seen_session_id TEXT,
+            recurrence_count INTEGER NOT NULL DEFAULT 1,
+            expires_at TEXT,
+            repo_head_sha_first TEXT NOT NULL,
+            promotion_state TEXT NOT NULL DEFAULT 'candidate',
+            CHECK (recurrence_count >= 1),
+            CHECK (reason IN ('false_positive','intentional','out_of_scope','wont_fix','other')),
+            CHECK (reason != 'other' OR note IS NOT NULL),
+            CHECK (promotion_state IN ('candidate','local_only','promoted_convention'))
+        );
+        CREATE INDEX idx_dismissals_expires_at ON dismissals(expires_at);
+        INSERT INTO schema_version (version, applied_at) VALUES (1, '2026-01-01T00:00:00Z');",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO dismissals (
+            finding_identity_hash, title_snapshot, source_type_snapshot,
+            models_snapshot, branch_snapshot, reason,
+            dismissed_at, last_seen_at, recurrence_count, repo_head_sha_first
+        ) VALUES (?1, 'preexisting', 'agreement', '[]', 'main', 'false_positive',
+                  ?2, ?2, 2, 'sha')",
+        rusqlite::params!["e".repeat(64), "2026-01-01T00:00:00Z"],
+    )
+    .unwrap();
+}
+
+#[test]
+fn migrate_upgrades_v1_fixture_to_v2() {
+    // AC 145: v1→v2 migration runs cleanly on a Phase 1B-shaped fixture.
+    // Pre-existing dismissal row survives; schema_meta marker present;
+    // schema_version bumped to 2.
+    let td = init_repo();
+    let quorum_dir = td.path().join(".quorum");
+    std::fs::create_dir_all(&quorum_dir).unwrap();
+    let db_path = quorum_dir.join("dismissals.sqlite");
+    build_v1_fixture(&db_path);
+
+    // Opening the store runs the v2 migration.
+    let _store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let conn = Connection::open(&db_path).unwrap();
+
+    let version: i64 = conn
+        .query_row("SELECT version FROM schema_version", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, 2, "schema_version must be bumped to 2");
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM schema_version", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(n, 1, "schema_version must remain a single row");
+    let fwd: String = conn
+        .query_row(
+            "SELECT value FROM schema_meta WHERE key = 'forward_compat_min_version'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(fwd, "2");
+
+    // Pre-existing dismissal row preserved.
+    let surviving: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM dismissals WHERE title_snapshot = 'preexisting'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(surviving, 1);
+
+    // No backfill of state_transitions for pre-v2 rows (spec §4.1).
+    let st_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM state_transitions", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(st_count, 0);
+}
+
+#[test]
+fn migrate_is_idempotent_on_v2() {
+    // AC 145: re-running the migration on a v2 DB is a no-op (no errors,
+    // no duplicate rows, schema_meta unchanged).
+    let td = init_repo();
+    let db_path = {
+        let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+        store.path().to_owned()
+    };
+    // Insert a dismissal so we can detect any accidental wipe.
+    {
+        let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+        let f = sample_finding("idempotency probe", &["m"]);
+        store
+            .dismiss(
+                &f,
+                "h",
+                "main",
+                DismissalReason::FalsePositive,
+                None,
+                Some(time::Duration::days(365)),
+            )
+            .unwrap();
+    }
+    // Re-open several times: the migration runs each time but is a no-op.
+    for _ in 0..3 {
+        drop(LocalSqliteMemoryStore::new(td.path()).unwrap());
+    }
+    let conn = Connection::open(&db_path).unwrap();
+    let version: i64 = conn
+        .query_row("SELECT version FROM schema_version", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, 2);
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM schema_version", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(n, 1, "no extra schema_version rows after re-open");
+    let meta_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM schema_meta WHERE key = 'forward_compat_min_version'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(meta_count, 1);
+    let dismissals: i64 = conn
+        .query_row("SELECT COUNT(*) FROM dismissals", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(dismissals, 1, "existing dismissal preserved across re-open");
+}
+
+#[test]
+fn state_transitions_fk_cascades_on_dismissal_delete() {
+    // AC 146: ON DELETE CASCADE from dismissals(finding_identity_hash)
+    // wipes the audit log when a candidate row is deleted.
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let f = sample_finding("for cascade", &["m"]);
+    let id = store
+        .dismiss(
+            &f,
+            "h",
+            "main",
+            DismissalReason::FalsePositive,
+            None,
+            Some(time::Duration::days(365)),
+        )
+        .unwrap();
+    let hash_hex = finding_identity_hash(&f).to_hex();
+
+    // Hand-insert an audit row (Stage 1 does not yet expose a write API
+    // for state_transitions, but FK semantics are testable directly).
+    let conn = Connection::open(store.path()).unwrap();
+    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+    conn.execute(
+        "INSERT INTO state_transitions
+            (finding_identity_hash, from_state, to_state, trigger, ts,
+             by_review_session_id, recurrence_at_transition)
+         VALUES (?1, 'candidate', 'local_only', 'auto_recurrence', ?2, ?3, 3)",
+        rusqlite::params![hash_hex, 1_700_000_000_000i64, "S-cascade-test"],
+    )
+    .unwrap();
+    let pre: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM state_transitions WHERE finding_identity_hash = ?1",
+            [&hash_hex],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(pre, 1);
+
+    // Delete the dismissal via the trait (cascades through FK).
+    assert!(store.delete(id).unwrap());
+    let post: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM state_transitions WHERE finding_identity_hash = ?1",
+            [&hash_hex],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(post, 0, "FK CASCADE must drop the audit log");
+}
+
+#[test]
+fn forward_compat_rejects_future_schema_version() {
+    // AC 174: a SQLite whose schema_version > CURRENT_VERSION is rejected
+    // with SchemaTooNew. The store refuses to open even if the rest of
+    // the file is well-formed.
+    let td = init_repo();
+    // First, normal open — bring it up to v2.
+    drop(LocalSqliteMemoryStore::new(td.path()).unwrap());
+    let db_path = td.path().join(".quorum").join("dismissals.sqlite");
+    // Now hand-bump schema_version to 3.
+    {
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute("UPDATE schema_version SET version = 3", [])
+            .unwrap();
+    }
+    let err = match LocalSqliteMemoryStore::new(td.path()) {
+        Ok(_) => panic!("expected SchemaTooNew error"),
+        Err(e) => e,
+    };
+    match err {
+        MemoryError::SchemaTooNew {
+            schema_version,
+            forward_compat_min,
+        } => {
+            assert_eq!(schema_version, 3);
+            assert_eq!(forward_compat_min, 2);
+        }
+        other => panic!("expected SchemaTooNew, got {other:?}"),
+    }
+}
+
+#[test]
+fn forward_compat_rejects_future_min_version_marker() {
+    // AC 174 — second arm: schema_version is OK (==2) but
+    // schema_meta.forward_compat_min_version is > CURRENT_VERSION.
+    // Simulates a future-binary upgrade-then-downgrade scenario where
+    // the schema integers don't change but the floor does.
+    let td = init_repo();
+    drop(LocalSqliteMemoryStore::new(td.path()).unwrap());
+    let db_path = td.path().join(".quorum").join("dismissals.sqlite");
+    {
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('forward_compat_min_version', '3')",
+            [],
+        )
+        .unwrap();
+    }
+    let err = match LocalSqliteMemoryStore::new(td.path()) {
+        Ok(_) => panic!("expected SchemaTooNew error"),
+        Err(e) => e,
+    };
+    match err {
+        MemoryError::SchemaTooNew {
+            schema_version,
+            forward_compat_min,
+        } => {
+            assert_eq!(schema_version, 2);
+            assert_eq!(forward_compat_min, 3);
+        }
+        other => panic!("expected SchemaTooNew, got {other:?}"),
+    }
+}
+
+#[test]
+fn conventions_text_byte_count_check_roundtrip() {
+    // AC 151 — conventions.convention_text CHECK enforces 1..=4096 BYTES
+    // (cast to BLOB), not codepoints. Stage 1 has no public write
+    // surface for `conventions`, so insertions go through raw SQL.
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    // We need a real dismissal row first (PK FK).
+    let f = sample_finding("for-check-roundtrip", &["m"]);
+    store
+        .dismiss(
+            &f,
+            "h",
+            "main",
+            DismissalReason::FalsePositive,
+            None,
+            Some(time::Duration::days(365)),
+        )
+        .unwrap();
+    let hash_hex = finding_identity_hash(&f).to_hex();
+    let conn = Connection::open(store.path()).unwrap();
+    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+
+    let insert = |hash: &str, text: &str| -> rusqlite::Result<usize> {
+        conn.execute(
+            "INSERT INTO conventions
+                (finding_identity_hash, convention_text, promoted_at, conventions_md_block_id)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![hash, text, 1_700_000_000_000i64, "abcdef012345"],
+        )
+    };
+
+    // 4096 bytes — passes.
+    let ok_4096 = "a".repeat(4096);
+    insert(&hash_hex, &ok_4096).expect("4096-byte text must pass");
+    // Re-using the same PK requires deletion first.
+    conn.execute(
+        "DELETE FROM conventions WHERE finding_identity_hash = ?1",
+        [&hash_hex],
+    )
+    .unwrap();
+
+    // 4097 bytes — fails on CHECK.
+    let too_big = "a".repeat(4097);
+    assert!(
+        insert(&hash_hex, &too_big).is_err(),
+        "4097-byte text must fail byte-count CHECK"
+    );
+
+    // 1 byte — passes.
+    insert(&hash_hex, "x").expect("1-byte text must pass");
+    conn.execute(
+        "DELETE FROM conventions WHERE finding_identity_hash = ?1",
+        [&hash_hex],
+    )
+    .unwrap();
+
+    // 0 bytes — fails (CHECK floor is 1).
+    assert!(
+        insert(&hash_hex, "").is_err(),
+        "empty text must fail byte-count CHECK"
+    );
+
+    // Multi-byte UTF-8: the CHECK measures BYTES, not codepoints. Each
+    // emoji is 4 bytes in UTF-8, so 1025 emojis = 4100 bytes > 4096
+    // even though codepoint count is well under 4096.
+    let mut emoji_overflow = String::with_capacity(4100);
+    for _ in 0..1025 {
+        emoji_overflow.push('\u{1F600}'); // 😀 — 4 UTF-8 bytes
+    }
+    assert_eq!(emoji_overflow.len(), 4100);
+    assert!(
+        insert(&hash_hex, &emoji_overflow).is_err(),
+        "multi-byte text >4096 bytes must fail; CHECK is byte-count, not codepoint-count"
+    );
+
+    // 1024 emojis = 4096 bytes — passes.
+    let mut emoji_ok = String::with_capacity(4096);
+    for _ in 0..1024 {
+        emoji_ok.push('\u{1F600}');
+    }
+    assert_eq!(emoji_ok.len(), 4096);
+    insert(&hash_hex, &emoji_ok).expect("exactly-4096-byte UTF-8 text must pass");
 }
 
 #[test]
