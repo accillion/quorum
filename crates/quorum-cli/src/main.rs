@@ -32,6 +32,49 @@ enum Cmd {
     Review(ReviewArgs),
     Install(HookArgs),
     Uninstall(HookArgs),
+    /// Phase 1C — inspect dismissal-promotion state. Stage 3 ships the
+    /// read surface (`list`, `show`, `history`); `promote` / `demote` /
+    /// `prune` land in Stage 4.
+    Convention(ConventionArgs),
+}
+
+#[derive(clap::Args, Debug)]
+struct ConventionArgs {
+    /// Operate against `<path>/.quorum/` instead of `$CWD/.quorum/`.
+    /// Used by tests for hermetic isolation; production callers omit.
+    #[arg(long, value_name = "PATH", global = true)]
+    quorum_dir: Option<PathBuf>,
+    #[command(subcommand)]
+    cmd: ConventionCmd,
+}
+
+#[derive(Subcommand, Debug)]
+enum ConventionCmd {
+    /// List dismissals by promotion state.
+    List {
+        /// Filter by state: `candidate`, `local_only`, or
+        /// `promoted_convention`. Omit for all states.
+        #[arg(long, value_name = "STATE")]
+        state: Option<String>,
+        /// Print orphan reports (managed blocks in conventions.md with no
+        /// SQLite row; SQLite rows whose managed block is missing from
+        /// conventions.md). Stage 3 read-only diagnostic.
+        #[arg(long)]
+        orphans: bool,
+        /// Emit a JSON array suitable for piping into `jq`.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show one dismissal's title, body, state, and transition log.
+    Show {
+        /// Hex prefix (≥ 8 chars) or full 64-hex finding_identity_hash.
+        hash: String,
+    },
+    /// Print the `state_transitions` audit log for one dismissal.
+    History {
+        /// Hex prefix (≥ 8 chars) or full 64-hex finding_identity_hash.
+        hash: String,
+    },
 }
 
 #[derive(clap::Args, Debug)]
@@ -264,6 +307,42 @@ async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
             let repo_root = std::env::current_dir().map_err(|e| CliError::Io(e.to_string()))?;
             commands::hooks::uninstall(&repo_root, &args.hook)
         }
+        Cmd::Convention(args) => dispatch_convention(args),
+    }
+}
+
+fn dispatch_convention(args: ConventionArgs) -> Result<Exit, CliError> {
+    match args.cmd {
+        ConventionCmd::List {
+            state,
+            orphans,
+            json,
+        } => {
+            let state = parse_promotion_state(state.as_deref())?;
+            commands::convention::list(args.quorum_dir.as_ref(), state, orphans, json)
+        }
+        ConventionCmd::Show { hash } => {
+            commands::convention::show(args.quorum_dir.as_ref(), &hash)
+        }
+        ConventionCmd::History { hash } => {
+            commands::convention::history(args.quorum_dir.as_ref(), &hash)
+        }
+    }
+}
+
+fn parse_promotion_state(
+    s: Option<&str>,
+) -> Result<Option<quorum_core::PromotionState>, CliError> {
+    match s {
+        None => Ok(None),
+        Some(raw) => quorum_core::PromotionState::from_db_str(raw)
+            .map(Some)
+            .ok_or_else(|| {
+                CliError::Config(format!(
+                    "unknown --state value '{raw}'; expected one of \
+                     candidate, local_only, promoted_convention"
+                ))
+            }),
     }
 }
 

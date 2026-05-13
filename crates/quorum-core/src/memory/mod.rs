@@ -354,6 +354,14 @@ pub trait MemoryStore {
         &self,
         hash: &FindingIdentityHash,
     ) -> Result<Vec<StateTransitionRow>, MemoryError>;
+
+    /// Phase 1C — every row from the `conventions` table joined with its
+    /// `dismissals.title_snapshot`. Used by orphan detection. Sort: stable
+    /// by `conventions_md_block_id` ASC so callers see deterministic
+    /// output.
+    fn list_conventions(
+        &self,
+    ) -> Result<Vec<crate::conventions::ConventionRow>, MemoryError>;
 }
 
 /// Trait-layer validation of a free-text note. Returns `()` if the note

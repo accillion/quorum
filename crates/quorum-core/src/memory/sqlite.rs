@@ -638,6 +638,34 @@ impl MemoryStore for LocalSqliteMemoryStore {
         Ok(out)
     }
 
+    fn list_conventions(
+        &self,
+    ) -> Result<Vec<crate::conventions::ConventionRow>, MemoryError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT c.finding_identity_hash, c.conventions_md_block_id, d.title_snapshot
+                 FROM conventions c
+                 JOIN dismissals d ON d.finding_identity_hash = c.finding_identity_hash
+                 ORDER BY c.conventions_md_block_id ASC",
+            )
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::conventions::ConventionRow {
+                    finding_identity_hash_hex: r.get(0)?,
+                    conventions_md_block_id: r.get(1)?,
+                    title_snapshot: r.get(2)?,
+                })
+            })
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(|e| MemoryError::Backend(Box::new(e)))?);
+        }
+        Ok(out)
+    }
+
     fn load_local_only_conventions(&self) -> Result<Vec<Dismissal>, MemoryError> {
         // §6.1: sort by recurrence_count DESC, last_seen_at DESC so the
         // bundle assembler doesn't have to re-sort. Also includes
