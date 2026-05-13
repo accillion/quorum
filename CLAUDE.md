@@ -162,29 +162,33 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **0.2.1 closed; AC 132 FULL; Phase 1C scoping next.**
+**Active:** **Phase 1C Stage 1 complete; awaiting Rolf signoff before Stage 2 dispatch.**
 
-Phase 0.2.1 was a release-engineering pass on top of Phase 1B —
-cargo-dist sigstore attestation + workflow-driven crates.io publish,
-plus a README polish pass. AC 132 PARTIAL → FULL via live `gh
-attestation verify`. AC 93 / AC 94 re-verified on the new version.
-Full close detail (commit graph, recovery narrative, six process
-learnings) in `HISTORY.md`. `BACKLOG.md` has no open items.
+Stage 1 landed the load-bearing data-model + state-machine spine:
+SQLite v1→v2 migration, `state_transitions` / `conventions` /
+`schema_meta` tables, binary-side forward-compat check, T1
+(`candidate → local_only`) auto-transition inside `record_seen()`,
+`TransitionEvent` returned-value channel (no callback, C3 boundary
+intact), `[memory]` config section with range validation, CLI stderr
+emission gated under `--hook-mode=*`. ACs 134–136, 144–146, 151,
+164–165, 174 landed. See `specs/Quorum-Phase1C-Impl-Plan.md` §"Stage
+1" for plan; commits `d0eabae → fb1668d` for the close window.
 
-**Public release:**
+Stage 2 (bundle assembly + §6.2 bridge) is the next dispatch.
+`MemoryStore::load_local_only_conventions` already exists from
+Stage 1 and is ready for Stage 2 to consume.
+
+**Repo state at Stage 1 close:**
+- 213 tests pass (197 Phase 1B baseline + 16 Phase 1C Stage 1).
+- `cargo clippy --workspace --all-targets -- -D warnings` clean.
+- `cargo fmt --check --all` clean.
+- C3 boundary intact: `grep -r quorum_cli crates/quorum-core/src/` empty.
+- `../lippa` unchanged across the session.
+
+**0.2.1 carryover (last shipped release):**
 - crates.io: [`quorum-core 0.2.1`](https://crates.io/crates/quorum-core/0.2.1), [`quorum-lippa-client 0.2.1`](https://crates.io/crates/quorum-lippa-client/0.2.1), [`quorum-cli 0.2.1`](https://crates.io/crates/quorum-cli/0.2.1).
-- GitHub Release: [`v0.2.1`](https://github.com/accillion/quorum/releases/tag/v0.2.1) — 19 assets + per-target sigstore bundles.
-- CI run: [`25744528118`](https://github.com/accillion/quorum/actions/runs/25744528118) attempt 2 — attestation half end-to-end green; publish-crates half recovered out-of-band (fix at `5a658ef` ships from next tag onward).
-
-**Repo state since Phase 1B close:**
-- 197 tests pass; clippy `-D warnings` + fmt `--check` clean throughout 0.2.1.
-- `accillion/quorum` flipped private → public mid-0.2.1 (permanent). GitHub repo-attestations are billing-plan-gated on private repos; public closes the gate for free. Pre-flip secret scan was clean.
-- Tag `v0.2.1` points at `c052593`; not rewritten across the recovery.
-
-**Next:** Phase 1C scoping. The conventions-promotion state machine
-(`candidate` → `local_only` → `promoted_convention` with cloud-write
-discipline) is the natural next milestone; spec authoring lives in a
-separate session.
+- GitHub Release: [`v0.2.1`](https://github.com/accillion/quorum/releases/tag/v0.2.1).
+- `accillion/quorum` flipped private → public mid-0.2.1 (permanent).
 
 ---
 
