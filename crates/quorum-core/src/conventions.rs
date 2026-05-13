@@ -20,6 +20,19 @@ pub enum ConventionsState {
     Trusted(String),
 }
 
+impl ConventionsState {
+    /// Per-call helper for the bundle path (§6.2 bridge): `true` iff
+    /// `.quorum/conventions.md` is tracked AND HEAD blob is byte-identical
+    /// to the worktree. The bundle assembler consults this once per
+    /// invocation to decide whether `promoted_convention` rows render in
+    /// the conventions section (trusted) or fall back to the memory
+    /// section (dirty/uncommitted/missing). No caching — `load()` is the
+    /// source of truth and re-runs on every bundle assembly.
+    pub fn is_trusted(&self) -> bool {
+        matches!(self, ConventionsState::Trusted(_))
+    }
+}
+
 pub fn load(repo_root: &Path) -> Result<ConventionsState, git2::Error> {
     let rel = ".quorum/conventions.md";
     let path = repo_root.join(".quorum").join("conventions.md");

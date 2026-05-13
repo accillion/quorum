@@ -177,6 +177,21 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         eprintln!("note: .quorum/conventions.md present but not committed (or has uncommitted changes); ignored.");
     }
 
+    // Phase 1C §6.1 — pull `local_only` + `promoted_convention` rows for
+    // the memory subsection. Failure to open the store is fail-soft: a
+    // missing/locked DB drops the subsection (mirrors the dismissals
+    // filter site's fail-soft behavior at L319). The store is only
+    // *opened* here; the filter site below reopens it for the real
+    // dismissals work.
+    let bundle_local_conventions: Vec<quorum_core::memory::Dismissal> =
+        match LocalSqliteMemoryStore::new(&workdir) {
+            Ok(s) => s.load_local_only_conventions().unwrap_or_else(|e| {
+                eprintln!("warning: load_local_only_conventions failed: {e}");
+                Vec::new()
+            }),
+            Err(_) => Vec::new(),
+        };
+
     // ===== Bundle assembly =====
     let bundle_inputs = BundleInputs {
         staged: &staged,
@@ -190,6 +205,8 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         } else {
             None
         },
+        local_conventions: &bundle_local_conventions,
+        local_convention_bundle_cap: cfg.memory.local_convention_bundle_cap as usize,
     };
     let bundle = match assemble(&bundle_inputs) {
         Ok(b) => b,

@@ -14,6 +14,7 @@ use crate::conventions::ConventionsState;
 use crate::deny_list;
 use crate::discovery::Discovery;
 use crate::git::{FileStatus, StagedDiff, StagedFile};
+use crate::memory::{truncate_at_codepoint_boundary, Dismissal, PromotionState};
 
 pub const BUDGET_DIFF: usize = 100 * 1024;
 pub const BUDGET_FILES: usize = 80 * 1024;
@@ -60,6 +61,14 @@ pub struct BundleInputs<'a> {
     pub branch: &'a str,
     pub head_sha: &'a str,
     pub remote_url: Option<&'a str>,
+    /// Phase 1C — rows from `MemoryStore::load_local_only_conventions()`:
+    /// `local_only` plus `promoted_convention` (the latter render-time
+    /// filtered by the §6.2 bridge against `conventions`). Pre-sorted by
+    /// the storage layer (recurrence_count DESC, last_seen_at DESC).
+    pub local_conventions: &'a [Dismissal],
+    /// Phase 1C — `[memory] local_convention_bundle_cap` (default 500,
+    /// range 100..=2048). Applied per-entry `body_snapshot`.
+    pub local_convention_bundle_cap: usize,
 }
 
 pub struct MemoryInput {
@@ -81,10 +90,21 @@ pub fn assemble(inp: &BundleInputs<'_>) -> Result<BundleResult, BundleError> {
     let files_section = files_section(&inp.staged.files, &mut exclusions, &mut files_omitted);
     sections.push(files_section);
 
-    if let Some(mem) = &inp.memory {
-        sections.push(memory_section(mem));
-    } else if let Some(chosen) = &inp.discovery.chosen {
-        sections.push(format!("\n## Memory context\n[not loaded: {chosen}]\n"));
+    // §6.1 memory section: CLAUDE.md / AGENTS.md / .cursorrules followed
+    // by the auto-derived local-conventions subsection. Both share the
+    // 20 KB BUDGET_MEMORY. The bridge fork (§6.2) consults
+    // `inp.conventions.is_trusted()` once per call to decide whether
+    // `promoted_convention` rows render here or in the conventions
+    // section — never both, never neither (modulo budget truncation).
+    let memory_block = build_memory_section(
+        inp.memory.as_ref(),
+        inp.discovery,
+        inp.local_conventions,
+        inp.local_convention_bundle_cap,
+        inp.conventions.is_trusted(),
+    );
+    if !memory_block.is_empty() {
+        sections.push(memory_block);
     }
 
     sections.push(conventions_section(inp.conventions));
@@ -221,9 +241,158 @@ fn files_section(
     s
 }
 
-fn memory_section(mem: &MemoryInput) -> String {
-    let (body, _) = truncate_with_marker(&mem.content, BUDGET_MEMORY, "memory");
-    format!("\n## Repo memory ({})\n{body}\n", mem.source_basename)
+/// §6.1: CLAUDE.md/AGENTS.md/.cursorrules first, then the auto-derived
+/// `## Local conventions (auto-derived)` subsection. Both contribute to
+/// the shared 20 KB `BUDGET_MEMORY`. The subsection header is omitted
+/// when no row would render (an empty header reads as a bug).
+///
+/// `conventions_trusted` is the once-per-call answer from the §6.2
+/// bridge check: `promoted_convention` rows render in the conventions
+/// section when trusted, and fall back here when not.
+fn build_memory_section(
+    mem: Option<&MemoryInput>,
+    disc: &Discovery,
+    local_conventions: &[Dismissal],
+    convention_cap: usize,
+    conventions_trusted: bool,
+) -> String {
+    let mut out = String::new();
+    let mut used = 0usize;
+
+    if let Some(mem) = mem {
+        // Step 1: CLAUDE.md / AGENTS.md / .cursorrules (Phase 1A path).
+        // Reserve no headroom for the subsection here — the subsection
+        // gets whatever bytes remain after this step. The
+        // `[memory truncated …]` marker fires from this step if step 1
+        // alone overflows.
+        let header = format!("\n## Repo memory ({})\n", mem.source_basename);
+        let (body, _) = truncate_with_marker(&mem.content, BUDGET_MEMORY, "memory");
+        let block = format!("{header}{body}\n");
+        out.push_str(&block);
+        used = out.len();
+    } else if let Some(chosen) = &disc.chosen {
+        let block = format!("\n## Memory context\n[not loaded: {chosen}]\n");
+        out.push_str(&block);
+        used = out.len();
+    }
+
+    // Pre-filter the bridge fork in one pass so we know whether the
+    // header should render at all (empty subsection → no header).
+    let entries: Vec<&Dismissal> = local_conventions
+        .iter()
+        .filter(|d| match d.promotion_state {
+            PromotionState::LocalOnly => true,
+            // §6.2 bridge: `promoted_convention` rides the conventions
+            // section when conventions.md is committed-and-clean; falls
+            // back to the memory section otherwise.
+            PromotionState::PromotedConvention => !conventions_trusted,
+            PromotionState::Candidate => false,
+        })
+        .collect();
+    if entries.is_empty() {
+        return out;
+    }
+
+    let subhead = "\n## Local conventions (auto-derived)\n";
+    let total_trunc_marker = format!(
+        "\n[memory truncated: {placeholder} bytes exceeded 20KB; review only top portion]\n",
+        placeholder = "{}"
+    );
+
+    let header_cost = subhead.len();
+    if used + header_cost > BUDGET_MEMORY {
+        // No room for even the header — emit total-section truncation
+        // marker against the dropped bytes (sum of every would-be
+        // rendered entry, approximated by the header itself).
+        let elided = header_cost + entries_total_bytes(&entries, convention_cap);
+        out.push_str(&total_trunc_marker.replace("{}", &elided.to_string()));
+        return out;
+    }
+    out.push_str(subhead);
+    used += header_cost;
+
+    let mut dropped_bytes = 0usize;
+    for d in &entries {
+        let rendered = render_local_convention_entry(d, convention_cap);
+        if used + rendered.len() > BUDGET_MEMORY {
+            dropped_bytes += rendered.len();
+            continue;
+        }
+        out.push_str(&rendered);
+        used += rendered.len();
+    }
+
+    if dropped_bytes > 0 {
+        // SERVICES.md §2 wording: total bytes that exceeded the cap.
+        let marker = total_trunc_marker.replace("{}", &dropped_bytes.to_string());
+        // If the marker itself wouldn't fit, we still emit it — the
+        // 200KB BUDGET_TOTAL check at assemble() will surface any real
+        // overflow. The marker is small (~80 bytes) so this is safe in
+        // practice; the per-section soft cap is informational and the
+        // marker preserves visibility.
+        out.push_str(&marker);
+    }
+
+    out
+}
+
+/// Sum of all entries' rendered sizes — used only to populate the
+/// `bytes exceeded` count when the header itself is too big to fit.
+fn entries_total_bytes(entries: &[&Dismissal], convention_cap: usize) -> usize {
+    entries
+        .iter()
+        .map(|d| render_local_convention_entry(d, convention_cap).len())
+        .sum()
+}
+
+/// §6.1 step 3 per-entry render:
+///
+/// ```text
+/// ### Local convention: <title (≤80 chars)>
+/// <body_snapshot truncated to convention_cap bytes, codepoint-safe>
+/// [local convention truncated: <hash-short>, <bytes-elided> bytes elided; raise [memory] local_convention_bundle_cap to see full text]    <-- only if truncation fired
+/// <!-- recurrence=N, since=YYYY-MM-DD, hash=<12-hex> -->
+/// ```
+///
+/// `body_snapshot` may be `None`; the body line is then omitted.
+/// Title truncation is codepoint-aware (Unicode chars, not bytes) per
+/// common UX conventions for the 80-char field width.
+fn render_local_convention_entry(d: &Dismissal, convention_cap: usize) -> String {
+    let title_trunc: String = d.title_snapshot.chars().take(80).collect();
+    let hash_full = d.finding_identity_hash.to_hex();
+    let hash_short: String = hash_full.chars().take(12).collect();
+    let since_iso = format_since(&d.dismissed_at);
+
+    let mut s = format!("\n### Local convention: {title_trunc}\n");
+    if let Some(body) = &d.body_snapshot {
+        if body.len() <= convention_cap {
+            s.push_str(body);
+            if !body.ends_with('\n') {
+                s.push('\n');
+            }
+        } else {
+            let kept = truncate_at_codepoint_boundary(body, convention_cap);
+            let bytes_elided = body.len() - kept.len();
+            s.push_str(kept);
+            if !kept.ends_with('\n') {
+                s.push('\n');
+            }
+            s.push_str(&format!(
+                "[local convention truncated: {hash_short}, {bytes_elided} bytes elided; raise [memory] local_convention_bundle_cap to see full text]\n"
+            ));
+        }
+    }
+    s.push_str(&format!(
+        "<!-- recurrence={n}, since={since_iso}, hash={hash_short} -->\n",
+        n = d.recurrence_count
+    ));
+    s
+}
+
+fn format_since(t: &time::OffsetDateTime) -> String {
+    // ISO yyyy-MM-dd (UTC date of the first-recorded dismissal).
+    let d = t.to_offset(time::UtcOffset::UTC).date();
+    format!("{:04}-{:02}-{:02}", d.year(), u8::from(d.month()), d.day())
 }
 
 fn conventions_section(state: &ConventionsState) -> String {
