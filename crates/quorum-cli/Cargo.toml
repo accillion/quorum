@@ -23,8 +23,8 @@ name = "quorum"
 path = "src/main.rs"
 
 [dependencies]
-quorum-core = { path = "../quorum-core", version = "0.2.1" }
-quorum-lippa-client = { path = "../quorum-lippa-client", version = "0.2.1" }
+quorum-core = { path = "../quorum-core", version = "0.3.0" }
+quorum-lippa-client = { path = "../quorum-lippa-client", version = "0.3.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
