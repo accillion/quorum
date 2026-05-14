@@ -162,53 +162,63 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **Phase 1C Stage 4 complete; awaiting Rolf signoff before Stage 5 dispatch.**
+**Active:** **Phase 1C implementation complete (Stages 1–5); awaiting Rolf signoff and ship-prep workflow.**
 
-Stage 4 landed the `quorum convention` write surface: three new clap
-subcommands (`promote` / `demote` / `prune`), the conventions.md
-writer with line-ending preservation + fence auto-creation, the
-file-then-SQLite atomic-write helper, three new `MemoryStore` write
-methods (`commit_promote` / `commit_demote` / `prune_candidates`)
-returning `PromoteOutcome` / `DemoteOutcome` enums to surface the
-file-ahead-of-SQLite drift case, and the AC 175 env-var-triggered
-crash harness in `stage4_test_seam`. Promote pre-flight emits parser
-diagnostics + orphan-discrepancy warnings to stderr but never refuses
-the write. T5 (undismiss) cascade verified at the integration level:
-deleting a `promoted_convention` row drops conventions +
-state_transitions rows with no `explicit_undismiss` audit row written
-(audit-silent by design). ACs 137, 139, 140, 141, 142, 143, 148, 149,
-150, 168 (full closure), 173 (full closure), 175 landed.
+Stage 5 landed the TUI surface for the Phase 1C state machine: a new
+`View::History` top-level view reachable via `H` from the main list,
+plus the `p` (promote) and `Shift+D` (demote) keybindings inside it.
+The history list shows short-hash + state char (c/L/P) + recurrence +
+title rows sourced from `MemoryStore::list_all` as a once-per-session
+snapshot (spec §2 non-goal: no live re-fetch). The body pane shows
+title + body_snapshot + state + last 5 transition log entries fetched
+on cursor move. ACs 157, 158, 159, 161 landed.
 
-Title-only promote (no `--text` / `--from-editor`) stores the
-dismissal title verbatim in `conventions.convention_text` to satisfy
-the ≥1-byte CHECK constraint (spec §4.4 silent on this corner;
-resolution per dispatch §2 halt-threshold-2; documented inline +
-close report). Q15 inside-vs-outside-fence dirty detection simplified
-to warn-on-any-discrepancy (non-AC, dispatch latitude). The
-`--from-editor` test seam uses `QUORUM_TEST_EDITOR_BODY` env-var
-injection — hermetic + cross-platform. AC 175 crash seam is exposed
-unconditionally (not `#[cfg(test)]`-gated) because `quorum-cli` has no
-`[lib]` target and integration tests must subprocess the binary; the
-seam is a no-op in production (zero-cost env-var probe + AtomicBool
-load).
+The TUI promote/demote write path is **Path A** — direct
+`MemoryStore::commit_promote` / `commit_demote` invocation plus a thin
+file-then-SQLite orchestrator (`tui_promote` / `tui_demote` in
+`tui/mod.rs`) that reuses the public `quorum_core::conventions`
+helpers (`parse_conventions_md`, `render_conventions_md`,
+`atomic_write`, `BlockToWrite`, `LineEnding`). No stderr emission
+inside the alt screen; failures route through the existing
+`Modal::Error` + status bar. Pre-flight diagnostics + non-canonical
+block warnings (AC 168 stderr surface on the CLI) are silently
+dropped on the TUI side — non-AC by dispatch §2 latitude, documented
+in the close report. The AC 175 crash seam fires between rename and
+`commit_promote` for symmetry with the CLI promote orchestrator.
 
-Stage 3 surfaces unchanged: `convention list/show/history`,
-`ParsedConventionsMd`, `detect_orphans`, `resolve_short_hash`,
-`format_diagnostic` all carry forward and are reused by Stage 4.
+Phase 1B's panic-hook chain (`install_panic_hook` /
+`restore_panic_hook` in `tui/mod.rs`) is untouched. Stage 5 adds no
+top-level `set_hook` calls in production code (AC 161). A new
+`#[cfg(test)]` regression probe in `tui::tests` installs a sentinel
+hook, runs `tui_promote`, then panics + verifies the sentinel fired —
+asserting Stage 5 code never swapped the global hook.
 
-Stage 5 (TUI dismissal-history view + `p` / `D` keybindings) is the
-next dispatch.
+Keybindings landed collision-free against Phase 1B: lowercase `g/G`
+were already the jump-nav pair, lowercase `d` is dismiss; capital
+`H`, `p`, and capital `D` were all unbound prior to Stage 5. Capital-D
+for demote matches the spec's stated avoidance of `d`-for-dismiss
+muscle memory (§B6).
 
-**Repo state at Stage 4 close:**
-- 303 tests pass (272 Stage 3 baseline + 31 Phase 1C Stage 4:
-  14 writer + 18 CLI integration in convention_write.rs, minus 1 from
-  the Stage 3 negative-existence check converted to positive).
+**Phase 1C ship-readiness:** all 39 ACs (133–175 with gaps at
+138/147/160/167) landed across Stages 1–5. Cross-cutting AC 171
+(Phase 1B regression) and AC 172 (clippy/fmt) green throughout.
+Ready for ship-prep workflow (release engineering for v0.3.0, spec
+v1.1 patches, HISTORY.md / SERVICES.md / DATABASE.md / BACKLOG.md
+updates) in a separate Rolf-driven session.
+
+**Repo state at Stage 5 close:**
+- 338 tests pass (303 Stage 4 baseline + 28 new state tests in
+  `tui/state.rs` + 7 new integration-tier tests in `tui/mod.rs`
+  covering `tui_promote` / `tui_demote` round-trips + AC 161 regression).
 - `cargo clippy --workspace --all-targets -- -D warnings` clean.
 - `cargo fmt --check --all` clean.
 - C3 boundary intact: `grep -r quorum_cli crates/quorum-core/src/` empty.
-- No changes under `crates/quorum-cli/src/tui/` or `crates/quorum-lippa-client/`.
-- No new state_transitions enum values (`'deleted'` / `'explicit_undismiss'`
-  remain forbidden).
+- No changes under `crates/quorum-core/` or `crates/quorum-lippa-client/`
+  (zero library / upstream delta this stage).
+- No new CLI subcommands (`crates/quorum-cli/src/main.rs` untouched;
+  `quorum --help` and `quorum convention --help` unchanged).
+- No new top-level `std::panic::set_hook` calls in production code;
+  Phase 1B's install/restore pair is the only call site.
 - `../lippa` untouched by Quorum across the session (pre-existing
   user-authored untracked files in `../lippa/` may drift independently).
 
