@@ -4,6 +4,74 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
+## Phase 1C — Conventions-promotion state machine ✦ 2026-05-13 → 2026-05-14
+
+**Spec:** `specs/Quorum-Phase1C-Spec-v1_1.md` (v1.0 implementation + 3-annotation micro-revision); v1.0, v0.2, v0.1, and three peer-review files retained for lineage.
+**Status:** **Closed.** Five stages green; 39 ACs landed (133–175 with documented gaps at 138 / 147 / 160 / 167); spec lifecycle complete v0.1 → v1.0 → v1.1. v0.3.0 release engineering is a separate milestone (next).
+
+### Commit graph
+
+```
+569fb81  doc(claude): Phase 1C Stage 4 complete — milestone status update
+4d62da4  feat(tui): Phase 1C Stage 5 — dismissal-history view + p/D modals (AC 157/158/159/161)
+78aa258  doc(claude): Phase 1C complete — Stage 5 milestone status update
+ed42c8a  feat(cli): quorum convention promote/demote/prune (T2/T3/T4) + T5 cascade + AC 175 crash harness
+4fca1e4  feat(conventions): writer with byte-preservation + line-ending preservation + fence auto-create
+ab014e6  test(lippa-seam): assert /api/v1/memory/propose not in client call-site set (AC 166)
+61ce249  test(cli): convention read-surface integration suite
+e8b7e4c  feat(cli): quorum convention subcommand group (list / show / history)
+0af7203  feat(memory): read-only queries (list_by_state, find_by_short_hash, load_transitions)
+057ffcf  feat(conventions): managed-section parser with byte-range preservation
+ebad804  doc(claude): Phase 1C Stage 3 complete — milestone status update
+6a7596b  chore(stage-3): clippy + fmt — box ShortHashResolution::Exact, collapse helpers
+3a10015  doc(claude): Phase 1C Stage 2 complete — milestone status update
+d94ba14  feat(bundle): §6.1 memory subsection + §6.2 promote-but-uncommitted bridge
+023ecf5  doc(claude): Phase 1C Stage 1 complete — milestone status update
+fb1668d  feat(memory): T1 auto-promote + TransitionEvent + CLI stderr emission
+3247046  feat(config): add [memory] section with range-validated keys
+d0eabae  feat(memory): SQLite v1->v2 migration + forward-compat check
+```
+
+Plus the Phase 1C ship-prep close commits (spec v1.1 + SERVICES.md §6.1 + this HISTORY.md entry + BACKLOG.md + CLAUDE.md status).
+
+### What shipped
+
+- **Stage 1 — Data model + state machine spine.** SQLite v1→v2 migration (idempotent, single transaction, no backfill); `state_transitions` / `conventions` / `schema_meta` tables; binary-side forward-compat check on every DB open; T1 (`candidate → local_only`) auto-transition inside `record_seen()`; `TransitionEvent` returned-value channel; `[memory]` config section with range-validated keys.
+- **Stage 2 — Bundle assembly + bridge.** `## Local conventions (auto-derived)` subsection inside the existing 20 KB memory section; per-entry truncation marker (§5.3) + total-section truncation marker (§6.1 step 4) with exact spec-wording compliance; `<<<QUORUM_REPO_CONTENT_BEGIN>>>` delimiter wrapping preserved (AC 170); §6.2 promote-but-uncommitted bridge as render-time per-row fork. Zero new libgit2 calls — reuses existing Phase 1A `ConventionsState` already loaded per `quorum review`.
+- **Stage 3 — CLI read paths + parser + orphan detection.** `quorum convention list / show / history` subcommands with `--state` filter, `--json`, short-hash resolution (≥8 hex, ambiguity → exit 2), `--quorum-dir` group-scoped flag; conventions.md parser preserving `above_fence` / `below_fence` byte slices; orphan detection both directions (file-has-block-no-row + row-has-no-block) via `list --orphans`; Lippa-seam structural test asserting `/api/v1/memory/propose` absent + Phase 1A/1B endpoint allowlist held.
+- **Stage 4 — CLI write paths + writer + T2/T3/T4/T5.** Conventions.md writer with round-trip byte-preservation + line-ending detect (LF / CRLF) + auto-create section fence on first promote + first-line marker on fresh-file only; temp-file + atomic rename helper (`<path>.tmp.<pid>.<nanos>`); `promote --text` / `--from-editor` (`QUORUM_TEST_EDITOR_BODY` injection for tests); `demote` with Q7 missing-file no-op; `prune --dry-run` / `--yes` honoring `candidate_expire_days` (0 = disabled); T5 cascade audit-silent verification on Phase 1B's existing undismiss path; AC 175 crash harness via `QUORUM_TEST_CRASH_AFTER_RENAME` env-var seam with idempotent re-promote recovery.
+- **Stage 5 — TUI dismissal-history view + `p` / `D` modals.** New `View::History` accessed via `H` from main (spec §5.2-mandated keybinding, verified collision-free); `p` on `local_only` rows opens a multi-line promote modal pre-seeded with the dismissal title; `Shift+D` on `promoted_convention` rows opens a Y/N confirmation (capital Y required); modals reject on wrong-state rows at the keystroke level (no modal opens); Phase 1B's panic-hook chain preserved unchanged (no new `set_hook` calls); body-pane transition log fetched per cursor move via indexed `state_transitions` reads.
+
+### Spec lifecycle
+
+- **Scoping notes** (`Quorum-Phase1C-Scoping-notes.md`) → **v0.1 draft** (committed for peer review) → **three peer reviews A/B/C** (unanimous PATCH-REQUIRED; ~25 convergent items) → **v0.2 draft** (adjudicated fixes applied; §3.3 Architecture B fix mid-drafting) → **v1.0 promotion** (intermediate v0.2 superseded; v0.1, v0.2, and peer reviews retained as lineage) → **v1.0 implementation** (Stages 1–5) → **v1.1 micro-revision** (3 annotations reconciling spec to as-built; v1.0 retained).
+
+### Live verification
+
+- 39 ACs green across all 5 stages, each with a named test pointer in the stage close reports.
+- 338 tests passing at close (197 Phase 1B baseline → 338 Phase 1C close, +141 tests).
+- `cargo build --release` / `cargo test --workspace` / `cargo clippy --workspace --all-targets -- -D warnings` / `cargo fmt --check --all` all green throughout.
+- C3 crate-boundary intact at every stage close (`grep -r quorum_cli crates/quorum-core/src/` empty).
+- `../lippa` working tree untouched by Quorum across all 5 stages (only pre-existing user-authored untracked files drifted, independently).
+
+### Process learnings (6)
+
+- **Three-category halt threshold evolved across the stages.** Stage 1 surfaced category 1 (spec-contradicts-Phase-1B-reality, e.g. `finding_identity_hash` column type as BLOB in spec but TEXT in Phase 1B reality); Stage 2 surfaced category 2 (spec-wording-ambiguous-with-obvious-resolution, e.g. "80 chars" = codepoints, not bytes, given §5.4's explicit "bytes" elsewhere); Stage 3 surfaced category 3 (spec-references-Phase-1A-pattern-that-doesnt-actually-exist, e.g. `--quorum-dir` was described as "Phase 1A pattern" but was actually new). The category 1 case should halt for adjudication; categories 2 and 3 are CC's call with documentation + close-report surfacing. Future spec-driven phases should codify the three-category rule in the dispatch from Stage 1 rather than discovering it.
+- **Dispatch-author errors recurred at two stages.** Stage 4's `#[cfg(test)]`-only test seam wording was incorrect (cross-crate visibility doesn't work that way in Rust); Stage 5's "writer + atomicity encapsulated inside `commit_promote`" was inaccurate (commit_promote is only the SQLite transaction; the file write lives in the orchestrator). CC navigated both correctly + documented + surfaced. Lesson: chat-side dispatch reviews would catch these earlier; for stages with complex Rust-testing surface or cross-crate orchestration, the dispatch should be cross-checked against the actual code surface before firing.
+- **Spec/Phase-1B reality lag is the highest-leverage pre-implementation check.** v1.0 spec was authored without verifying `dismissals.finding_identity_hash` column type against Phase 1B reality; the BLOB-vs-TEXT contradiction surfaced at Stage 1 implementation. A "Phase 1B cross-reference pass" before peer review (verify every column type, struct field, function signature the new spec references actually exists as described) would catch these cheaply.
+- **Commit granularity drifted toward consolidation when WIs shared files.** Stages 4 and 5 consolidated planned 4–10 WIs into 1–3 commits because the WIs touched the same files (state.rs / panels.rs / mod.rs at Stage 5; convention.rs / sqlite.rs at Stage 4). The dispatch's per-WI split was suggestion, not contract; CC's call was defensible. For future stages where bisect granularity matters, dispatches should either (a) explicitly allow consolidation with "natural commit boundaries" wording, or (b) require finer splits with the understanding that some churn is acceptable.
+- **Non-AC nuance simplification handled cleanly.** Q15 inside-vs-outside-fence detection and AC 168 TUI pre-flight diagnostics were both surfaced + simplified + deferred to BACKLOG at Stage 4 / Stage 5. The pattern (surface in close report; queue as BACKLOG; document inline) preserves spec intent without holding implementation hostage to non-AC UX details.
+- **Test count estimates were significantly low.** Plan estimated ~50–80 total Phase 1C tests; actual was +141 (Phase 1B's 197 → 338 close). State-machine + parser + writer surfaces naturally generate many unit tests per AC; future test-count estimation for stages with similar foundations should scale 2–3× from intuition.
+
+### Stats
+
+- **338 tests passing** at close (+141 from Phase 1B's 197 baseline).
+- Per-stage test deltas: 197 → 213 (+16) → 228 (+15) → 272 (+44) → 303 (+31) → 338 (+35).
+- 18 stage-implementation commits land on `main` for Phase 1C (4 + 2 + 6 + 2 + 2 + close paperwork).
+- Stage estimates vs actuals: Stage 1 6–8h (~within estimate); Stage 2 4–6h (~within); Stage 3 6–8h (~within); Stage 4 8–10h (~within, heaviest); Stage 5 4–6h (~within, lowest-risk per pre-Stage forward-looking note).
+
+---
+
 ## Phase 0.2.1 — Release engineering: sigstore attestation + workflow-driven publish ✦ 2026-05-12
 
 **Spec:** `BACKLOG.md` 0.2.1 entry (now closed and removed).
