@@ -25,3 +25,6 @@ Thumbs.db
 
 # Local dev credentials, never commit
 .env
+
+# CarryForward / cross-project spec drops (not Quorum content)
+packages/
