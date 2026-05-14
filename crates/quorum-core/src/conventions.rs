@@ -495,6 +495,289 @@ pub fn detect_orphans(conventions_md_path: &Path, db_rows: &[ConventionRow]) -> 
     }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 1C Stage 4 — writer + atomic file write helper (AC 137/148/149/150).
+//
+// The writer is the inverse of `parse_conventions_md`: it emits a canonical
+// byte layout that round-trips through the parser when the input was itself
+// produced by this writer. Above-fence and below-fence bytes from
+// `ParsedConventionsMd` are emitted verbatim (AC 149 — byte-for-byte
+// preservation). The managed section is rewritten from the supplied
+// `BlockToWrite` list; line endings honor the caller-detected `LineEnding`.
+//
+// Atomicity: `atomic_write_managed_section` writes via a temp file in the
+// same directory as the destination, then `fs::rename` for the visible-side
+// commit (B5 ordering). The caller (Stage 4 `promote` / `demote`) wraps the
+// SQLite COMMIT after the rename returns Ok.
+
+const MARKER_DO_NOT_EDIT: &str =
+    "<!-- DO NOT EDIT MANUALLY: this section is rewritten by `quorum convention promote/demote`. -->";
+const MARKER_DEMOTE_HINT: &str =
+    "<!-- To remove an auto-derived convention, run `quorum convention demote <hash>`. -->";
+
+/// Line-ending convention for a conventions.md file. Detected from existing
+/// content via [`LineEnding::detect`]; a fresh file defaults to LF (spec §4.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineEnding {
+    Lf,
+    Crlf,
+}
+
+impl LineEnding {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LineEnding::Lf => "\n",
+            LineEnding::Crlf => "\r\n",
+        }
+    }
+
+    /// Detect the line ending from raw bytes. The first line break in the
+    /// buffer wins: `\r\n` => CRLF, lone `\n` => LF. Empty / no-line-break
+    /// input falls back to LF (spec §4.4: "On a new file, defaults to LF").
+    pub fn detect(input: &[u8]) -> LineEnding {
+        let mut i = 0;
+        while i < input.len() {
+            if input[i] == b'\n' {
+                if i > 0 && input[i - 1] == b'\r' {
+                    return LineEnding::Crlf;
+                }
+                return LineEnding::Lf;
+            }
+            i += 1;
+        }
+        LineEnding::Lf
+    }
+}
+
+/// One managed block, fully described for the writer. `id` is the 12-hex
+/// prefix of `finding_identity_hash`; `version` is the on-disk format
+/// version (always 1 in Phase 1C). `title` becomes the `### Convention:
+/// <title>` header line; `body` is the user-supplied prose (may span
+/// multiple lines; may be empty for title-only promotes per §4.4).
+#[derive(Debug, Clone)]
+pub struct BlockToWrite<'a> {
+    pub id: &'a str,
+    pub version: u32,
+    pub title: &'a str,
+    pub body: &'a str,
+}
+
+impl<'a> BlockToWrite<'a> {
+    /// Round-trip helper: reconstruct a `BlockToWrite` from a `ParsedBlock`
+    /// produced by `parse_conventions_md` on this writer's own output.
+    ///
+    /// The canonical body layout this writer emits is:
+    /// ```text
+    /// <LE>### Convention: <TITLE><LE>            (when body empty)
+    /// <LE>### Convention: <TITLE><LE><LE><BODY><LE>  (when body non-empty)
+    /// ```
+    /// where `<LE>` is the file's line ending. `from_parsed_block` reverses
+    /// this layout to recover `title` and `body` as borrowed slices of the
+    /// original file. Returns `None` if the block's body does not match
+    /// the canonical layout (e.g., user hand-edited it inside the fence).
+    pub fn from_parsed_block(pb: &ParsedBlock<'a>) -> Option<Self> {
+        let mut body = pb.body;
+        // Strip one leading line break.
+        body = body.strip_prefix("\r\n").or_else(|| body.strip_prefix('\n'))?;
+        // First line is the header.
+        let (first_line, rest) = match body.find('\n') {
+            Some(idx) => (&body[..idx], &body[idx + 1..]),
+            None => (body, ""),
+        };
+        let header = first_line.trim_end_matches('\r');
+        let title = header.strip_prefix("### Convention: ")?;
+        if rest.is_empty() {
+            // No body.
+            return Some(BlockToWrite {
+                id: pb.id,
+                version: pb.version,
+                title,
+                body: "",
+            });
+        }
+        // Expect a blank line before the body.
+        let mut after_blank = rest;
+        after_blank = after_blank
+            .strip_prefix("\r\n")
+            .or_else(|| after_blank.strip_prefix('\n'))?;
+        // Strip exactly one trailing line break before the close marker.
+        let body_part = after_blank
+            .strip_suffix("\r\n")
+            .or_else(|| after_blank.strip_suffix('\n'))
+            .unwrap_or(after_blank);
+        Some(BlockToWrite {
+            id: pb.id,
+            version: pb.version,
+            title,
+            body: body_part,
+        })
+    }
+}
+
+/// Render `parsed.above_fence + managed-section + parsed.below_fence` into
+/// a fresh byte buffer.
+///
+/// Behavior (spec §4.4):
+/// - `parsed.above_fence` emitted byte-for-byte (AC 149).
+/// - `parsed.below_fence` emitted byte-for-byte (AC 149).
+/// - Section fence auto-created if `parsed.fence_present == false`
+///   (AC 148).
+/// - First-line marker `<!-- quorum-managed-conventions-md v=1 -->` written
+///   only on fresh files (`parsed.above_fence` empty AND fence absent).
+///   Preserved by `parsed.above_fence` byte-passthrough when already present.
+/// - Line endings: every inserted line uses `le.as_str()` (AC 150).
+/// - Duplicate-id `blocks_to_write` is a caller bug. In debug builds we
+///   panic via `debug_assert!`; in release the writer emits all entries
+///   (last-wins behavior on re-parse).
+pub fn render_conventions_md(
+    parsed: &ParsedConventionsMd<'_>,
+    blocks_to_write: &[BlockToWrite<'_>],
+    le: LineEnding,
+) -> Vec<u8> {
+    debug_assert!(
+        unique_ids(blocks_to_write),
+        "render_conventions_md called with duplicate-id blocks; caller must dedupe"
+    );
+
+    let mut out: Vec<u8> = Vec::with_capacity(
+        parsed.above_fence.len() + parsed.below_fence.len() + 256 + blocks_to_write.len() * 256,
+    );
+    let lebytes = le.as_str().as_bytes();
+
+    let fresh_file = parsed.above_fence.is_empty() && !parsed.fence_present;
+    if fresh_file {
+        // §4.4 last bullet: the first-line marker is written on freshly-
+        // created files only. Existing files without it keep their absence
+        // (parsed.above_fence carries the existing first bytes).
+        out.extend_from_slice(MARKER_FILE_FIRST_LINE.as_bytes());
+        out.extend_from_slice(lebytes);
+    } else {
+        out.extend_from_slice(parsed.above_fence);
+    }
+
+    // Managed-section open marker + DO NOT EDIT comments + blank line.
+    out.extend_from_slice(MARKER_OPEN_SECTION.as_bytes());
+    out.extend_from_slice(lebytes);
+    out.extend_from_slice(MARKER_DO_NOT_EDIT.as_bytes());
+    out.extend_from_slice(lebytes);
+    out.extend_from_slice(MARKER_DEMOTE_HINT.as_bytes());
+    out.extend_from_slice(lebytes);
+
+    // Blocks, separated by one blank line. Each block is rendered as:
+    //   <LE><!-- quorum:convention id=ID v=V --><LE>### Convention: T<LE>
+    //   [<LE><body><LE>] <!-- /quorum:convention --><LE>
+    for block in blocks_to_write {
+        out.extend_from_slice(lebytes); // blank line before each block
+        emit_block(&mut out, block, lebytes);
+        out.extend_from_slice(lebytes);
+    }
+
+    // Managed-section close marker. Always preceded by exactly one blank
+    // line (one extra LE) whether or not there were blocks — keeps the
+    // empty-section layout symmetric with the no-block fresh-file case.
+    if blocks_to_write.is_empty() {
+        out.extend_from_slice(lebytes);
+    }
+    out.extend_from_slice(MARKER_CLOSE_SECTION.as_bytes());
+
+    out.extend_from_slice(parsed.below_fence);
+    out
+}
+
+fn unique_ids(blocks: &[BlockToWrite<'_>]) -> bool {
+    let mut seen = std::collections::HashSet::with_capacity(blocks.len());
+    blocks.iter().all(|b| seen.insert(b.id))
+}
+
+fn emit_block(out: &mut Vec<u8>, block: &BlockToWrite<'_>, le: &[u8]) {
+    out.extend_from_slice(b"<!-- quorum:convention id=");
+    out.extend_from_slice(block.id.as_bytes());
+    out.extend_from_slice(b" v=");
+    out.extend_from_slice(block.version.to_string().as_bytes());
+    out.extend_from_slice(b" -->");
+    out.extend_from_slice(le);
+    out.extend_from_slice(b"### Convention: ");
+    out.extend_from_slice(block.title.as_bytes());
+    out.extend_from_slice(le);
+    if !block.body.is_empty() {
+        out.extend_from_slice(le);
+        out.extend_from_slice(block.body.as_bytes());
+        if !block.body.ends_with('\n') {
+            out.extend_from_slice(le);
+        }
+    }
+    out.extend_from_slice(b"<!-- /quorum:convention -->");
+}
+
+/// Atomic-on-same-volume write: write `bytes` to a sibling temp file, then
+/// `fs::rename` into place. Spec §3.2 T2 step 2 — the file-side commit
+/// point. The SQLite COMMIT MUST run only after this returns `Ok` (B5
+/// ordering from the v0.2 adjudication).
+///
+/// The temp file lives in `path.parent()` so the rename stays on the same
+/// filesystem (POSIX) / volume (Windows `MoveFileExW`). On rename failure
+/// the temp file is removed (best-effort) and the IO error returned.
+pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "atomic_write: target path has no parent",
+        )
+    })?;
+    let pid = std::process::id();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "atomic_write: target path has no file name",
+            )
+        })?
+        .to_string_lossy();
+    let temp_name = format!(".{file_name}.tmp.{pid}.{nanos}");
+    let temp_path = parent.join(temp_name);
+
+    // Write bytes to the temp file, fsync, then rename.
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&temp_path)?;
+        f.write_all(bytes)?;
+        // Best-effort fsync to ensure the bytes hit disk before the rename
+        // is visible — Windows tolerates a missing fsync, but POSIX-on-EXT4
+        // can leave a zero-length file if power-loss races the rename.
+        let _ = f.sync_all();
+    }
+    if let Err(e) = std::fs::rename(&temp_path, path) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(e);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) mod stage4_test_seam {
+    //! AC 175 crash harness: a `#[cfg(test)]` panic seam fired between
+    //! `atomic_write` returning Ok and the caller's SQLite COMMIT. Lets
+    //! `crates/quorum-cli/tests/convention_write.rs` verify the
+    //! file-ahead-of-SQLite recovery contract by panicking the promote
+    //! transaction mid-flight and asserting (a) the file holds the new
+    //! block and (b) SQLite state is still `local_only`, then (c)
+    //! idempotent re-promote heals.
+    use std::sync::atomic::{AtomicBool, Ordering};
+    pub static FAIL_AFTER_RENAME: AtomicBool = AtomicBool::new(false);
+
+    pub fn maybe_panic_after_rename() {
+        if FAIL_AFTER_RENAME.load(Ordering::SeqCst) {
+            panic!("AC 175 crash harness fired between fs::rename and SQLite COMMIT");
+        }
+    }
+}
+
 pub fn load(repo_root: &Path) -> Result<ConventionsState, git2::Error> {
     let rel = ".quorum/conventions.md";
     let path = repo_root.join(".quorum").join("conventions.md");
@@ -755,5 +1038,266 @@ body
         std::fs::write(&path, raw).unwrap();
         let report = detect_orphans(&path, &[]);
         assert!(!report.parser_diagnostics.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod writer_tests {
+    //! Phase 1C Stage 4 — writer + atomic_write coverage (AC 137/148/149/150).
+
+    use super::*;
+    use tempfile::TempDir;
+
+    fn parse_then_render(bytes: &[u8], le: LineEnding) -> Vec<u8> {
+        let (parsed, diags) = parse_conventions_md(bytes);
+        assert!(diags.is_empty(), "fixture must parse cleanly: {diags:?}");
+        let blocks: Vec<BlockToWrite<'_>> = parsed
+            .blocks
+            .iter()
+            .map(|pb| {
+                BlockToWrite::from_parsed_block(pb).unwrap_or_else(|| {
+                    panic!("from_parsed_block failed on canonical fixture block id={}", pb.id)
+                })
+            })
+            .collect();
+        render_conventions_md(&parsed, &blocks, le)
+    }
+
+    fn write_then_round_trip(blocks: &[BlockToWrite<'_>], le: LineEnding) -> Vec<u8> {
+        // Fresh-file render → first-line marker + fence + blocks.
+        let empty = ParsedConventionsMd {
+            above_fence: b"",
+            below_fence: b"",
+            fence_present: false,
+            first_line_marker_present: false,
+            blocks: Vec::new(),
+        };
+        render_conventions_md(&empty, blocks, le)
+    }
+
+    #[test]
+    fn line_ending_detect_basic() {
+        assert_eq!(LineEnding::detect(b""), LineEnding::Lf);
+        assert_eq!(LineEnding::detect(b"no breaks here"), LineEnding::Lf);
+        assert_eq!(LineEnding::detect(b"line1\nline2"), LineEnding::Lf);
+        assert_eq!(LineEnding::detect(b"line1\r\nline2"), LineEnding::Crlf);
+        // Mixed: first wins.
+        assert_eq!(LineEnding::detect(b"first\nthen\r\nrest"), LineEnding::Lf);
+        assert_eq!(LineEnding::detect(b"first\r\nthen\nrest"), LineEnding::Crlf);
+    }
+
+    #[test]
+    fn fresh_file_emits_first_line_marker_and_fence() {
+        let blocks: Vec<BlockToWrite<'_>> = Vec::new();
+        let bytes = write_then_round_trip(&blocks, LineEnding::Lf);
+        let s = std::str::from_utf8(&bytes).unwrap();
+        assert!(
+            s.starts_with("<!-- quorum-managed-conventions-md v=1 -->\n"),
+            "fresh file starts with first-line marker; got: {s:?}"
+        );
+        assert!(s.contains("<!-- quorum:managed-section v=1 -->\n"));
+        assert!(s.contains("<!-- /quorum:managed-section -->"));
+        // Re-parse: marker preserved, fence present, zero blocks.
+        let (parsed, diags) = parse_conventions_md(&bytes);
+        assert!(diags.is_empty());
+        assert!(parsed.first_line_marker_present);
+        assert!(parsed.fence_present);
+        assert!(parsed.blocks.is_empty());
+    }
+
+    #[test]
+    fn existing_file_without_marker_preserves_marker_absence() {
+        // User authored a conventions.md with no Quorum marker — promotion
+        // appends fence only, keeping the user's first line intact.
+        let above = b"# Project conventions\n\nA hand-rolled file.\n";
+        let parsed = ParsedConventionsMd {
+            above_fence: above,
+            below_fence: b"",
+            fence_present: false,
+            first_line_marker_present: false,
+            blocks: Vec::new(),
+        };
+        let block = BlockToWrite {
+            id: "a1b2c3d4e5f6",
+            version: 1,
+            title: "test",
+            body: "",
+        };
+        let bytes = render_conventions_md(&parsed, &[block], LineEnding::Lf);
+        let s = std::str::from_utf8(&bytes).unwrap();
+        assert!(
+            !s.starts_with("<!-- quorum-managed-conventions-md"),
+            "marker absence preserved on existing file"
+        );
+        assert!(s.starts_with("# Project conventions\n"));
+        assert!(s.contains("### Convention: test\n"));
+    }
+
+    #[test]
+    fn empty_body_block_canonical_layout() {
+        let block = BlockToWrite {
+            id: "a1b2c3d4e5f6",
+            version: 1,
+            title: "title-only",
+            body: "",
+        };
+        let bytes = write_then_round_trip(&[block], LineEnding::Lf);
+        let s = std::str::from_utf8(&bytes).unwrap();
+        // Expect the open marker followed by header line, then close marker
+        // with NO blank line in between (empty-body case).
+        assert!(s.contains("<!-- quorum:convention id=a1b2c3d4e5f6 v=1 -->\n### Convention: title-only\n<!-- /quorum:convention -->"));
+    }
+
+    #[test]
+    fn non_empty_body_block_canonical_layout() {
+        let block = BlockToWrite {
+            id: "a1b2c3d4e5f6",
+            version: 1,
+            title: "with body",
+            body: "Hello\nbody.",
+        };
+        let bytes = write_then_round_trip(&[block], LineEnding::Lf);
+        let s = std::str::from_utf8(&bytes).unwrap();
+        assert!(s.contains(
+            "<!-- quorum:convention id=a1b2c3d4e5f6 v=1 -->\n### Convention: with body\n\nHello\nbody.\n<!-- /quorum:convention -->"
+        ), "got: {s}");
+    }
+
+    #[test]
+    fn round_trip_lf_single_block() {
+        // AC 149 round-trip: writer-produced bytes round-trip through the
+        // parser and back.
+        let blocks = [BlockToWrite {
+            id: "a1b2c3d4e5f6",
+            version: 1,
+            title: "the title",
+            body: "first line\nsecond line",
+        }];
+        let first = write_then_round_trip(&blocks, LineEnding::Lf);
+        let second = parse_then_render(&first, LineEnding::Lf);
+        assert_eq!(first, second, "round-trip is byte-equal (LF)");
+    }
+
+    #[test]
+    fn round_trip_crlf_single_block() {
+        let blocks = [BlockToWrite {
+            id: "a1b2c3d4e5f6",
+            version: 1,
+            title: "crlf-title",
+            body: "windows body",
+        }];
+        let first = write_then_round_trip(&blocks, LineEnding::Crlf);
+        let second = parse_then_render(&first, LineEnding::Crlf);
+        assert_eq!(first, second, "round-trip is byte-equal (CRLF)");
+        // Confirm CRLF actually emitted.
+        assert!(first.windows(2).any(|w| w == b"\r\n"), "CRLF must appear");
+    }
+
+    #[test]
+    fn round_trip_two_blocks() {
+        let blocks = [
+            BlockToWrite {
+                id: "a1b2c3d4e5f6",
+                version: 1,
+                title: "first",
+                body: "body A",
+            },
+            BlockToWrite {
+                id: "9876fedcba01",
+                version: 1,
+                title: "second",
+                body: "",
+            },
+        ];
+        let first = write_then_round_trip(&blocks, LineEnding::Lf);
+        let second = parse_then_render(&first, LineEnding::Lf);
+        assert_eq!(first, second, "two-block round-trip byte-equal");
+    }
+
+    #[test]
+    fn above_fence_bytes_preserved_byte_for_byte() {
+        // AC 149: arbitrary above-fence content survives.
+        let above = b"# header with weird \xc3\xa9 chars\n\nand tabs\there\nplus trailing\r\n";
+        let parsed = ParsedConventionsMd {
+            above_fence: above,
+            below_fence: b"\n\nfooter line\n",
+            fence_present: false,
+            first_line_marker_present: false,
+            blocks: Vec::new(),
+        };
+        let block = BlockToWrite {
+            id: "a1b2c3d4e5f6",
+            version: 1,
+            title: "t",
+            body: "b",
+        };
+        let bytes = render_conventions_md(&parsed, &[block], LineEnding::Lf);
+        assert!(bytes.starts_with(above));
+        assert!(bytes.ends_with(b"\n\nfooter line\n"));
+    }
+
+    #[test]
+    fn from_parsed_block_recovers_canonical_layout() {
+        // Round-trip a hand-built canonical file through parse → from_parsed
+        // → render and verify byte equality.
+        let blocks = [BlockToWrite {
+            id: "abcdef012345",
+            version: 1,
+            title: "round-trip me",
+            body: "some\nbody\nlines",
+        }];
+        let original = write_then_round_trip(&blocks, LineEnding::Lf);
+        let (parsed, diags) = parse_conventions_md(&original);
+        assert!(diags.is_empty());
+        assert_eq!(parsed.blocks.len(), 1);
+        let recovered = BlockToWrite::from_parsed_block(&parsed.blocks[0]).unwrap();
+        assert_eq!(recovered.title, "round-trip me");
+        assert_eq!(recovered.body, "some\nbody\nlines");
+    }
+
+    #[test]
+    fn from_parsed_block_returns_none_on_non_canonical() {
+        // A hand-edited block whose body doesn't start with the canonical
+        // `<LE>### Convention: ...` layout should not round-trip silently.
+        let raw = "above\n<!-- quorum:managed-section v=1 -->\n<!-- quorum:convention id=a1b2c3d4e5f6 v=1 -->\nHand-edited body — no header line.\n<!-- /quorum:convention -->\n<!-- /quorum:managed-section -->\n";
+        let (parsed, _) = parse_conventions_md(raw.as_bytes());
+        assert_eq!(parsed.blocks.len(), 1);
+        // Header_line is non-empty (parser picks first non-blank line) but
+        // doesn't start with `### Convention: `, so from_parsed_block
+        // refuses.
+        assert!(BlockToWrite::from_parsed_block(&parsed.blocks[0]).is_none());
+    }
+
+    #[test]
+    fn atomic_write_happy_path() {
+        let td = TempDir::new().unwrap();
+        let path = td.path().join("conventions.md");
+        atomic_write(&path, b"hello world").unwrap();
+        let got = std::fs::read(&path).unwrap();
+        assert_eq!(got, b"hello world");
+        // No temp leftover.
+        let entries: Vec<_> = std::fs::read_dir(td.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(entries.len(), 1, "no temp file leaked");
+    }
+
+    #[test]
+    fn atomic_write_overwrites_existing() {
+        let td = TempDir::new().unwrap();
+        let path = td.path().join("conventions.md");
+        std::fs::write(&path, b"old content").unwrap();
+        atomic_write(&path, b"new content").unwrap();
+        let got = std::fs::read(&path).unwrap();
+        assert_eq!(got, b"new content");
+    }
+
+    #[test]
+    fn atomic_write_rejects_path_without_parent() {
+        // An empty / root path has no parent — we surface InvalidInput
+        // instead of silently writing to CWD.
+        let err = atomic_write(Path::new(""), b"x").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
     }
 }
