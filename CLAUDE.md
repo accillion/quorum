@@ -162,70 +162,31 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **Phase 1C implementation complete (Stages 1–5); awaiting Rolf signoff and ship-prep workflow.**
+**Active:** **Phase 1C closed; spec v1.1 committed; v0.3.0 release engineering next.**
 
-Stage 5 landed the TUI surface for the Phase 1C state machine: a new
-`View::History` top-level view reachable via `H` from the main list,
-plus the `p` (promote) and `Shift+D` (demote) keybindings inside it.
-The history list shows short-hash + state char (c/L/P) + recurrence +
-title rows sourced from `MemoryStore::list_all` as a once-per-session
-snapshot (spec §2 non-goal: no live re-fetch). The body pane shows
-title + body_snapshot + state + last 5 transition log entries fetched
-on cursor move. ACs 157, 158, 159, 161 landed.
+Phase 1C shipped the conventions-promotion state machine — SQLite v1→v2
+migration with `state_transitions` / `conventions` / `schema_meta` tables;
+T1–T5 state machine; `quorum convention list/show/history/promote/demote/prune`
+CLI surface; `## Local conventions (auto-derived)` bundle subsection +
+§6.2 promote-but-uncommitted bridge; TUI dismissal-history view with
+`p` / `Shift+D` modals; AC 175 crash harness with idempotent re-promote
+recovery. 5 stages, 39 ACs, 338 tests (+141 from Phase 1B baseline).
 
-The TUI promote/demote write path is **Path A** — direct
-`MemoryStore::commit_promote` / `commit_demote` invocation plus a thin
-file-then-SQLite orchestrator (`tui_promote` / `tui_demote` in
-`tui/mod.rs`) that reuses the public `quorum_core::conventions`
-helpers (`parse_conventions_md`, `render_conventions_md`,
-`atomic_write`, `BlockToWrite`, `LineEnding`). No stderr emission
-inside the alt screen; failures route through the existing
-`Modal::Error` + status bar. Pre-flight diagnostics + non-canonical
-block warnings (AC 168 stderr surface on the CLI) are silently
-dropped on the TUI side — non-AC by dispatch §2 latitude, documented
-in the close report. The AC 175 crash seam fires between rename and
-`commit_promote` for symmetry with the CLI promote orchestrator.
+**Spec lifecycle:** v0.1 (peer-reviewed) → v1.0 (implementation target) → v1.1
+(three micro-revisions reconciling spec to as-built). Full close detail in
+`HISTORY.md` Phase 1C entry; service contract extensions in `SERVICES.md`
+§6.1; six BACKLOG follow-ups queued for v0.4 or later.
 
-Phase 1B's panic-hook chain (`install_panic_hook` /
-`restore_panic_hook` in `tui/mod.rs`) is untouched. Stage 5 adds no
-top-level `set_hook` calls in production code (AC 161). A new
-`#[cfg(test)]` regression probe in `tui::tests` installs a sentinel
-hook, runs `tui_promote`, then panics + verifies the sentinel fired —
-asserting Stage 5 code never swapped the global hook.
+**Repo state at Phase 1C close:**
+- 338 tests pass; clippy `-D warnings` + fmt `--check` clean throughout.
+- `accillion/quorum` remains public (irreversible from 0.2.1).
+- `../lippa` working tree untouched by Quorum across the full milestone.
 
-Keybindings landed collision-free against Phase 1B: lowercase `g/G`
-were already the jump-nav pair, lowercase `d` is dismiss; capital
-`H`, `p`, and capital `D` were all unbound prior to Stage 5. Capital-D
-for demote matches the spec's stated avoidance of `d`-for-dismiss
-muscle memory (§B6).
-
-**Phase 1C ship-readiness:** all 39 ACs (133–175 with gaps at
-138/147/160/167) landed across Stages 1–5. Cross-cutting AC 171
-(Phase 1B regression) and AC 172 (clippy/fmt) green throughout.
-Ready for ship-prep workflow (release engineering for v0.3.0, spec
-v1.1 patches, HISTORY.md / SERVICES.md / DATABASE.md / BACKLOG.md
-updates) in a separate Rolf-driven session.
-
-**Repo state at Stage 5 close:**
-- 338 tests pass (303 Stage 4 baseline + 28 new state tests in
-  `tui/state.rs` + 7 new integration-tier tests in `tui/mod.rs`
-  covering `tui_promote` / `tui_demote` round-trips + AC 161 regression).
-- `cargo clippy --workspace --all-targets -- -D warnings` clean.
-- `cargo fmt --check --all` clean.
-- C3 boundary intact: `grep -r quorum_cli crates/quorum-core/src/` empty.
-- No changes under `crates/quorum-core/` or `crates/quorum-lippa-client/`
-  (zero library / upstream delta this stage).
-- No new CLI subcommands (`crates/quorum-cli/src/main.rs` untouched;
-  `quorum --help` and `quorum convention --help` unchanged).
-- No new top-level `std::panic::set_hook` calls in production code;
-  Phase 1B's install/restore pair is the only call site.
-- `../lippa` untouched by Quorum across the session (pre-existing
-  user-authored untracked files in `../lippa/` may drift independently).
-
-**0.2.1 carryover (last shipped release):**
-- crates.io: [`quorum-core 0.2.1`](https://crates.io/crates/quorum-core/0.2.1), [`quorum-lippa-client 0.2.1`](https://crates.io/crates/quorum-lippa-client/0.2.1), [`quorum-cli 0.2.1`](https://crates.io/crates/quorum-cli/0.2.1).
-- GitHub Release: [`v0.2.1`](https://github.com/accillion/quorum/releases/tag/v0.2.1).
-- `accillion/quorum` flipped private → public mid-0.2.1 (permanent).
+**Next:** v0.3.0 release engineering — workspace version bump, cargo-dist
+sigstore attestation run, workflow-driven crates.io publish via the
+`5a658ef`-patched `publish-crates.yml`, GitHub Release. Parallel to the
+0.2.1 ship pattern; first live exercise of the publish-crates half of the
+release workflow (per 0.2.1 process learning #5).
 
 ---
 
