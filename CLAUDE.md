@@ -162,48 +162,55 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **Phase 1C Stage 3 complete; awaiting Rolf signoff before Stage 4 dispatch.**
+**Active:** **Phase 1C Stage 4 complete; awaiting Rolf signoff before Stage 5 dispatch.**
 
-Stage 3 landed the `quorum convention` read surface plus the
-`.quorum/conventions.md` parser used by orphan detection and (in
-Stage 4) the writer. New CLI surface: `list [--state | --orphans |
---json]`, `show <hash>`, `history <hash>`. Write subcommands
-(`promote`/`demote`/`prune`) remain absent from clap — Stage 4 scope.
-The parser exposes `above_fence` / `below_fence` byte slices so the
-Stage 4 writer can rebuild the file byte-for-byte (AC 149). Short-hash
-resolution (≥ 8 hex chars; full-64 always Exact; ambiguous lists up to
-10 matches) lives in `commands/convention.rs::resolve_short_hash` and
-will be reused by promote/demote. ACs 133 (regression), 162, 163, 166,
-168 (partial — list-side stderr warning), 169 landed.
+Stage 4 landed the `quorum convention` write surface: three new clap
+subcommands (`promote` / `demote` / `prune`), the conventions.md
+writer with line-ending preservation + fence auto-creation, the
+file-then-SQLite atomic-write helper, three new `MemoryStore` write
+methods (`commit_promote` / `commit_demote` / `prune_candidates`)
+returning `PromoteOutcome` / `DemoteOutcome` enums to surface the
+file-ahead-of-SQLite drift case, and the AC 175 env-var-triggered
+crash harness in `stage4_test_seam`. Promote pre-flight emits parser
+diagnostics + orphan-discrepancy warnings to stderr but never refuses
+the write. T5 (undismiss) cascade verified at the integration level:
+deleting a `promoted_convention` row drops conventions +
+state_transitions rows with no `explicit_undismiss` audit row written
+(audit-silent by design). ACs 137, 139, 140, 141, 142, 143, 148, 149,
+150, 168 (full closure), 173 (full closure), 175 landed.
 
-Stage 2 landed the bundle's `## Local conventions (auto-derived)`
-subsection inside the shared 20 KB `BUDGET_MEMORY`, plus the §6.2
-promote-but-uncommitted bridge (a `promoted_convention` row whose
-`.quorum/conventions.md` is dirty/uncommitted/missing renders in the
-memory section instead of the conventions section, per-row at render
-time, no SQLite write). ACs 152, 153, 154, 155, 156, 170 landed;
-partial 173 (render-side toggle) landed; full 173 closes at Stage 4.
+Title-only promote (no `--text` / `--from-editor`) stores the
+dismissal title verbatim in `conventions.convention_text` to satisfy
+the ≥1-byte CHECK constraint (spec §4.4 silent on this corner;
+resolution per dispatch §2 halt-threshold-2; documented inline +
+close report). Q15 inside-vs-outside-fence dirty detection simplified
+to warn-on-any-discrepancy (non-AC, dispatch latitude). The
+`--from-editor` test seam uses `QUORUM_TEST_EDITOR_BODY` env-var
+injection — hermetic + cross-platform. AC 175 crash seam is exposed
+unconditionally (not `#[cfg(test)]`-gated) because `quorum-cli` has no
+`[lib]` target and integration tests must subprocess the binary; the
+seam is a no-op in production (zero-cost env-var probe + AtomicBool
+load).
 
-Stage 1 (data-model + state-machine spine) landed at commits
-`d0eabae → fb1668d`: SQLite v1→v2 migration, state_transitions /
-conventions / schema_meta tables, forward-compat check, T1 auto-
-transition inside `record_seen()`, TransitionEvent returned-value
-channel, `[memory]` config section, CLI stderr emission. ACs 134–136,
-144–146, 151, 164–165, 174 landed there.
+Stage 3 surfaces unchanged: `convention list/show/history`,
+`ParsedConventionsMd`, `detect_orphans`, `resolve_short_hash`,
+`format_diagnostic` all carry forward and are reused by Stage 4.
 
-Stage 4 (CLI write paths + conventions.md writer + T2/T3/T4/T5) is
-the next dispatch.
+Stage 5 (TUI dismissal-history view + `p` / `D` keybindings) is the
+next dispatch.
 
-**Repo state at Stage 3 close:**
-- 272 tests pass (228 Stage 2 baseline + 44 Phase 1C Stage 3:
-  13 parser + 9 storage read + 23 CLI integration + 2 Lippa-seam).
+**Repo state at Stage 4 close:**
+- 303 tests pass (272 Stage 3 baseline + 31 Phase 1C Stage 4:
+  14 writer + 18 CLI integration in convention_write.rs, minus 1 from
+  the Stage 3 negative-existence check converted to positive).
 - `cargo clippy --workspace --all-targets -- -D warnings` clean.
 - `cargo fmt --check --all` clean.
 - C3 boundary intact: `grep -r quorum_cli crates/quorum-core/src/` empty.
-- No write methods on `MemoryStore` past Stage 1's T1 UPDATE.
-- No `promote`/`demote`/`prune` clap registrations.
-- No changes under `crates/quorum-cli/src/tui/` or `crates/quorum-lippa-client/src/`.
-- `../lippa` unchanged across the session.
+- No changes under `crates/quorum-cli/src/tui/` or `crates/quorum-lippa-client/`.
+- No new state_transitions enum values (`'deleted'` / `'explicit_undismiss'`
+  remain forbidden).
+- `../lippa` untouched by Quorum across the session (pre-existing
+  user-authored untracked files in `../lippa/` may drift independently).
 
 **0.2.1 carryover (last shipped release):**
 - crates.io: [`quorum-core 0.2.1`](https://crates.io/crates/quorum-core/0.2.1), [`quorum-lippa-client 0.2.1`](https://crates.io/crates/quorum-lippa-client/0.2.1), [`quorum-cli 0.2.1`](https://crates.io/crates/quorum-cli/0.2.1).
