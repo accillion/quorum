@@ -360,6 +360,76 @@ pub trait MemoryStore {
     /// by `conventions_md_block_id` ASC so callers see deterministic
     /// output.
     fn list_conventions(&self) -> Result<Vec<crate::conventions::ConventionRow>, MemoryError>;
+
+    /// Phase 1C Stage 4 — SQLite-side of T2 (`local_only →
+    /// promoted_convention`). Called by the CLI / TUI promote orchestrator
+    /// AFTER the conventions.md atomic rename succeeded (B5 ordering;
+    /// spec §3.2 T2 step 3).
+    ///
+    /// Runs a single transaction:
+    ///   1. `UPDATE dismissals SET promotion_state='promoted_convention'
+    ///      WHERE finding_identity_hash=? AND promotion_state='local_only'`
+    ///   2. `INSERT INTO conventions (...)`
+    ///   3. `INSERT INTO state_transitions (..., 'explicit_promote')`
+    ///   4. COMMIT.
+    ///
+    /// If step 1's `rows_affected == 0` (another writer beat us; state has
+    /// drifted), the transaction is rolled back and [`PromoteOutcome::StateDrifted`]
+    /// is returned — caller surfaces this to the user (file is now slightly
+    /// ahead of SQLite; `quorum convention list --orphans` reconciles).
+    fn commit_promote(
+        &self,
+        hash: &FindingIdentityHash,
+        convention_text: &str,
+        conventions_md_block_id: &str,
+        ts_ms: i64,
+    ) -> Result<PromoteOutcome, MemoryError>;
+
+    /// Phase 1C Stage 4 — SQLite-side of T3 (`promoted_convention →
+    /// local_only`). Caller has already removed the managed block from
+    /// conventions.md (or skipped the write per Q7 missing-file lean).
+    ///
+    /// Single transaction:
+    ///   1. `UPDATE dismissals SET promotion_state='local_only'
+    ///      WHERE finding_identity_hash=? AND promotion_state='promoted_convention'`
+    ///   2. `DELETE FROM conventions WHERE finding_identity_hash=?`
+    ///   3. `INSERT INTO state_transitions (..., 'explicit_demote')`
+    ///   4. COMMIT.
+    ///
+    /// `rows_affected == 0` on step 1 → [`DemoteOutcome::StateDrifted`].
+    fn commit_demote(
+        &self,
+        hash: &FindingIdentityHash,
+        ts_ms: i64,
+    ) -> Result<DemoteOutcome, MemoryError>;
+
+    /// Phase 1C Stage 4 — T4 prune: DELETE candidate dismissals whose
+    /// `last_seen_at < older_than`. `state_transitions` rows for the
+    /// deleted hashes are cascade-dropped by the FK. Audit-trail-silent
+    /// (spec §3.2 T4 / §4.6). Returns the count of rows deleted. Promoted
+    /// or local_only rows are never touched (filter is by query
+    /// construction — AC 142).
+    fn prune_candidates(&self, older_than: time::OffsetDateTime) -> Result<u64, MemoryError>;
+}
+
+/// Outcome of [`MemoryStore::commit_promote`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromoteOutcome {
+    /// The UPDATE flipped one row; conventions + audit rows were inserted;
+    /// transaction committed.
+    Committed,
+    /// The row's `promotion_state` was not `local_only` at UPDATE time
+    /// (concurrent writer beat us OR state had drifted). Transaction was
+    /// rolled back; file remains ahead of SQLite — orphan detection
+    /// reconciles on next run.
+    StateDrifted,
+}
+
+/// Outcome of [`MemoryStore::commit_demote`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DemoteOutcome {
+    Committed,
+    StateDrifted,
 }
 
 /// Trait-layer validation of a free-text note. Returns `()` if the note

@@ -578,7 +578,9 @@ impl<'a> BlockToWrite<'a> {
     pub fn from_parsed_block(pb: &ParsedBlock<'a>) -> Option<Self> {
         let mut body = pb.body;
         // Strip one leading line break.
-        body = body.strip_prefix("\r\n").or_else(|| body.strip_prefix('\n'))?;
+        body = body
+            .strip_prefix("\r\n")
+            .or_else(|| body.strip_prefix('\n'))?;
         // First line is the header.
         let (first_line, rest) = match body.find('\n') {
             Some(idx) => (&body[..idx], &body[idx + 1..]),
@@ -759,20 +761,35 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-pub(crate) mod stage4_test_seam {
-    //! AC 175 crash harness: a `#[cfg(test)]` panic seam fired between
-    //! `atomic_write` returning Ok and the caller's SQLite COMMIT. Lets
-    //! `crates/quorum-cli/tests/convention_write.rs` verify the
-    //! file-ahead-of-SQLite recovery contract by panicking the promote
-    //! transaction mid-flight and asserting (a) the file holds the new
-    //! block and (b) SQLite state is still `local_only`, then (c)
-    //! idempotent re-promote heals.
+#[doc(hidden)]
+pub mod stage4_test_seam {
+    //! AC 175 crash harness — a panic seam fired between `atomic_write`
+    //! returning `Ok` and the caller's SQLite COMMIT.
+    //!
+    //! **Test-only.** Production callers must never set `FAIL_AFTER_RENAME`
+    //! nor `QUORUM_TEST_CRASH_AFTER_RENAME`. The seam is exposed
+    //! unconditionally (not behind `#[cfg(test)]`) for two reasons:
+    //!   1. The AC 175 integration test lives in
+    //!      `crates/quorum-cli/tests/` and integration tests cannot see
+    //!      `cfg(test)` items from their dependency crates.
+    //!   2. `quorum-cli` has no `[lib]` target, so the test cannot import
+    //!      promote() in-process — it must subprocess the binary, and
+    //!      the subprocess needs an env-var trigger.
+    //!
+    //! Both triggers are no-ops in production (atomic loads + env-var
+    //! reads cost nanoseconds). Surfaced in the Stage 4 close report.
     use std::sync::atomic::{AtomicBool, Ordering};
     pub static FAIL_AFTER_RENAME: AtomicBool = AtomicBool::new(false);
 
+    /// Env var trigger — checked alongside the atomic. The integration
+    /// test in `convention_write.rs` sets this to trigger a panic in the
+    /// subprocessed `quorum convention promote` binary.
+    pub const CRASH_ENV: &str = "QUORUM_TEST_CRASH_AFTER_RENAME";
+
+    /// Panic if either the in-process atomic or the env-var trigger is
+    /// active. Called by `promote` between `fs::rename` and SQLite COMMIT.
     pub fn maybe_panic_after_rename() {
-        if FAIL_AFTER_RENAME.load(Ordering::SeqCst) {
+        if FAIL_AFTER_RENAME.load(Ordering::SeqCst) || std::env::var_os(CRASH_ENV).is_some() {
             panic!("AC 175 crash harness fired between fs::rename and SQLite COMMIT");
         }
     }
@@ -1056,7 +1073,10 @@ mod writer_tests {
             .iter()
             .map(|pb| {
                 BlockToWrite::from_parsed_block(pb).unwrap_or_else(|| {
-                    panic!("from_parsed_block failed on canonical fixture block id={}", pb.id)
+                    panic!(
+                        "from_parsed_block failed on canonical fixture block id={}",
+                        pb.id
+                    )
                 })
             })
             .collect();

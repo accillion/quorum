@@ -4,12 +4,16 @@
 //! (`promote`, `demote`, `prune`) land in Stage 4 and are intentionally
 //! absent from the clap surface here — they're cleaner absent than stubbed.
 
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
-use quorum_core::conventions::{detect_orphans, OrphanReport};
+use quorum_core::conventions::{
+    atomic_write, detect_orphans, parse_conventions_md, render_conventions_md, BlockToWrite,
+    LineEnding, OrphanReport, ParsedConventionsMd,
+};
 use quorum_core::memory::{
-    Dismissal, LocalSqliteMemoryStore, MemoryStore, PromotionState, ShortHashResolution,
-    StateTransitionRow, TransitionTrigger,
+    DemoteOutcome, Dismissal, LocalSqliteMemoryStore, MemoryStore, PromoteOutcome, PromotionState,
+    ShortHashResolution, StateTransitionRow, TransitionTrigger,
 };
 
 use crate::exit::{CliError, Exit};
@@ -168,7 +172,7 @@ fn list_orphans(root: &std::path::Path, json: bool) -> Result<Exit, CliError> {
     Ok(Exit::Ok)
 }
 
-fn format_diagnostic(d: &quorum_core::conventions::ConventionParseError) -> String {
+pub fn format_diagnostic(d: &quorum_core::conventions::ConventionParseError) -> String {
     use quorum_core::conventions::ConventionParseError::*;
     match d {
         UnclosedBlock { id, start_byte } => format!(
@@ -397,4 +401,458 @@ fn format_ts_ms(ms: i64) -> String {
             .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
     dt.format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| format!("{ms}ms"))
+}
+
+// ---------------------------------------------------------------------------
+// Stage 4 write surface: `promote`, `demote`, `prune` (AC 137/139/140/141/142).
+// ---------------------------------------------------------------------------
+
+/// Source for `quorum convention promote --text` / `--from-editor` /
+/// (neither). Title-only promote (§4.4: no auto-body from `body_snapshot`)
+/// is `BodySource::TitleOnly`.
+#[derive(Debug, Clone)]
+pub enum BodySource {
+    /// `--text "<s>"`: use the supplied string verbatim.
+    Text(String),
+    /// `--from-editor`: spawn `$EDITOR` (test seam: `QUORUM_TEST_EDITOR_BODY`
+    /// env var overrides the spawn and supplies the body directly).
+    FromEditor,
+    /// Neither flag — block carries only the title-derived `### Convention: …`
+    /// header line; no body paragraph (§4.4, AC 139).
+    TitleOnly,
+}
+
+/// Test-only env var for hermetic `--from-editor` coverage. When set,
+/// supplies the body directly instead of spawning `$EDITOR`. Documented
+/// inline so close-report readers see the seam choice.
+const TEST_EDITOR_BODY_ENV: &str = "QUORUM_TEST_EDITOR_BODY";
+
+/// Resolve a `BodySource` into the body string actually written to the
+/// managed block. `TitleOnly` produces an empty body; `Text(s)` returns `s`
+/// directly; `FromEditor` consults `QUORUM_TEST_EDITOR_BODY` (test seam)
+/// then falls back to spawning `$EDITOR` on a temp template.
+fn resolve_body(src: &BodySource, title: &str, quorum_dir: &Path) -> Result<String, CliError> {
+    match src {
+        BodySource::TitleOnly => Ok(String::new()),
+        BodySource::Text(s) => {
+            if s.is_empty() {
+                return Err(CliError::Config(
+                    "--text value is empty; pass --text \"<body>\" or omit --text for a \
+                     title-only block"
+                        .into(),
+                ));
+            }
+            Ok(s.clone())
+        }
+        BodySource::FromEditor => {
+            // Hermetic test seam.
+            if let Ok(canned) = std::env::var(TEST_EDITOR_BODY_ENV) {
+                if canned.trim().is_empty() {
+                    return Err(CliError::Config(
+                        "$QUORUM_TEST_EDITOR_BODY produced empty body".into(),
+                    ));
+                }
+                return Ok(canned);
+            }
+            spawn_editor_for_body(title, quorum_dir)
+        }
+    }
+}
+
+fn spawn_editor_for_body(title: &str, quorum_dir: &Path) -> Result<String, CliError> {
+    let editor = std::env::var("EDITOR").map_err(|_| {
+        CliError::Config(
+            "$EDITOR not set; cannot launch editor for --from-editor. Set EDITOR or use \
+             --text \"<body>\" instead."
+                .into(),
+        )
+    })?;
+    let dir = quorum_dir.join(".quorum");
+    std::fs::create_dir_all(&dir).map_err(|e| CliError::Io(e.to_string()))?;
+    let template_path = dir.join(format!(
+        ".convention_edit.{}.{}.md",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    // Template: a comment header + a blank line for the user to type the
+    // body into. The title-derived comment line is stripped on read so
+    // it doesn't leak into the committed block.
+    let template = format!(
+        "# Title: {title}\n# Lines starting with '#' will be ignored.\n# Enter the convention body below this line; save and exit.\n\n"
+    );
+    std::fs::write(&template_path, &template).map_err(|e| CliError::Io(e.to_string()))?;
+
+    let status = std::process::Command::new(&editor)
+        .arg(&template_path)
+        .status()
+        .map_err(|e| CliError::Io(format!("could not spawn $EDITOR={editor}: {e}")))?;
+    if !status.success() {
+        let _ = std::fs::remove_file(&template_path);
+        return Err(CliError::Config(format!(
+            "$EDITOR exited with status {status:?}; aborting promote"
+        )));
+    }
+    let content =
+        std::fs::read_to_string(&template_path).map_err(|e| CliError::Io(e.to_string()))?;
+    let _ = std::fs::remove_file(&template_path);
+    let body = strip_editor_comment_lines(&content);
+    if body.trim().is_empty() {
+        return Err(CliError::Config(
+            "editor produced empty body; aborting promote".into(),
+        ));
+    }
+    Ok(body)
+}
+
+fn strip_editor_comment_lines(content: &str) -> String {
+    content
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+/// Promote a dismissal from `local_only` to `promoted_convention` (T2).
+/// File-then-SQLite ordering per spec §3.2 T2 + dispatch §2 (B5).
+pub fn promote(
+    quorum_dir: Option<&PathBuf>,
+    hash_prefix: &str,
+    body_source: BodySource,
+) -> Result<Exit, CliError> {
+    let root = resolve_quorum_root(quorum_dir)?;
+    let store = open_store(&root)?;
+    let row = resolve_short_hash(&store, hash_prefix)?;
+
+    // 1. State guard: only local_only promotes (spec §3.2 T2 + AC 137).
+    let hex = row.finding_identity_hash.to_hex();
+    let short_hash = &hex[..12];
+    match row.promotion_state {
+        PromotionState::Candidate => {
+            return Err(CliError::Config(format!(
+                "{short_hash} is still a candidate (recurrence={n}); dismissed too few times to \
+                 promote — wait for auto-promote after the next dismissal",
+                n = row.recurrence_count
+            )));
+        }
+        PromotionState::PromotedConvention => {
+            return Err(CliError::Config(format!(
+                "{short_hash} is already a promoted_convention; run \
+                 `quorum convention demote {short_hash}` first to update its text"
+            )));
+        }
+        PromotionState::LocalOnly => { /* fall through */ }
+    }
+
+    // 2. Body resolution (--text / --from-editor / title-only).
+    let body = resolve_body(&body_source, &row.title_snapshot, &root)?;
+
+    // 3. Pre-flight on conventions.md: parse, run orphan detection, surface
+    //    diagnostics via stderr (AC 168 promote-side closure).
+    let conv_path = root.join(".quorum").join("conventions.md");
+    let existing_bytes = match std::fs::read(&conv_path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(CliError::Io(format!("read {conv_path:?}: {e}"))),
+    };
+    let le = LineEnding::detect(&existing_bytes);
+    let (parsed, diagnostics) = parse_conventions_md(&existing_bytes);
+    for d in &diagnostics {
+        eprintln!("warning: {}", format_diagnostic(d));
+    }
+    preflight_dirty_warning(&store, &parsed)?;
+
+    // 4. Build the new block set. Idempotent re-promote: if a block for
+    //    this hash already exists in the file (file-ahead-of-SQLite
+    //    recovery), replace it; otherwise append.
+    let title_for_block = &row.title_snapshot;
+    let block_id: String = hex[..12].to_string();
+    let mut to_write: Vec<BlockToWrite<'_>> = Vec::with_capacity(parsed.blocks.len() + 1);
+    let mut replaced = false;
+    for pb in &parsed.blocks {
+        if pb.id == block_id {
+            // Caller hash matches — replace with the fresh content.
+            to_write.push(BlockToWrite {
+                id: &block_id,
+                version: 1,
+                title: title_for_block,
+                body: &body,
+            });
+            replaced = true;
+        } else {
+            // Preserve untouched blocks. If the on-disk layout is non-
+            // canonical (user hand-edited), we fall back to title=header_line,
+            // body=parsed.body — keeps the byte layout reasonable but the
+            // exact-byte round-trip property only holds on canonical files.
+            match BlockToWrite::from_parsed_block(pb) {
+                Some(bt) => to_write.push(bt),
+                None => {
+                    eprintln!(
+                        "warning: .quorum/conventions.md: block id={} has a non-canonical layout; \
+                         re-rendering may reformat the block (untouched content otherwise preserved)",
+                        pb.id
+                    );
+                    to_write.push(BlockToWrite {
+                        id: pb.id,
+                        version: pb.version,
+                        title: pb.header_line.trim_start_matches("### Convention: "),
+                        body: "",
+                    });
+                }
+            }
+        }
+    }
+    if !replaced {
+        to_write.push(BlockToWrite {
+            id: &block_id,
+            version: 1,
+            title: title_for_block,
+            body: &body,
+        });
+    }
+
+    // 5. Render bytes + atomic_write. File-first-rename, then SQLite.
+    let new_bytes = render_conventions_md(&parsed, &to_write, le);
+    std::fs::create_dir_all(root.join(".quorum")).map_err(|e| CliError::Io(e.to_string()))?;
+    atomic_write(&conv_path, &new_bytes).map_err(|e| CliError::Io(e.to_string()))?;
+
+    // 6. AC 175 test seam — panic harness fires between rename and COMMIT.
+    // The seam is a no-op in production (the AtomicBool is always false
+    // unless a test sets it). See `stage4_test_seam` for context.
+    quorum_core::conventions::stage4_test_seam::maybe_panic_after_rename();
+
+    // 7. SQLite-side commit.
+    //    Title-only resolution: when `body` is empty (title-only block per
+    //    §4.4), the `conventions.convention_text` CHECK demands ≥ 1 byte.
+    //    Spec §4.4 is silent on what to store in this case; resolution per
+    //    dispatch §2 halt-threshold-2 (obvious-from-context): store the
+    //    title verbatim so the SQLite row carries the canonical
+    //    convention text. Surfaced in the Stage 4 close report.
+    let convention_text_for_db: &str = if body.is_empty() {
+        title_for_block
+    } else {
+        body.as_str()
+    };
+    let ts_ms = current_unix_millis();
+    let outcome = store
+        .commit_promote(
+            &row.finding_identity_hash,
+            convention_text_for_db,
+            &block_id,
+            ts_ms,
+        )
+        .map_err(|e| CliError::Io(format!("commit_promote: {e}")))?;
+    match outcome {
+        PromoteOutcome::Committed => {
+            println!(
+                "promoted {short_hash} to convention: {title}",
+                title = row.title_snapshot
+            );
+            eprintln!(
+                "note: commit .quorum/conventions.md to move it from the memory section to the \
+                 conventions section"
+            );
+            Ok(Exit::Ok)
+        }
+        PromoteOutcome::StateDrifted => Err(CliError::Config(format!(
+            "{short_hash}: SQLite state was not local_only at COMMIT time (concurrent writer \
+             or state drift); file write happened but DB did not advance. Re-run \
+             `quorum convention promote {short_hash}` after `list --orphans` reconciliation."
+        ))),
+    }
+}
+
+/// Demote a dismissal from `promoted_convention` to `local_only` (T3).
+pub fn demote(quorum_dir: Option<&PathBuf>, hash_prefix: &str) -> Result<Exit, CliError> {
+    let root = resolve_quorum_root(quorum_dir)?;
+    let store = open_store(&root)?;
+    let row = resolve_short_hash(&store, hash_prefix)?;
+
+    let hex = row.finding_identity_hash.to_hex();
+    let short_hash = &hex[..12];
+    if row.promotion_state != PromotionState::PromotedConvention {
+        return Err(CliError::Config(format!(
+            "{short_hash} is not in promoted_convention state (current: {}); demote requires \
+             a previously-promoted row",
+            row.promotion_state.as_db_str()
+        )));
+    }
+
+    let conv_path = root.join(".quorum").join("conventions.md");
+    let existing_bytes_opt = match std::fs::read(&conv_path) {
+        Ok(b) => Some(b),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(CliError::Io(format!("read {conv_path:?}: {e}"))),
+    };
+
+    let block_id: String = hex[..12].to_string();
+
+    if let Some(existing_bytes) = existing_bytes_opt {
+        // File present — parse, remove the matching block, atomic-write.
+        let le = LineEnding::detect(&existing_bytes);
+        let (parsed, diagnostics) = parse_conventions_md(&existing_bytes);
+        for d in &diagnostics {
+            eprintln!("warning: {}", format_diagnostic(d));
+        }
+        preflight_dirty_warning(&store, &parsed)?;
+
+        let to_write: Vec<BlockToWrite<'_>> = parsed
+            .blocks
+            .iter()
+            .filter(|pb| pb.id != block_id)
+            .filter_map(BlockToWrite::from_parsed_block)
+            .collect();
+        let new_bytes = render_conventions_md(&parsed, &to_write, le);
+        atomic_write(&conv_path, &new_bytes).map_err(|e| CliError::Io(e.to_string()))?;
+    } else {
+        // §10 Q7 lean: missing conventions.md → stderr warning + SQLite
+        // state still proceeds. No file write to attempt.
+        eprintln!(
+            "warning: .quorum/conventions.md not found; SQLite state will advance but no file \
+             write performed"
+        );
+    }
+
+    let ts_ms = current_unix_millis();
+    let outcome = store
+        .commit_demote(&row.finding_identity_hash, ts_ms)
+        .map_err(|e| CliError::Io(format!("commit_demote: {e}")))?;
+    match outcome {
+        DemoteOutcome::Committed => {
+            println!("demoted {short_hash} (now local_only)");
+            Ok(Exit::Ok)
+        }
+        DemoteOutcome::StateDrifted => Err(CliError::Config(format!(
+            "{short_hash}: SQLite state was not promoted_convention at COMMIT time; \
+             concurrent writer or state drift. File side has been updated; re-run \
+             after `list --orphans` reconciliation."
+        ))),
+    }
+}
+
+/// Prune candidate dismissals older than the configured threshold (T4).
+pub fn prune(quorum_dir: Option<&PathBuf>, dry_run: bool, yes: bool) -> Result<Exit, CliError> {
+    let root = resolve_quorum_root(quorum_dir)?;
+    let store = open_store(&root)?;
+
+    // [memory] candidate_expire_days fallback (config absent → defaults).
+    let candidate_expire_days = match quorum_core::config::read(&root) {
+        Ok(cfg) => cfg.memory.candidate_expire_days,
+        Err(quorum_core::config::ConfigError::NotFound(_)) => {
+            quorum_core::config::MemoryConfig::default().candidate_expire_days
+        }
+        Err(e) => return Err(CliError::Config(format!("config: {e}"))),
+    };
+    if candidate_expire_days == 0 {
+        eprintln!("prune disabled (candidate_expire_days=0); no rows pruned");
+        return Ok(Exit::Ok);
+    }
+    let cutoff =
+        time::OffsetDateTime::now_utc() - time::Duration::days(candidate_expire_days as i64);
+
+    // Always preview candidates first (used by both --dry-run output and
+    // the interactive confirmation prompt).
+    let candidates = store
+        .list_by_state(Some(PromotionState::Candidate))
+        .map_err(|e| CliError::Io(format!("list_by_state: {e}")))?;
+    let stale: Vec<&Dismissal> = candidates
+        .iter()
+        .filter(|d| d.last_seen_at < cutoff)
+        .collect();
+
+    if stale.is_empty() {
+        println!(
+            "no candidates older than {} days; nothing to prune",
+            candidate_expire_days
+        );
+        return Ok(Exit::Ok);
+    }
+
+    if dry_run {
+        println!(
+            "would prune {} candidate(s) older than {} days:",
+            stale.len(),
+            candidate_expire_days
+        );
+        for d in &stale {
+            let hex = d.finding_identity_hash.to_hex();
+            println!(
+                "  {}  {}",
+                &hex[..12],
+                truncate_for_display(&d.title_snapshot, TITLE_DISPLAY_WIDTH)
+            );
+        }
+        return Ok(Exit::Ok);
+    }
+
+    if !yes && !confirm_prompt(stale.len(), candidate_expire_days)? {
+        println!("aborted; no rows pruned");
+        return Ok(Exit::Ok);
+    }
+
+    let pruned = store
+        .prune_candidates(cutoff)
+        .map_err(|e| CliError::Io(format!("prune_candidates: {e}")))?;
+    println!("pruned {} candidate(s)", pruned);
+    Ok(Exit::Ok)
+}
+
+fn confirm_prompt(count: usize, days: u32) -> Result<bool, CliError> {
+    eprint!("Prune {count} candidate(s) older than {days} days? [y/N] ");
+    std::io::stderr()
+        .flush()
+        .map_err(|e| CliError::Io(e.to_string()))?;
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .map_err(|e| CliError::Io(e.to_string()))?;
+    let ans = line.trim();
+    Ok(ans.eq_ignore_ascii_case("y") || ans.eq_ignore_ascii_case("yes"))
+}
+
+/// AC 168 promote/demote pre-flight: surface in-file/SQLite divergence to
+/// stderr. The Stage 4 dispatch §"WI-3 pre-flight" Q15 lean is simplified
+/// per the dispatch's §2 latitude: any pre-flight discrepancy
+/// (orphan blocks, missing rows) emits a warn-only stderr message.
+/// Inside-vs-outside-fence detection is non-AC and deferred — surfaced in
+/// the Stage 4 close report.
+fn preflight_dirty_warning(
+    store: &LocalSqliteMemoryStore,
+    parsed: &ParsedConventionsMd<'_>,
+) -> Result<(), CliError> {
+    let db_rows = store
+        .list_conventions()
+        .map_err(|e| CliError::Io(format!("preflight list_conventions: {e}")))?;
+    let file_block_ids: std::collections::HashSet<&str> =
+        parsed.blocks.iter().map(|b| b.id).collect();
+    let db_block_ids: std::collections::HashSet<&str> = db_rows
+        .iter()
+        .map(|r| r.conventions_md_block_id.as_str())
+        .collect();
+    for pb in &parsed.blocks {
+        if !db_block_ids.contains(pb.id) {
+            eprintln!(
+                "warning: .quorum/conventions.md: orphan managed block id={} (no SQLite row); \
+                 run `quorum convention list --orphans` for full report",
+                pb.id
+            );
+        }
+    }
+    for r in &db_rows {
+        if !file_block_ids.contains(r.conventions_md_block_id.as_str()) {
+            eprintln!(
+                "warning: SQLite row {} has no managed block in .quorum/conventions.md",
+                r.conventions_md_block_id
+            );
+        }
+    }
+    Ok(())
+}
+
+fn current_unix_millis() -> i64 {
+    (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64
 }

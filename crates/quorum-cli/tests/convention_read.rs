@@ -112,41 +112,17 @@ fn insert_transition(
 // ---------------------------------------------------------------------------
 
 #[test]
-fn convention_help_lists_read_subcommands_only() {
-    // Verify Stage 4's write subcommands are NOT yet wired into clap.
+fn convention_help_lists_all_subcommands() {
+    // Stage 4 adds promote/demote/prune to the clap surface; Stage 3
+    // read surface (list/show/history) remains.
     let out = quorum().args(["convention", "--help"]).assert().success();
     let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
     assert!(stdout.contains("list"), "help must mention list");
     assert!(stdout.contains("show"), "help must mention show");
     assert!(stdout.contains("history"), "help must mention history");
-    assert!(
-        !stdout.contains(" promote "),
-        "Stage 4 'promote' must not appear yet"
-    );
-    assert!(
-        !stdout.contains(" demote "),
-        "Stage 4 'demote' must not appear yet"
-    );
-    assert!(
-        !stdout.contains(" prune "),
-        "Stage 4 'prune' must not appear yet"
-    );
-}
-
-#[test]
-fn convention_promote_subcommand_not_registered() {
-    // Clap should reject `quorum convention promote …` (Stage 4 scope).
-    let td = init_repo();
-    quorum()
-        .args([
-            "convention",
-            "--quorum-dir",
-            td.path().to_str().unwrap(),
-            "promote",
-            "deadbeef",
-        ])
-        .assert()
-        .failure();
+    assert!(stdout.contains("promote"), "help must mention promote");
+    assert!(stdout.contains("demote"), "help must mention demote");
+    assert!(stdout.contains("prune"), "help must mention prune");
 }
 
 // ---------------------------------------------------------------------------

@@ -14,9 +14,9 @@ use super::gitignore;
 use super::identity::FindingIdentityHash;
 use super::schema;
 use super::{
-    truncate_at_codepoint_boundary, validate_note, Dismissal, DismissalId, DismissalReason,
-    MemoryError, MemoryStore, PromotionState, ShortHashResolution, StateTransitionRow,
-    TransitionEvent, TransitionTrigger, BODY_SNAPSHOT_MAX_BYTES,
+    truncate_at_codepoint_boundary, validate_note, DemoteOutcome, Dismissal, DismissalId,
+    DismissalReason, MemoryError, MemoryStore, PromoteOutcome, PromotionState, ShortHashResolution,
+    StateTransitionRow, TransitionEvent, TransitionTrigger, BODY_SNAPSHOT_MAX_BYTES,
 };
 use crate::review::Finding;
 
@@ -660,6 +660,125 @@ impl MemoryStore for LocalSqliteMemoryStore {
             out.push(r.map_err(|e| MemoryError::Backend(Box::new(e)))?);
         }
         Ok(out)
+    }
+
+    fn commit_promote(
+        &self,
+        hash: &FindingIdentityHash,
+        convention_text: &str,
+        conventions_md_block_id: &str,
+        ts_ms: i64,
+    ) -> Result<PromoteOutcome, MemoryError> {
+        let hex = hash.to_hex();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn
+            .transaction()
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+        let rows_affected = tx
+            .execute(
+                "UPDATE dismissals
+                 SET promotion_state = 'promoted_convention'
+                 WHERE finding_identity_hash = ?1
+                   AND promotion_state = 'local_only'",
+                [&hex],
+            )
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        if rows_affected == 0 {
+            // Concurrent writer beat us OR state has drifted. ROLLBACK and
+            // surface to caller — the file is ahead of SQLite; orphan
+            // detection will reconcile on next run.
+            // Dropping `tx` without commit() rolls back automatically; we
+            // explicitly invoke rollback() for clarity.
+            tx.rollback()
+                .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+            return Ok(PromoteOutcome::StateDrifted);
+        }
+
+        tx.execute(
+            "INSERT INTO conventions
+                (finding_identity_hash, convention_text, promoted_at, conventions_md_block_id)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![hex, convention_text, ts_ms, conventions_md_block_id],
+        )
+        .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+        tx.execute(
+            "INSERT INTO state_transitions
+                (finding_identity_hash, from_state, to_state, trigger, ts,
+                 by_review_session_id, recurrence_at_transition)
+             VALUES (?1, 'local_only', 'promoted_convention', 'explicit_promote',
+                     ?2, NULL, NULL)",
+            params![hex, ts_ms],
+        )
+        .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+        tx.commit().map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        Ok(PromoteOutcome::Committed)
+    }
+
+    fn commit_demote(
+        &self,
+        hash: &FindingIdentityHash,
+        ts_ms: i64,
+    ) -> Result<DemoteOutcome, MemoryError> {
+        let hex = hash.to_hex();
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn
+            .transaction()
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+        let rows_affected = tx
+            .execute(
+                "UPDATE dismissals
+                 SET promotion_state = 'local_only'
+                 WHERE finding_identity_hash = ?1
+                   AND promotion_state = 'promoted_convention'",
+                [&hex],
+            )
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        if rows_affected == 0 {
+            tx.rollback()
+                .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+            return Ok(DemoteOutcome::StateDrifted);
+        }
+
+        tx.execute(
+            "DELETE FROM conventions WHERE finding_identity_hash = ?1",
+            [&hex],
+        )
+        .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+        tx.execute(
+            "INSERT INTO state_transitions
+                (finding_identity_hash, from_state, to_state, trigger, ts,
+                 by_review_session_id, recurrence_at_transition)
+             VALUES (?1, 'promoted_convention', 'local_only', 'explicit_demote',
+                     ?2, NULL, NULL)",
+            params![hex, ts_ms],
+        )
+        .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+        tx.commit().map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        Ok(DemoteOutcome::Committed)
+    }
+
+    fn prune_candidates(&self, older_than: time::OffsetDateTime) -> Result<u64, MemoryError> {
+        let conn = self.conn.lock().unwrap();
+        let cutoff = rfc3339(older_than)?;
+        // AC 142 — only candidates are eligible; the WHERE clause excludes
+        // local_only and promoted_convention by construction. CASCADE drops
+        // state_transitions rows for each pruned dismissal (audit-silent;
+        // spec §4.6).
+        let n = conn
+            .execute(
+                "DELETE FROM dismissals
+                 WHERE promotion_state = 'candidate'
+                   AND last_seen_at < ?1",
+                [&cutoff],
+            )
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        Ok(n as u64)
     }
 
     fn load_local_only_conventions(&self) -> Result<Vec<Dismissal>, MemoryError> {

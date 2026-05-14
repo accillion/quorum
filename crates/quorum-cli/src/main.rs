@@ -75,6 +75,38 @@ enum ConventionCmd {
         /// Hex prefix (≥ 8 chars) or full 64-hex finding_identity_hash.
         hash: String,
     },
+    /// Promote a local_only dismissal to a written convention (T2).
+    /// Writes a managed block to `.quorum/conventions.md` and flips the
+    /// SQLite state. File-first-rename, then SQLite COMMIT (spec §3.2 T2).
+    Promote {
+        /// Hex prefix (≥ 8 chars) or full 64-hex finding_identity_hash.
+        hash: String,
+        /// Inline convention body. Mutually exclusive with `--from-editor`.
+        /// Without either flag, the managed block carries only the
+        /// title-derived header line (no body paragraph) per §4.4.
+        #[arg(long, value_name = "STRING", conflicts_with = "from_editor")]
+        text: Option<String>,
+        /// Spawn `$EDITOR` to author the convention body. Tests set
+        /// `QUORUM_TEST_EDITOR_BODY` to supply the body hermetically.
+        #[arg(long)]
+        from_editor: bool,
+    },
+    /// Demote a promoted_convention back to local_only (T3). Removes the
+    /// managed block from `.quorum/conventions.md` and flips SQLite state.
+    Demote {
+        /// Hex prefix (≥ 8 chars) or full 64-hex finding_identity_hash.
+        hash: String,
+    },
+    /// Prune candidate dismissals older than `[memory] candidate_expire_days`
+    /// (T4). Promoted/local_only rows are never touched.
+    Prune {
+        /// List the candidates that would be pruned; no DELETE.
+        #[arg(long)]
+        dry_run: bool,
+        /// Skip the Y/N confirmation prompt.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(clap::Args, Debug)]
@@ -324,6 +356,31 @@ fn dispatch_convention(args: ConventionArgs) -> Result<Exit, CliError> {
         ConventionCmd::Show { hash } => commands::convention::show(args.quorum_dir.as_ref(), &hash),
         ConventionCmd::History { hash } => {
             commands::convention::history(args.quorum_dir.as_ref(), &hash)
+        }
+        ConventionCmd::Promote {
+            hash,
+            text,
+            from_editor,
+        } => {
+            let body = match (text, from_editor) {
+                (Some(s), false) => commands::convention::BodySource::Text(s),
+                (None, true) => commands::convention::BodySource::FromEditor,
+                (None, false) => commands::convention::BodySource::TitleOnly,
+                (Some(_), true) => {
+                    // clap's `conflicts_with` should reject this, but
+                    // defense-in-depth.
+                    return Err(CliError::Config(
+                        "--text and --from-editor are mutually exclusive".into(),
+                    ));
+                }
+            };
+            commands::convention::promote(args.quorum_dir.as_ref(), &hash, body)
+        }
+        ConventionCmd::Demote { hash } => {
+            commands::convention::demote(args.quorum_dir.as_ref(), &hash)
+        }
+        ConventionCmd::Prune { dry_run, yes } => {
+            commands::convention::prune(args.quorum_dir.as_ref(), dry_run, yes)
         }
     }
 }
