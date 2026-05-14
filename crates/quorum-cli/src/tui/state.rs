@@ -7,7 +7,10 @@
 //! should execute on this tick.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use quorum_core::memory::{DismissalId, DismissalReason};
+use quorum_core::memory::{
+    Dismissal, DismissalId, DismissalReason, FindingIdentityHash, PromotionState,
+    StateTransitionRow,
+};
 use quorum_core::review::Finding;
 
 /// What the loop should execute after the latest key event. The loop owns
@@ -26,6 +29,27 @@ pub enum Command {
     },
     /// Pop the in-session undo stack and call `MemoryStore::delete`.
     Undo,
+    /// Phase 1C Stage 5 — load the dismissal-history snapshot from the
+    /// store (`list_all` + `load_transitions` for the initial cursor row).
+    /// The loop populates state via [`AppState::apply_history_loaded`].
+    OpenHistory,
+    /// Phase 1C Stage 5 — refresh the transition-log strip for the row at
+    /// `history_selected`. Fires whenever the history cursor moves.
+    LoadTransitions(FindingIdentityHash),
+    /// Phase 1C Stage 5 — execute T2 from the TUI promote modal. The loop
+    /// performs the file-then-SQLite orchestration (parse conventions.md,
+    /// atomic_write, `MemoryStore::commit_promote`) and calls
+    /// [`AppState::apply_promote_committed`] or [`AppState::apply_write_failed`].
+    Promote {
+        hash: FindingIdentityHash,
+        body: String,
+    },
+    /// Phase 1C Stage 5 — execute T3 from the TUI demote-confirm modal.
+    /// The loop removes the managed block from conventions.md and calls
+    /// `MemoryStore::commit_demote`.
+    Demote {
+        hash: FindingIdentityHash,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +60,22 @@ pub enum Modal {
     Help,
     /// Briefly shown when something illegal was tried (esc dismisses).
     Error,
+    /// Phase 1C Stage 5 — single-line text input for the promote body.
+    /// Active only inside [`View::History`] on `local_only` rows.
+    PromoteText,
+    /// Phase 1C Stage 5 — `Y/N` confirmation for demote. Active only
+    /// inside [`View::History`] on `promoted_convention` rows.
+    DemoteConfirm,
+}
+
+/// Phase 1C Stage 5 — top-level view selector. The Phase 1B per-review
+/// finding list is [`View::Main`]; the new dismissal-history table is
+/// [`View::History`]. Spec §5.2 / AC 157: `H` toggles, `Esc` from history
+/// returns to main, `q` from any view quits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum View {
+    Main,
+    History,
 }
 
 /// In-session undo entry — the dismissal id (so the loop can call
@@ -70,6 +110,25 @@ pub struct AppState {
     /// Counter of dismissals committed during this TUI session; used
     /// only for the in-loop "M dismissed" status display.
     pub session_dismissed_count: u32,
+    /// Phase 1C Stage 5 — current top-level view ([`View::Main`] for the
+    /// Phase 1B finding list, [`View::History`] for the dismissal-history
+    /// snapshot).
+    pub view: View,
+    /// Phase 1C Stage 5 — snapshot of `dismissals` rows for the history
+    /// view. Populated once via [`AppState::apply_history_loaded`] when
+    /// `H` is first pressed; never live-refreshed mid-session (spec §2
+    /// non-goal: "No TUI re-fetch.").
+    pub history_rows: Vec<Dismissal>,
+    pub history_selected: usize,
+    pub history_body_scroll: u16,
+    /// Phase 1C Stage 5 — transition log for the currently-selected
+    /// history row, oldest-first. Refreshed by [`Command::LoadTransitions`]
+    /// whenever the cursor moves.
+    pub history_transitions: Vec<StateTransitionRow>,
+    /// Phase 1C Stage 5 — single-line edit buffer for the promote-text
+    /// modal. Pre-seeded with the row's title on open; user can clear and
+    /// type a body, or accept Enter for title-only (spec §5.2).
+    pub promote_text_buf: String,
 }
 
 impl AppState {
@@ -86,6 +145,12 @@ impl AppState {
             undo_stack: Vec::new(),
             no_expire,
             session_dismissed_count: 0,
+            view: View::Main,
+            history_rows: Vec::new(),
+            history_selected: 0,
+            history_body_scroll: 0,
+            history_transitions: Vec::new(),
+            promote_text_buf: String::new(),
         }
     }
 
@@ -103,11 +168,16 @@ impl AppState {
             return Command::None;
         }
         match self.modal {
-            Modal::None => self.on_key_list(key),
+            Modal::None => match self.view {
+                View::Main => self.on_key_list(key),
+                View::History => self.on_key_history(key),
+            },
             Modal::Help => self.on_key_help(key),
             Modal::DismissReason => self.on_key_dismiss_reason(key),
             Modal::DismissNote => self.on_key_dismiss_note(key),
             Modal::Error => self.on_key_error(key),
+            Modal::PromoteText => self.on_key_promote_text(key),
+            Modal::DemoteConfirm => self.on_key_demote_confirm(key),
         }
     }
 
@@ -159,6 +229,132 @@ impl AppState {
                     return Command::Undo;
                 }
                 self.status_message = Some("nothing to undo".into());
+            }
+            KeyCode::Char('?') => {
+                self.modal = Modal::Help;
+                self.help_visible = true;
+            }
+            // Phase 1C Stage 5 — open the dismissal-history view (AC 157).
+            // The loop fetches via `MemoryStore::list_all` and calls
+            // `apply_history_loaded`.
+            KeyCode::Char('H') => {
+                self.status_message = None;
+                return Command::OpenHistory;
+            }
+            _ => {}
+        }
+        Command::None
+    }
+
+    /// Phase 1C Stage 5 — key dispatch inside [`View::History`]. Spec §5.2:
+    ///   * `H` / `Esc` → back to main view.
+    ///   * `q` / Ctrl+C → quit TUI from any view.
+    ///   * `j` / `k` / `↓` / `↑` / `g` / `G` — cursor navigation.
+    ///   * `p` — open the promote modal (only on `local_only` rows).
+    ///   * `D` (capital) — open the demote-confirm modal (only on
+    ///     `promoted_convention` rows; capital-D avoids collision with
+    ///     main-list `d`-for-dismiss muscle memory, §B6).
+    fn on_key_history(&mut self, key: KeyEvent) -> Command {
+        if matches!(key.code, KeyCode::Char('q')) {
+            return Command::Quit;
+        }
+        if matches!(key.code, KeyCode::Char('c')) && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return Command::Quit;
+        }
+        if matches!(key.code, KeyCode::Char('H')) || matches!(key.code, KeyCode::Esc) {
+            self.view = View::Main;
+            self.history_body_scroll = 0;
+            self.status_message = None;
+            return Command::None;
+        }
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down
+                if !self.history_rows.is_empty()
+                    && self.history_selected + 1 < self.history_rows.len() =>
+            {
+                self.history_selected += 1;
+                self.history_body_scroll = 0;
+                if let Some(row) = self.history_rows.get(self.history_selected) {
+                    return Command::LoadTransitions(row.finding_identity_hash);
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up if self.history_selected > 0 => {
+                self.history_selected -= 1;
+                self.history_body_scroll = 0;
+                if let Some(row) = self.history_rows.get(self.history_selected) {
+                    return Command::LoadTransitions(row.finding_identity_hash);
+                }
+            }
+            KeyCode::Char('g') => {
+                self.history_selected = 0;
+                self.history_body_scroll = 0;
+                if let Some(row) = self.history_rows.first() {
+                    return Command::LoadTransitions(row.finding_identity_hash);
+                }
+            }
+            KeyCode::Char('G') if !self.history_rows.is_empty() => {
+                self.history_selected = self.history_rows.len() - 1;
+                self.history_body_scroll = 0;
+                if let Some(row) = self.history_rows.get(self.history_selected) {
+                    return Command::LoadTransitions(row.finding_identity_hash);
+                }
+            }
+            KeyCode::PageDown => {
+                self.history_body_scroll = self.history_body_scroll.saturating_add(BODY_HALF_PAGE);
+            }
+            KeyCode::PageUp => {
+                self.history_body_scroll = self.history_body_scroll.saturating_sub(BODY_HALF_PAGE);
+            }
+            KeyCode::Char('p') => {
+                // Spec §5.2 / AC 158: gate at the keystroke level. Only
+                // `local_only` rows open the modal; other states emit a
+                // status-bar note and DO NOT open the modal.
+                let Some(row) = self.history_rows.get(self.history_selected) else {
+                    return Command::None;
+                };
+                match row.promotion_state {
+                    PromotionState::LocalOnly => {
+                        // Seed the buffer with the title so Enter-with-no-edit
+                        // produces a title-only block (spec §5.2: "Enter to
+                        // accept title-only"). The renderer surfaces the
+                        // seed so users see what they'd commit; clearing the
+                        // line and pressing Enter also produces title-only.
+                        self.promote_text_buf = row.title_snapshot.clone();
+                        self.modal = Modal::PromoteText;
+                        self.status_message = None;
+                    }
+                    PromotionState::Candidate => {
+                        self.status_message = Some(
+                            "promote requires local_only state (this row is candidate; dismiss \
+                             it more or wait for auto-promote)"
+                                .into(),
+                        );
+                    }
+                    PromotionState::PromotedConvention => {
+                        self.status_message =
+                            Some("already a promoted_convention; demote first to update".into());
+                    }
+                }
+            }
+            KeyCode::Char('D') => {
+                // Spec §5.2 / AC 159: gate at the keystroke level. Only
+                // `promoted_convention` rows open the confirmation.
+                let Some(row) = self.history_rows.get(self.history_selected) else {
+                    return Command::None;
+                };
+                match row.promotion_state {
+                    PromotionState::PromotedConvention => {
+                        self.modal = Modal::DemoteConfirm;
+                        self.status_message = None;
+                    }
+                    PromotionState::Candidate | PromotionState::LocalOnly => {
+                        self.status_message = Some(
+                            "demote requires promoted_convention state (use 'p' to promote a \
+                             local_only row first)"
+                                .into(),
+                        );
+                    }
+                }
             }
             KeyCode::Char('?') => {
                 self.modal = Modal::Help;
@@ -230,6 +426,110 @@ impl AppState {
         self.modal = Modal::None;
         self.status_message = None;
         Command::None
+    }
+
+    /// Phase 1C Stage 5 — single-line text editor for the promote modal.
+    /// `Enter` submits (empty buffer = title-only block per spec §5.2);
+    /// `Esc` cancels and discards the buffer. Newlines are rejected
+    /// (we're a single-line input — the spec lists no multi-line key).
+    fn on_key_promote_text(&mut self, key: KeyEvent) -> Command {
+        match key.code {
+            KeyCode::Esc => {
+                self.modal = Modal::None;
+                self.promote_text_buf.clear();
+                Command::None
+            }
+            KeyCode::Backspace => {
+                self.promote_text_buf.pop();
+                Command::None
+            }
+            KeyCode::Enter => {
+                let Some(row) = self.history_rows.get(self.history_selected) else {
+                    self.modal = Modal::None;
+                    self.promote_text_buf.clear();
+                    return Command::None;
+                };
+                // Guard against state drift: the row may have transitioned
+                // between modal-open and Enter (paranoid but cheap; the
+                // snapshot doesn't refresh, but the SQLite side could have
+                // moved if another process touched it).
+                if row.promotion_state != PromotionState::LocalOnly {
+                    self.status_message = Some(
+                        "promote aborted: row is no longer local_only (snapshot stale; quit \
+                         and re-invoke to refresh)"
+                            .into(),
+                    );
+                    self.modal = Modal::Error;
+                    self.promote_text_buf.clear();
+                    return Command::None;
+                }
+                let hash = row.finding_identity_hash;
+                // Trim trailing whitespace; the spec is silent on
+                // leading-trim but title-only mode (empty after trim)
+                // honors "Enter to accept title-only" cleanly.
+                let body = std::mem::take(&mut self.promote_text_buf)
+                    .trim_end()
+                    .to_string();
+                self.modal = Modal::None;
+                Command::Promote { hash, body }
+            }
+            KeyCode::Char(c) => {
+                // Reject newlines defensively — KeyCode::Enter is the
+                // separate submit path; embedded \n/\r would only arrive
+                // from a paste pipeline that shouldn't be used here.
+                if c == '\n' || c == '\r' {
+                    return Command::None;
+                }
+                // Strip control chars except tab→space (mirrors the
+                // dismiss-note rules; keeps the modal robust to paste).
+                if (c as u32) < 0x20 && c != '\t' {
+                    return Command::None;
+                }
+                let ch = if c == '\t' { ' ' } else { c };
+                // Soft cap to keep paste bombs from hanging the input;
+                // the on-disk body cap is enforced elsewhere
+                // (BODY_SNAPSHOT_MAX_BYTES = 2048).
+                if self.promote_text_buf.len() + ch.len_utf8()
+                    > quorum_core::memory::BODY_SNAPSHOT_MAX_BYTES
+                {
+                    return Command::None;
+                }
+                self.promote_text_buf.push(ch);
+                Command::None
+            }
+            _ => Command::None,
+        }
+    }
+
+    /// Phase 1C Stage 5 — `Y/N` confirmation for demote. Spec §5.2:
+    /// capital `Y` confirms; anything else (lowercase `y`, `n`, `Esc`)
+    /// cancels.
+    fn on_key_demote_confirm(&mut self, key: KeyEvent) -> Command {
+        match key.code {
+            KeyCode::Char('Y') => {
+                let Some(row) = self.history_rows.get(self.history_selected) else {
+                    self.modal = Modal::None;
+                    return Command::None;
+                };
+                if row.promotion_state != PromotionState::PromotedConvention {
+                    self.status_message = Some(
+                        "demote aborted: row is no longer promoted_convention (snapshot stale; \
+                         quit and re-invoke to refresh)"
+                            .into(),
+                    );
+                    self.modal = Modal::Error;
+                    return Command::None;
+                }
+                let hash = row.finding_identity_hash;
+                self.modal = Modal::None;
+                Command::Demote { hash }
+            }
+            _ => {
+                // Esc, n, lowercase y, anything else — cancel.
+                self.modal = Modal::None;
+                Command::None
+            }
+        }
     }
 
     /// Append a char to the note buffer per the §4.3.3 rules:
@@ -316,6 +616,72 @@ impl AppState {
         self.body_scroll = 0;
     }
 
+    /// Phase 1C Stage 5 — install the dismissal-history snapshot loaded
+    /// by the loop on first `H` press. Switches the view, resets the
+    /// cursor, and (if non-empty) signals the caller to also fetch the
+    /// initial row's transition log via [`Command::LoadTransitions`].
+    pub fn apply_history_loaded(&mut self, rows: Vec<Dismissal>) -> Command {
+        self.history_rows = rows;
+        self.history_selected = 0;
+        self.history_body_scroll = 0;
+        self.history_transitions.clear();
+        self.view = View::History;
+        self.status_message = None;
+        if let Some(row) = self.history_rows.first() {
+            Command::LoadTransitions(row.finding_identity_hash)
+        } else {
+            Command::None
+        }
+    }
+
+    /// Phase 1C Stage 5 — install the transition log for the currently
+    /// selected history row.
+    pub fn apply_transitions_loaded(&mut self, rows: Vec<StateTransitionRow>) {
+        self.history_transitions = rows;
+    }
+
+    /// Phase 1C Stage 5 — record a successful T2 promotion in the
+    /// history snapshot. The SQLite row flipped to `promoted_convention`;
+    /// reflect that locally so the user sees the new state without a
+    /// full re-fetch (consistent with §2 "no live re-fetch" non-goal —
+    /// we update only the row the user just touched).
+    pub fn apply_promote_committed(
+        &mut self,
+        hash: FindingIdentityHash,
+        short_hash: &str,
+        title: &str,
+    ) {
+        for row in self.history_rows.iter_mut() {
+            if row.finding_identity_hash == hash {
+                row.promotion_state = PromotionState::PromotedConvention;
+                break;
+            }
+        }
+        self.status_message = Some(format!(
+            "promoted {short_hash}: {title} — commit .quorum/conventions.md to apply"
+        ));
+    }
+
+    /// Phase 1C Stage 5 — record a successful T3 demotion in the
+    /// history snapshot.
+    pub fn apply_demote_committed(&mut self, hash: FindingIdentityHash, short_hash: &str) {
+        for row in self.history_rows.iter_mut() {
+            if row.finding_identity_hash == hash {
+                row.promotion_state = PromotionState::LocalOnly;
+                break;
+            }
+        }
+        self.status_message = Some(format!("demoted {short_hash} (now local_only)"));
+    }
+
+    /// Phase 1C Stage 5 — surface a write failure from the promote /
+    /// demote orchestrator. Opens the error modal so the message is
+    /// visible above the table.
+    pub fn apply_write_failed(&mut self, msg: String) {
+        self.status_message = Some(msg);
+        self.modal = Modal::Error;
+    }
+
     /// `dismiss()` returned `AlreadyDismissed` (defensive). Show the
     /// dedicated error modal but DROP the finding from the visible list
     /// — the user's intent (suppress it) is honored.
@@ -344,6 +710,7 @@ pub const ALREADY_DISMISSED: &str = "already dismissed; press any key to continu
 mod tests {
     use super::*;
     use quorum_core::review::{FindingSource, Severity};
+    use time::OffsetDateTime;
 
     fn k(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -351,6 +718,30 @@ mod tests {
 
     fn ctrl(c: char) -> KeyEvent {
         KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
+    }
+
+    /// Build a `Dismissal` fixture with the supplied promotion state +
+    /// title. The hash is derived from `byte` so different rows in the
+    /// same fixture compare unequal.
+    fn dismissal(byte: u8, title: &str, state: PromotionState) -> Dismissal {
+        Dismissal {
+            id: DismissalId(byte as i64),
+            finding_identity_hash: FindingIdentityHash([byte; 32]),
+            title_snapshot: title.to_string(),
+            body_snapshot: Some(format!("body snapshot for {title}")),
+            source_type_snapshot: "divergence".into(),
+            models_snapshot: vec!["m1".into(), "m2".into()],
+            branch_snapshot: "main".into(),
+            reason: DismissalReason::FalsePositive,
+            note: None,
+            dismissed_at: OffsetDateTime::UNIX_EPOCH,
+            last_seen_at: OffsetDateTime::UNIX_EPOCH,
+            last_seen_session_id: None,
+            recurrence_count: 3,
+            expires_at: None,
+            repo_head_sha_first: "abcdef0123".into(),
+            promotion_state: state,
+        }
     }
 
     fn fixture() -> AppState {
@@ -615,5 +1006,384 @@ mod tests {
         press.kind = KeyEventKind::Release;
         s.on_key(press);
         assert_eq!(s.selected, 0, "Release events do not advance selection");
+    }
+
+    // -------------------------------------------------------------------
+    // Phase 1C Stage 5 — dismissal-history view + promote/demote modals
+    // (AC 157 / 158 / 159).
+    // -------------------------------------------------------------------
+
+    fn shift(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT)
+    }
+
+    fn history_fixture() -> AppState {
+        let mut s = fixture();
+        // Three rows covering each promotion state so the keystroke
+        // gates for `p` / `D` are exercised exhaustively.
+        let rows = vec![
+            dismissal(0x11, "alpha rule", PromotionState::LocalOnly),
+            dismissal(0x22, "beta candidate", PromotionState::Candidate),
+            dismissal(0x33, "gamma promoted", PromotionState::PromotedConvention),
+        ];
+        let cmd = s.apply_history_loaded(rows);
+        // Initial cursor row exists → loop fetches its transitions.
+        match cmd {
+            Command::LoadTransitions(_) => {}
+            other => panic!("expected LoadTransitions after history load, got {other:?}"),
+        }
+        s
+    }
+
+    #[test]
+    fn capital_h_from_main_emits_open_history_without_view_flip() {
+        // AC 157: pressing H from main does NOT flip the view directly;
+        // it signals the loop to fetch (the loop calls
+        // apply_history_loaded which actually flips view).
+        let mut s = fixture();
+        let cmd = s.on_key(shift('H'));
+        assert_eq!(cmd, Command::OpenHistory);
+        assert_eq!(s.view, View::Main, "view flips inside apply_history_loaded");
+    }
+
+    #[test]
+    fn apply_history_loaded_flips_view_and_requests_transitions() {
+        // AC 157 — view flip happens inside apply_history_loaded, and
+        // the returned Command tells the loop to fetch the first row's
+        // transition log so the body pane has data on first render.
+        let mut s = fixture();
+        let rows = vec![dismissal(1, "row a", PromotionState::LocalOnly)];
+        let cmd = s.apply_history_loaded(rows);
+        assert_eq!(s.view, View::History);
+        assert_eq!(s.history_selected, 0);
+        match cmd {
+            Command::LoadTransitions(h) => assert_eq!(h, FindingIdentityHash([1; 32])),
+            other => panic!("expected LoadTransitions, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn apply_history_loaded_empty_emits_no_command() {
+        let mut s = fixture();
+        let cmd = s.apply_history_loaded(Vec::new());
+        assert_eq!(s.view, View::History);
+        assert!(s.history_rows.is_empty());
+        assert_eq!(cmd, Command::None);
+    }
+
+    #[test]
+    fn capital_h_from_history_returns_to_main() {
+        // AC 157: H toggles back to main from history.
+        let mut s = history_fixture();
+        assert_eq!(s.view, View::History);
+        let cmd = s.on_key(shift('H'));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.view, View::Main);
+    }
+
+    #[test]
+    fn esc_from_history_returns_to_main_does_not_quit() {
+        let mut s = history_fixture();
+        let cmd = s.on_key(k(KeyCode::Esc));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.view, View::Main);
+    }
+
+    #[test]
+    fn q_from_history_quits_tui() {
+        // Spec §5.2: "q (which now quits the TUI from any view)."
+        let mut s = history_fixture();
+        let cmd = s.on_key(k(KeyCode::Char('q')));
+        assert_eq!(cmd, Command::Quit);
+    }
+
+    #[test]
+    fn ctrl_c_from_history_quits_tui() {
+        let mut s = history_fixture();
+        let cmd = s.on_key(ctrl('c'));
+        assert_eq!(cmd, Command::Quit);
+    }
+
+    #[test]
+    fn j_k_in_history_emit_load_transitions_each_move() {
+        let mut s = history_fixture();
+        assert_eq!(s.history_selected, 0);
+        let cmd = s.on_key(k(KeyCode::Char('j')));
+        assert_eq!(s.history_selected, 1);
+        match cmd {
+            Command::LoadTransitions(h) => assert_eq!(h, FindingIdentityHash([0x22; 32])),
+            other => panic!("unexpected {other:?}"),
+        }
+        let cmd = s.on_key(k(KeyCode::Char('k')));
+        assert_eq!(s.history_selected, 0);
+        match cmd {
+            Command::LoadTransitions(h) => assert_eq!(h, FindingIdentityHash([0x11; 32])),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn p_on_local_only_opens_promote_modal_with_title_seed() {
+        // AC 158 — only local_only rows open the modal; buffer pre-seeded
+        // with the title (Enter-with-no-edit = title-only block).
+        let mut s = history_fixture();
+        assert_eq!(s.history_selected, 0);
+        let cmd = s.on_key(k(KeyCode::Char('p')));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::PromoteText);
+        assert_eq!(s.promote_text_buf, "alpha rule");
+    }
+
+    #[test]
+    fn p_on_candidate_is_rejected_no_modal_opens() {
+        // AC 158 — keystroke-level gate. Candidate rows produce a
+        // status-bar note; modal does NOT open.
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('j'))); // move to candidate row
+        let cmd = s.on_key(k(KeyCode::Char('p')));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::None);
+        assert!(s
+            .status_message
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("promote requires local_only"));
+    }
+
+    #[test]
+    fn p_on_promoted_convention_is_rejected_no_modal_opens() {
+        // AC 158 — promoted_convention rows reject `p` with a different
+        // message ("demote first").
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('j')));
+        s.on_key(k(KeyCode::Char('j'))); // move to promoted row
+        let cmd = s.on_key(k(KeyCode::Char('p')));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::None);
+        assert!(s
+            .status_message
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("already a promoted_convention"));
+    }
+
+    #[test]
+    fn promote_modal_enter_with_title_seed_commits_title_only() {
+        // AC 158 — Enter-with-no-edit on the seeded buffer submits the
+        // title as the body. (Title-only semantics: spec §5.2 says
+        // "Enter to accept title-only"; the seed is the title, so
+        // accepting unedited = title body.)
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('p')));
+        let cmd = s.on_key(k(KeyCode::Enter));
+        match cmd {
+            Command::Promote { hash, body } => {
+                assert_eq!(hash, FindingIdentityHash([0x11; 32]));
+                assert_eq!(body, "alpha rule");
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        assert_eq!(s.modal, Modal::None);
+    }
+
+    #[test]
+    fn promote_modal_clear_and_enter_commits_empty_body() {
+        // AC 158 — clearing the buffer (Backspace) and Enter gives an
+        // empty body string. The loop interprets this as title-only and
+        // forwards to MemoryStore::commit_promote with title fallback.
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('p')));
+        for _ in 0..s.promote_text_buf.len() + 1 {
+            s.on_key(k(KeyCode::Backspace));
+        }
+        let cmd = s.on_key(k(KeyCode::Enter));
+        match cmd {
+            Command::Promote { body, .. } => assert_eq!(body, ""),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn promote_modal_user_edits_then_enter_commits_custom_body() {
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('p')));
+        // Replace the buffer with a custom body.
+        s.promote_text_buf.clear();
+        for c in "do not block on stylistic ABC".chars() {
+            s.on_key(k(KeyCode::Char(c)));
+        }
+        let cmd = s.on_key(k(KeyCode::Enter));
+        match cmd {
+            Command::Promote { body, .. } => assert_eq!(body, "do not block on stylistic ABC"),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn promote_modal_esc_cancels_and_clears_buffer() {
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('p')));
+        assert!(!s.promote_text_buf.is_empty());
+        let cmd = s.on_key(k(KeyCode::Esc));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::None);
+        assert!(s.promote_text_buf.is_empty());
+    }
+
+    #[test]
+    fn promote_modal_rejects_embedded_newlines_silently() {
+        // Defense-in-depth: newlines via Char('\n') should be silently
+        // dropped (Enter is the submit path, not a literal newline).
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('p')));
+        let before = s.promote_text_buf.len();
+        let cmd = s.on_key(k(KeyCode::Char('\n')));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.promote_text_buf.len(), before);
+        assert_eq!(s.modal, Modal::PromoteText);
+    }
+
+    #[test]
+    fn capital_d_on_promoted_convention_opens_confirm_modal() {
+        // AC 159 — only promoted_convention rows open the confirm modal.
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('j')));
+        s.on_key(k(KeyCode::Char('j'))); // navigate to promoted row
+        let cmd = s.on_key(shift('D'));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::DemoteConfirm);
+    }
+
+    #[test]
+    fn capital_d_on_local_only_is_rejected_no_modal_opens() {
+        let mut s = history_fixture();
+        // Cursor at local_only.
+        let cmd = s.on_key(shift('D'));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::None);
+        assert!(s
+            .status_message
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("demote requires promoted_convention"));
+    }
+
+    #[test]
+    fn capital_d_on_candidate_is_rejected_no_modal_opens() {
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('j'))); // candidate
+        let cmd = s.on_key(shift('D'));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::None);
+    }
+
+    #[test]
+    fn demote_confirm_y_uppercase_commits() {
+        // AC 159 — only capital Y confirms.
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('j')));
+        s.on_key(k(KeyCode::Char('j')));
+        s.on_key(shift('D'));
+        let cmd = s.on_key(shift('Y'));
+        match cmd {
+            Command::Demote { hash } => assert_eq!(hash, FindingIdentityHash([0x33; 32])),
+            other => panic!("unexpected {other:?}"),
+        }
+        assert_eq!(s.modal, Modal::None);
+    }
+
+    #[test]
+    fn demote_confirm_lowercase_y_cancels() {
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('j')));
+        s.on_key(k(KeyCode::Char('j')));
+        s.on_key(shift('D'));
+        let cmd = s.on_key(k(KeyCode::Char('y')));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::None);
+    }
+
+    #[test]
+    fn demote_confirm_n_or_esc_cancels() {
+        for cancel in [KeyCode::Char('n'), KeyCode::Esc] {
+            let mut s = history_fixture();
+            s.on_key(k(KeyCode::Char('j')));
+            s.on_key(k(KeyCode::Char('j')));
+            s.on_key(shift('D'));
+            let cmd = s.on_key(k(cancel));
+            assert_eq!(cmd, Command::None);
+            assert_eq!(s.modal, Modal::None);
+        }
+    }
+
+    #[test]
+    fn d_lowercase_in_history_is_a_no_op_not_dismiss() {
+        // Capital-D collision-check: lowercase `d` does NOT trigger the
+        // dismiss path inside the history view (that's main-view-only).
+        let mut s = history_fixture();
+        s.on_key(k(KeyCode::Char('j')));
+        s.on_key(k(KeyCode::Char('j')));
+        let cmd = s.on_key(k(KeyCode::Char('d')));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::None, "lowercase d is unbound in history");
+    }
+
+    #[test]
+    fn apply_promote_committed_flips_local_only_to_promoted_in_snapshot() {
+        // After T2 succeeds, the snapshot reflects the new state so the
+        // user sees the change without a refresh.
+        let mut s = history_fixture();
+        s.apply_promote_committed(
+            FindingIdentityHash([0x11; 32]),
+            "111111111111",
+            "alpha rule",
+        );
+        assert_eq!(
+            s.history_rows[0].promotion_state,
+            PromotionState::PromotedConvention
+        );
+        assert!(s.status_message.is_some());
+    }
+
+    #[test]
+    fn apply_demote_committed_flips_promoted_to_local_only_in_snapshot() {
+        let mut s = history_fixture();
+        s.apply_demote_committed(FindingIdentityHash([0x33; 32]), "333333333333");
+        assert_eq!(s.history_rows[2].promotion_state, PromotionState::LocalOnly);
+    }
+
+    #[test]
+    fn apply_write_failed_opens_error_modal() {
+        let mut s = history_fixture();
+        s.apply_write_failed("commit_promote: state drifted".into());
+        assert_eq!(s.modal, Modal::Error);
+        assert_eq!(
+            s.status_message.as_deref(),
+            Some("commit_promote: state drifted")
+        );
+    }
+
+    #[test]
+    fn history_g_capital_g_jump_to_first_last_emit_transitions() {
+        let mut s = history_fixture();
+        let cmd = s.on_key(shift('G'));
+        assert_eq!(s.history_selected, 2);
+        assert!(matches!(cmd, Command::LoadTransitions(_)));
+        let cmd = s.on_key(k(KeyCode::Char('g')));
+        assert_eq!(s.history_selected, 0);
+        assert!(matches!(cmd, Command::LoadTransitions(_)));
+    }
+
+    #[test]
+    fn empty_history_p_and_capital_d_are_safe_no_ops() {
+        // Defensive: cursor at 0 with empty rows must not panic.
+        let mut s = fixture();
+        let _ = s.apply_history_loaded(Vec::new());
+        let cmd = s.on_key(k(KeyCode::Char('p')));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::None);
+        let cmd = s.on_key(shift('D'));
+        assert_eq!(cmd, Command::None);
+        assert_eq!(s.modal, Modal::None);
     }
 }

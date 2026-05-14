@@ -379,6 +379,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
                 &facts.head_sha,
                 &facts.branch,
                 opts.no_expire,
+                repo_start,
             ) {
                 Ok(outcome) => {
                     review.findings = outcome.kept_findings;

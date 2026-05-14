@@ -23,6 +23,7 @@ pub mod panels;
 pub mod state;
 
 use std::io::{self, Stdout, Write};
+use std::path::Path;
 use std::time::Duration;
 
 use crossterm::event::{self, Event};
@@ -35,9 +36,17 @@ use ratatui::Terminal;
 use std::sync::Mutex;
 
 use quorum_core::archive::SuppressionSummary;
-use quorum_core::memory::{MemoryError, MemoryStore};
+use quorum_core::conventions::{
+    atomic_write, parse_conventions_md, render_conventions_md, BlockToWrite, LineEnding,
+};
+use quorum_core::memory::{
+    Dismissal, FindingIdentityHash, MemoryError, MemoryStore, PromoteOutcome, PromotionState,
+    ShortHashResolution,
+};
 use quorum_core::review::Review;
 
+#[allow(unused_imports)] // re-exported for future TUI extensions / integration tests
+pub use state::View;
 pub use state::{AppState, Command, Modal};
 
 #[derive(thiserror::Error, Debug)]
@@ -69,6 +78,7 @@ pub fn run(
     repo_head_sha: &str,
     branch: &str,
     no_expire: bool,
+    repo_root: &Path,
 ) -> Result<TuiOutcome, TuiError> {
     let mut state = AppState::new(review.findings.clone(), no_expire);
     let session_id = review.session_id.clone();
@@ -159,6 +169,45 @@ pub fn run(
                     }
                 }
             }
+            Command::OpenHistory => match store.list_all() {
+                Ok(rows) => {
+                    let follow_up = state.apply_history_loaded(rows);
+                    if let Command::LoadTransitions(hash) = follow_up {
+                        match store.load_transitions(&hash) {
+                            Ok(ts) => state.apply_transitions_loaded(ts),
+                            Err(e) => {
+                                state.apply_write_failed(format!("load_transitions: {e}"));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    state.status_message = Some(format!("list_all failed: {e}"));
+                    state.modal = Modal::Error;
+                }
+            },
+            Command::LoadTransitions(hash) => match store.load_transitions(&hash) {
+                Ok(ts) => state.apply_transitions_loaded(ts),
+                Err(e) => {
+                    state.apply_write_failed(format!("load_transitions: {e}"));
+                }
+            },
+            Command::Promote { hash, body } => match tui_promote(store, repo_root, &hash, &body) {
+                Ok(title) => {
+                    let hex = hash.to_hex();
+                    let short = &hex[..12];
+                    state.apply_promote_committed(hash, short, &title);
+                }
+                Err(msg) => state.apply_write_failed(msg),
+            },
+            Command::Demote { hash } => match tui_demote(store, repo_root, &hash) {
+                Ok(()) => {
+                    let hex = hash.to_hex();
+                    let short = &hex[..12];
+                    state.apply_demote_committed(hash, short);
+                }
+                Err(msg) => state.apply_write_failed(msg),
+            },
         }
     }
 
@@ -190,6 +239,201 @@ fn source_kind(s: quorum_core::review::FindingSource) -> &'static str {
 /// actual store handle is what's load-bearing.
 fn db_path_label(_store: &dyn MemoryStore) -> String {
     ".quorum/dismissals.sqlite".to_string()
+}
+
+/// Phase 1C Stage 5 — TUI-side T2 promote orchestrator (spec §3.2 T2,
+/// AC 158). Path A choice: the TUI does the file-then-SQLite
+/// orchestration directly using public `quorum_core::conventions`
+/// helpers rather than calling `commands::convention::promote`. This
+/// avoids stderr emission inside the alt-screen buffer; the CLI
+/// orchestrator's pre-flight diagnostics (AC 168) are skipped here as
+/// non-AC TUI surface (documented in the Stage 5 close report).
+///
+/// Returns the row's title on success (for status-bar feedback) or a
+/// short error message on failure.
+fn tui_promote(
+    store: &dyn MemoryStore,
+    repo_root: &Path,
+    hash: &FindingIdentityHash,
+    body: &str,
+) -> Result<String, String> {
+    // 1. Resolve the row using the public short-hash API (the full
+    //    64-hex always resolves as Exact or NotFound — the trait
+    //    documents this contract).
+    let dismissal = resolve_full_hash(store, hash)?;
+    if dismissal.promotion_state != PromotionState::LocalOnly {
+        return Err(format!(
+            "promote: row {} is now {} (snapshot stale; quit and re-invoke to refresh)",
+            &hash.to_hex()[..12],
+            dismissal.promotion_state.as_db_str()
+        ));
+    }
+
+    let hex = dismissal.finding_identity_hash.to_hex();
+    let block_id: String = hex[..12].to_string();
+    let title_for_block = &dismissal.title_snapshot;
+
+    // 2. Read + parse conventions.md (diagnostics silently dropped —
+    //    AC 168 stderr is a CLI surface, not a TUI surface).
+    let conv_path = repo_root.join(".quorum").join("conventions.md");
+    let existing_bytes = match std::fs::read(&conv_path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(format!("read {conv_path:?}: {e}")),
+    };
+    let le = LineEnding::detect(&existing_bytes);
+    let (parsed, _diagnostics) = parse_conventions_md(&existing_bytes);
+
+    // 3. Build the new block set (idempotent re-promote: replace if
+    //    block_id already present, else append).
+    let mut to_write: Vec<BlockToWrite<'_>> = Vec::with_capacity(parsed.blocks.len() + 1);
+    let mut replaced = false;
+    for pb in &parsed.blocks {
+        if pb.id == block_id {
+            to_write.push(BlockToWrite {
+                id: &block_id,
+                version: 1,
+                title: title_for_block,
+                body,
+            });
+            replaced = true;
+        } else if let Some(bt) = BlockToWrite::from_parsed_block(pb) {
+            to_write.push(bt);
+        }
+        // Non-canonical blocks: skip silently (CLI logs a warning to
+        // stderr but the TUI status bar can't carry per-block notes
+        // cleanly. Mirrors AC 168 simplification.)
+    }
+    if !replaced {
+        to_write.push(BlockToWrite {
+            id: &block_id,
+            version: 1,
+            title: title_for_block,
+            body,
+        });
+    }
+
+    // 4. Render + atomic_write (file-first per spec §3.2 T2).
+    let new_bytes = render_conventions_md(&parsed, &to_write, le);
+    std::fs::create_dir_all(repo_root.join(".quorum"))
+        .map_err(|e| format!("create .quorum/: {e}"))?;
+    atomic_write(&conv_path, &new_bytes).map_err(|e| format!("atomic_write: {e}"))?;
+
+    // 5. AC 175 crash seam — symmetric with the CLI promote path. No-op
+    //    in production (zero-cost AtomicBool probe).
+    quorum_core::conventions::stage4_test_seam::maybe_panic_after_rename();
+
+    // 6. SQLite commit. Title-only resolution (body == "") matches the
+    //    CLI promote: store the title verbatim to satisfy the
+    //    `conventions.convention_text` ≥1-byte CHECK constraint.
+    let convention_text_for_db: &str = if body.is_empty() {
+        title_for_block
+    } else {
+        body
+    };
+    let ts_ms = current_unix_millis();
+    let outcome = store
+        .commit_promote(hash, convention_text_for_db, &block_id, ts_ms)
+        .map_err(|e| format!("commit_promote: {e}"))?;
+    match outcome {
+        PromoteOutcome::Committed => Ok(dismissal.title_snapshot.clone()),
+        PromoteOutcome::StateDrifted => Err(
+            "promote: SQLite state was not local_only at COMMIT time (drift); file write \
+             succeeded but DB did not advance. Run `quorum convention list --orphans` to \
+             reconcile."
+                .to_string(),
+        ),
+    }
+}
+
+/// Phase 1C Stage 5 — TUI-side T3 demote orchestrator (spec §3.2 T3,
+/// AC 159).
+fn tui_demote(
+    store: &dyn MemoryStore,
+    repo_root: &Path,
+    hash: &FindingIdentityHash,
+) -> Result<(), String> {
+    let dismissal = resolve_full_hash(store, hash)?;
+    if dismissal.promotion_state != PromotionState::PromotedConvention {
+        return Err(format!(
+            "demote: row {} is now {} (snapshot stale)",
+            &hash.to_hex()[..12],
+            dismissal.promotion_state.as_db_str()
+        ));
+    }
+
+    let hex = dismissal.finding_identity_hash.to_hex();
+    let block_id: String = hex[..12].to_string();
+    let conv_path = repo_root.join(".quorum").join("conventions.md");
+
+    // Remove the managed block from conventions.md if the file is
+    // present; mirrors the CLI's §10 Q7 lean (missing file → no file
+    // write, DB still advances).
+    match std::fs::read(&conv_path) {
+        Ok(existing_bytes) => {
+            let le = LineEnding::detect(&existing_bytes);
+            let (parsed, _diagnostics) = parse_conventions_md(&existing_bytes);
+            let to_write: Vec<BlockToWrite<'_>> = parsed
+                .blocks
+                .iter()
+                .filter(|pb| pb.id != block_id)
+                .filter_map(BlockToWrite::from_parsed_block)
+                .collect();
+            let new_bytes = render_conventions_md(&parsed, &to_write, le);
+            atomic_write(&conv_path, &new_bytes).map_err(|e| format!("atomic_write: {e}"))?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Q7 lean: file missing → skip file write, advance DB only.
+        }
+        Err(e) => return Err(format!("read {conv_path:?}: {e}")),
+    }
+
+    let ts_ms = current_unix_millis();
+    let outcome = store
+        .commit_demote(hash, ts_ms)
+        .map_err(|e| format!("commit_demote: {e}"))?;
+    match outcome {
+        quorum_core::memory::DemoteOutcome::Committed => Ok(()),
+        quorum_core::memory::DemoteOutcome::StateDrifted => Err(
+            "demote: SQLite state was not promoted_convention at COMMIT time (drift); file \
+             write succeeded but DB did not advance."
+                .to_string(),
+        ),
+    }
+}
+
+/// Current unix epoch milliseconds. Mirrors the CLI helper of the same
+/// shape; duplicated here so the TUI doesn't reach into `commands::`
+/// internals.
+fn current_unix_millis() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Resolve a full `FindingIdentityHash` to the underlying row through
+/// the public `find_by_short_hash` trait method. The 64-hex form is
+/// documented as always resolving to `Exact` or `NotFound` (never
+/// `Ambiguous`), so the Ambiguous arm is treated as a backend invariant
+/// violation rather than a user-facing message.
+fn resolve_full_hash(
+    store: &dyn MemoryStore,
+    hash: &FindingIdentityHash,
+) -> Result<Dismissal, String> {
+    let hex = hash.to_hex();
+    match store.find_by_short_hash(&hex) {
+        Ok(ShortHashResolution::Exact(d)) => Ok(*d),
+        Ok(ShortHashResolution::NotFound) => {
+            Err(format!("row {} not found (snapshot stale?)", &hex[..12]))
+        }
+        Ok(ShortHashResolution::Ambiguous(_)) => Err(format!(
+            "row {} resolved ambiguously on full 64-hex — backend invariant violated",
+            &hex[..12]
+        )),
+        Err(e) => Err(format!("find_by_short_hash: {e}")),
+    }
 }
 
 /// RAII guard for the alt-screen / raw-mode pair. Restoration runs on
@@ -273,4 +517,233 @@ mod tests {
     //! `TestBackend` plus a real `LocalSqliteMemoryStore`, which is
     //! integration-tier surface. State and rendering unit tests live
     //! in `state.rs` and `panels.rs`.
+    //!
+    //! Phase 1C Stage 5 — the `tui_promote` / `tui_demote` helpers are
+    //! private to this module (they live alongside the loop because they
+    //! orchestrate file-then-SQLite writes from inside the TUI). State
+    //! tests can't reach them; integration tests in `tests/` can't reach
+    //! binary-internal items. So we test the helpers directly here
+    //! against a real `LocalSqliteMemoryStore` rooted in a `TempDir`.
+
+    use super::*;
+    use quorum_core::memory::identity::finding_identity_hash;
+    use quorum_core::memory::{
+        DismissalReason, FindingIdentityHash, LocalSqliteMemoryStore, PromotionState,
+    };
+    use quorum_core::review::{Finding, FindingSource, Severity};
+    use tempfile::TempDir;
+
+    fn finding(title: &str) -> Finding {
+        Finding {
+            severity: Severity::High,
+            title: title.to_string(),
+            body: format!("body for {title}"),
+            source: FindingSource::Divergence,
+            supported_by: vec!["m".into()],
+            confidence: Some(0.9),
+        }
+    }
+
+    /// Seed a dismissal and (optionally) force its promotion_state via
+    /// direct SQL — same fixture pattern as `convention_write.rs`.
+    fn seed(
+        store: &LocalSqliteMemoryStore,
+        title: &str,
+        state: PromotionState,
+    ) -> FindingIdentityHash {
+        let f = finding(title);
+        store
+            .dismiss(
+                &f,
+                "head-sha",
+                "main",
+                DismissalReason::FalsePositive,
+                None,
+                None,
+            )
+            .unwrap();
+        let h = finding_identity_hash(&f);
+        if state != PromotionState::Candidate {
+            let conn = rusqlite::Connection::open(store.path()).unwrap();
+            conn.execute(
+                "UPDATE dismissals SET promotion_state = ?1 WHERE finding_identity_hash = ?2",
+                rusqlite::params![state.as_db_str(), h.to_hex()],
+            )
+            .unwrap();
+        }
+        h
+    }
+
+    fn store_in(td: &TempDir) -> LocalSqliteMemoryStore {
+        // The store creates `.quorum/dismissals.sqlite` under `root/`.
+        LocalSqliteMemoryStore::new(td.path()).unwrap()
+    }
+
+    #[test]
+    fn tui_promote_writes_file_and_flips_state() {
+        // AC 158 — full T2 round-trip via the TUI orchestrator.
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(
+            &store,
+            "no blocking on stylistic ABC",
+            PromotionState::LocalOnly,
+        );
+
+        let title = tui_promote(&store, td.path(), &hash, "Reject ABC stylistic findings.")
+            .expect("promote succeeds");
+        assert_eq!(title, "no blocking on stylistic ABC");
+
+        // SQLite advanced.
+        let resolved = store.find_by_short_hash(&hash.to_hex()).expect("find ok");
+        match resolved {
+            ShortHashResolution::Exact(d) => {
+                assert_eq!(d.promotion_state, PromotionState::PromotedConvention);
+            }
+            other => panic!("expected Exact, got {other:?}"),
+        }
+
+        // File side: managed block written.
+        let conv = std::fs::read_to_string(td.path().join(".quorum").join("conventions.md"))
+            .expect("conventions.md exists");
+        let short = &hash.to_hex()[..12];
+        assert!(
+            conv.contains(short),
+            "conventions.md should reference block id {short}; got:\n{conv}"
+        );
+        assert!(conv.contains("Reject ABC stylistic findings."));
+    }
+
+    #[test]
+    fn tui_promote_empty_body_falls_back_to_title_for_db() {
+        // Mirrors the CLI title-only resolution (Stage 4 close report
+        // note). `convention_text` must be ≥1 byte; passing empty body
+        // through the TUI stores the title verbatim.
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(&store, "title only convention", PromotionState::LocalOnly);
+
+        tui_promote(&store, td.path(), &hash, "").expect("promote succeeds");
+
+        let conn = rusqlite::Connection::open(store.path()).unwrap();
+        let text: String = conn
+            .query_row(
+                "SELECT convention_text FROM conventions WHERE finding_identity_hash = ?1",
+                rusqlite::params![hash.to_hex()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(text, "title only convention");
+    }
+
+    #[test]
+    fn tui_promote_rejects_non_local_only_state() {
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(&store, "still a candidate", PromotionState::Candidate);
+
+        let err = tui_promote(&store, td.path(), &hash, "body").expect_err("should reject");
+        assert!(err.contains("candidate"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn tui_demote_removes_block_and_flips_state() {
+        // AC 159 — full T3 round-trip via the TUI orchestrator.
+        // Setup: promote first (so conventions.md has the block), then
+        // demote and verify the block is gone + SQLite is back to
+        // local_only.
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(&store, "demote me", PromotionState::LocalOnly);
+        tui_promote(&store, td.path(), &hash, "body to be removed").unwrap();
+
+        let conv_before =
+            std::fs::read_to_string(td.path().join(".quorum").join("conventions.md")).unwrap();
+        let short = &hash.to_hex()[..12];
+        assert!(conv_before.contains(short));
+
+        tui_demote(&store, td.path(), &hash).expect("demote succeeds");
+
+        let conv_after =
+            std::fs::read_to_string(td.path().join(".quorum").join("conventions.md")).unwrap();
+        assert!(
+            !conv_after.contains(short),
+            "demote should remove the managed block; remaining file:\n{conv_after}"
+        );
+
+        let resolved = store.find_by_short_hash(&hash.to_hex()).unwrap();
+        match resolved {
+            ShortHashResolution::Exact(d) => {
+                assert_eq!(d.promotion_state, PromotionState::LocalOnly);
+            }
+            other => panic!("expected Exact, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tui_demote_missing_file_still_advances_db() {
+        // §10 Q7 lean — file missing → SQLite still advances. Mirrors
+        // the CLI demote path.
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(&store, "no file demote", PromotionState::PromotedConvention);
+        // Ensure conventions.md is absent (the seed didn't write it).
+        let conv = td.path().join(".quorum").join("conventions.md");
+        assert!(!conv.exists());
+
+        tui_demote(&store, td.path(), &hash).expect("demote succeeds even without file");
+
+        let resolved = store.find_by_short_hash(&hash.to_hex()).unwrap();
+        match resolved {
+            ShortHashResolution::Exact(d) => {
+                assert_eq!(d.promotion_state, PromotionState::LocalOnly);
+            }
+            other => panic!("expected Exact, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tui_demote_rejects_non_promoted_state() {
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(&store, "still local_only", PromotionState::LocalOnly);
+        let err = tui_demote(&store, td.path(), &hash).expect_err("should reject");
+        assert!(err.contains("local_only"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn ac_161_panic_hook_chain_no_new_set_hook_in_stage_5_code() {
+        // AC 161 — Phase 1B's panic-hook chain is the canonical install
+        // site. Stage 5 code must not call std::panic::set_hook or
+        // take_hook anywhere. This test guards against regression by
+        // asserting that, with the global hook in its default state,
+        // running tui_promote does NOT swap it out.
+        let original = std::panic::take_hook();
+        // Install a sentinel hook keyed on a global flag; assert it
+        // remains installed after a successful promote (which is the
+        // most code-path coverage Stage 5 has on its own write side).
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static SENTINEL_FIRED: AtomicBool = AtomicBool::new(false);
+        std::panic::set_hook(Box::new(|_info| {
+            SENTINEL_FIRED.store(true, Ordering::SeqCst);
+        }));
+
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(&store, "ac 161 row", PromotionState::LocalOnly);
+        let _ = tui_promote(&store, td.path(), &hash, "body").unwrap();
+
+        // Trigger a panic so the currently-installed hook fires; if
+        // tui_promote had swapped the hook, our sentinel wouldn't fire.
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            panic!("post-promote sentinel probe");
+        }));
+        assert!(r.is_err());
+        assert!(
+            SENTINEL_FIRED.load(Ordering::SeqCst),
+            "tui_promote must not call std::panic::set_hook — Phase 1B's chain is canonical"
+        );
+
+        std::panic::set_hook(original);
+    }
 }
