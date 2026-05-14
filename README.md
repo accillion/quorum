@@ -7,13 +7,16 @@ Multi-model code reviewer for the developer's machine.
 Quorum reviews staged git diffs using consensus across frontier LLMs (via
 [Lippa](https://app.lippa.ai)) plus codebase memory accumulated from prior reviews.
 
-**Status:** Phase 1B **shipped at `v0.2.0`** — interactive dismiss TUI,
-pre-commit / pre-push hook installer, non-interactive CI auth, prebuilt
-binaries for 5 platforms, and crates.io publish all live. Sigstore
-attestation (AC 132 second half) is deferred to 0.2.1 per
-[`BACKLOG.md`](./BACKLOG.md). See [`HISTORY.md`](./HISTORY.md) for
-the milestone log and [`SERVICES.md`](./SERVICES.md) for service-level
-behavioural rules. For per-version change details, see
+**Status:** Phase 1C **shipped at `v0.3.0`** — conventions-promotion
+state machine (`candidate` → `local_only` → `promoted_convention`),
+`quorum convention` CLI subcommand group, TUI dismissal-history view
+with promote/demote modals, and `## Local conventions (auto-derived)`
+bundle subsection. Phase 1B's interactive dismiss TUI, hook installer,
+non-interactive CI auth, prebuilt binaries for 5 platforms, crates.io
+publish, and sigstore attestation (AC 132 LIVE since v0.2.1) all
+continue to ship. See [`HISTORY.md`](./HISTORY.md) for the milestone
+log and [`SERVICES.md`](./SERVICES.md) for service-level behavioural
+rules. For per-version change details, see
 [GitHub Releases](https://github.com/accillion/quorum/releases).
 
 **Upstream:** consumes Lippa via its public `/api/v1/*` surface. Quorum
@@ -117,15 +120,43 @@ stderr note (code review is not meaningful for either). Each tuple
 produces its own archive at
 `.quorum/reviews/<push-start-ISO>.tuple-<N>.json`.
 
+## Local conventions (Phase 1C)
+
+Dismissals accumulate as `candidate` rows. After repeated dismissals of
+the same finding (per `[memory]` config thresholds), Quorum auto-promotes
+them to `local_only` — surfaced inline in the bundle's
+`## Local conventions (auto-derived)` subsection so future reviews see
+the convention without needing the dismissal history.
+
+```bash
+quorum convention list                  # all local conventions
+quorum convention list --state candidate
+quorum convention list --json
+quorum convention show <short-hash>     # full text + transition history
+quorum convention history <short-hash>  # state transitions only
+quorum convention promote --text "..." <short-hash>   # local_only → promoted (writes .quorum/conventions.md)
+quorum convention promote --from-editor <short-hash>  # opens $EDITOR
+quorum convention demote <short-hash>                 # promoted → local_only
+quorum convention prune --dry-run       # candidates older than candidate_expire_days
+quorum convention prune --yes
+```
+
+Promoted conventions land in `.quorum/conventions.md` as a managed
+section between fence markers; the file is byte-preservation-safe
+and the rest of the file is yours. The TUI's `H` view shows the
+dismissal-history pane; `p` opens a promote modal on `local_only`
+rows and `Shift+D` opens a demote confirmation on `promoted_convention`
+rows. See `--help` on each subcommand for full flag detail.
+
 ## Install
 
-**v0.2.0** is the first public release. Pick the path that fits.
+**v0.3.0** is the current release. Pick the path that fits.
 
 ### Cargo
 
 ```bash
 cargo install quorum-cli
-quorum --version    # quorum 0.2.0 (unknown)
+quorum --version    # quorum 0.3.0 (unknown)
 ```
 
 The `(unknown)` SHA is by design — crates.io tarballs ship without
@@ -144,7 +175,7 @@ SHA256 sidecar plus an aggregate `sha256.sum`:
 - `quorum-cli-x86_64-pc-windows-msvc.zip` + `.msi`
 
 Direct download from
-[the v0.2.0 release](https://github.com/accillion/quorum/releases/tag/v0.2.0),
+[the v0.3.0 release](https://github.com/accillion/quorum/releases/tag/v0.3.0),
 or one-line install via the cargo-dist installers also attached to
 the release:
 
@@ -162,7 +193,6 @@ powershell -ExecutionPolicy ByPass -c "irm https://github.com/accillion/quorum/r
 A formula (`quorum-cli.rb`) is built by cargo-dist and attached to
 each release. A Homebrew tap is **not yet published**; until it is,
 install via `cargo install` or the prebuilt binaries above.
-Tracked for the 0.2.1 release engineering pass.
 
 ### Verifying downloads
 
@@ -171,10 +201,19 @@ sha256sum -c sha256.sum             # Linux / macOS
 Get-FileHash -Algorithm SHA256 ...  # Windows
 ```
 
-Sigstore / cosign attestation is **not present** on v0.2.0 (deferred
-to 0.2.1; see [BACKLOG.md](./BACKLOG.md)). SHA256 verification
-against the per-file sidecars or the aggregate `sha256.sum` is the
-supported integrity check for this release.
+Sigstore attestation is **live** for every release from v0.2.1
+onward (cargo-dist `github-attestations = true`, `actions/attest-build-provenance@v3`).
+Verify any release asset with:
+
+```bash
+gh attestation verify quorum-cli-<target>.tar.xz --owner accillion
+```
+
+Expect a Fulcio-signed SLSA provenance v1 attestation tying the
+asset to a specific `release.yml@refs/tags/<version>` build, with
+an RFC3161 timestamp from `timestamp.githubapp.com`. SHA256
+verification against the per-file sidecars or the aggregate
+`sha256.sum` remains supported as an independent integrity check.
 
 Exit codes:
 - `0` — review completed; no high-severity findings (or auth/link command succeeded).
