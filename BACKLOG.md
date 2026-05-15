@@ -5,7 +5,16 @@ Group by next-target version. Most-recent first.
 
 ---
 
+## Closed in v0.3.3 (originally planned for v0.3.1)
+
+- ~~**Stale `--help` text in `convention` subcommand group.**~~ Closed by WI-5 in the v0.3.1 fixes payload (landed at `aed4aa1`); shipped to users in v0.3.3.
+- ~~**Cross-process `OsKeyring` round-trip test.**~~ Closed by WI-1 in the v0.3.1 fixes payload; negative-control verified failing on unfixed `aed4aa1` (would have caught BUG 1 pre-v0.3.0).
+
+---
+
 ## Next-target: v0.4 (or later)
+
+- **CI: explicit system-dependency declaration.** Both `release.yml` and `publish-crates.yml` currently rely on a manual `Install libdbus on Linux` apt step because cargo-dist 0.31 ignores `[dist.dependencies.apt]` in `dist-workspace.toml`. The duplication caused the v0.3.1 → v0.3.2 → v0.3.3 cascade (v0.3.1 added the manual step in only `release.yml`; v0.3.2 needed `allow-dirty = ["ci"]` to silence cargo-dist's self-check on that file; v0.3.3 added the same manual step to `publish-crates.yml` after `cargo publish --verify` re-compiled `libdbus-sys`). A future cargo-dist upgrade (or a `dependencies` config syntax change) should reduce this to a single declarative config entry. Until then, any new workflow file that runs `cargo build` / `cargo publish --verify` on Linux needs its own libdbus apt step. Tracking item — revisit at next cargo-dist bump.
 
 - **Shared file+SQL orchestrator helper** (Phase 1C Stage 5 — new). Refactor the file-write-then-`commit_promote/commit_demote` sequence into a `quorum-core::conventions` library helper. Currently duplicated ~50 LOC between `commands/convention.rs` (CLI orchestrator) and `tui/mod.rs::tui_promote/tui_demote` (TUI orchestrator). Library-code change so it was correctly deferred from Stage 5's TUI-only scope.
 
