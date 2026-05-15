@@ -4,6 +4,55 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
+## Phase 0.3.0 — Public release of Phase 1C ✦ 2026-05-14
+
+**Spec:** none — release engineering of Phase 1C contents.
+**Status:** **Closed at `v0.3.0`**. AC 132 LIVE re-verified; AC 93 / AC 94 re-verified. All three crates on crates.io; GitHub Release v0.3.0 with sigstore-attested assets per-target. **First true live exercise of the publish-crates half of the release workflow** — closes the gap noted in Phase 0.2.1 process learning #5.
+
+**Public release:**
+- crates.io: [`quorum-core 0.3.0`](https://crates.io/crates/quorum-core/0.3.0), [`quorum-lippa-client 0.3.0`](https://crates.io/crates/quorum-lippa-client/0.3.0), [`quorum-cli 0.3.0`](https://crates.io/crates/quorum-cli/0.3.0).
+- GitHub Release: [`v0.3.0`](https://github.com/accillion/quorum/releases/tag/v0.3.0).
+- CI run: [`25883652767`](https://github.com/accillion/quorum/actions/runs/25883652767) — all 9 jobs green (`plan` → `build-local-artifacts × 5 targets` → `build-global-artifacts` → `host` → `custom-publish-crates / publish-crates` → `announce`).
+
+Tag `v0.3.0` points at `fafd988`; not rewritten across the session.
+
+### Commit graph
+
+```
+fafd988  docs(readme): note quorum convention surface and TUI history view for v0.3.0
+b0a6c78  chore(cli): bump versions to 0.3.0
+cb335f3  chore(gitignore): ignore packages/ (cross-project spec drops)
+```
+
+Plus this close commit on `main` after the tag landed.
+
+### What shipped
+
+- **Version bump 0.2.1 → 0.3.0.** Workspace `[workspace.package].version` + `quorum-cli`'s path-dep version pins for `quorum-core` and `quorum-lippa-client`. `cargo publish --dry-run` clean for `quorum-core` + `quorum-lippa-client`; `quorum-cli` dry-run fails resolving `quorum-core ^0.3.0` against crates.io — expected, matches the 0.2.1 chain-publish pattern.
+- **README polish.** Status line advanced from Phase 1B/v0.2.0 to Phase 1C/v0.3.0; sigstore note flipped from "deferred to 0.2.1" to "live since v0.2.1" with a `gh attestation verify` example; new "Local conventions (Phase 1C)" section covering the `quorum convention list / show / history / promote / demote / prune` subcommand surface plus the `H` / `p` / `Shift+D` TUI keybindings; refreshed `v0.2.0` references to `v0.3.0`; stale "Tracked for the 0.2.1 release engineering pass" line removed from the Homebrew note.
+- **`.gitignore` hygiene.** Added `packages/` to ignore cross-project spec drops that were sitting untracked in the working tree (CarryForward folder-sync artifact, not Quorum content).
+- **Tag-triggered release workflow.** `release.yml` ran the full multi-matrix sequence end-to-end: `plan` → 5-target matrix `build-local-artifacts` with per-target `Attest` step (`actions/attest-build-provenance@v3` against Fulcio + RFC3161 TSA) → `build-global-artifacts` → `host` aggregates the GitHub Release → `custom-publish-crates` runs the patched `publish-crates.yml` (sequential `cargo publish -p quorum-core / -p quorum-lippa-client / -p quorum-cli`) → `announce` finalizes the Release.
+
+### Live verification
+
+- **AC 132 LIVE ✓** — `gh attestation verify quorum-cli-x86_64-unknown-linux-gnu.tar.xz --owner accillion` exits 0. `--format json` dump confirms: OIDC issuer `https://token.actions.githubusercontent.com`, SAN `https://github.com/accillion/quorum/.github/workflows/release.yml@refs/tags/v0.3.0`, build signer URI same, source repository URI `https://github.com/accillion/quorum`, source repository digest `fafd98844976391946b8b893c43c2a7d3440220e` (matches `git rev-parse v0.3.0`), source repository ref `refs/tags/v0.3.0`, `sourceRepositoryVisibilityAtSigning=public`, predicate type `https://slsa.dev/provenance/v1`, build type `https://actions.github.io/buildtypes/workflow/v1`. AC 132 LIVE re-verified.
+- **AC 93 LIVE re-verified ✓** — `cargo install --root /tmp/q030-install --force quorum-cli` resolves `quorum-cli v0.3.0` from crates.io (alongside `quorum-core 0.3.0` and `quorum-lippa-client 0.3.0`) and produces a binary reporting `quorum 0.3.0 (unknown)` (`build.rs` GIT_SHORT_SHA fallback, consistent with v0.2.0 / v0.2.1).
+- **AC 94 LIVE re-verified ✓** — downloaded `quorum-cli-x86_64-unknown-linux-gnu.tar.xz` (3,147,840 bytes) from the v0.3.0 Release; computed SHA256 `2f2d13427a1b41a01f91d4d31b68a697019439d7cd629993e2059c228fcfeb5e` matches the entry in `sha256.sum` exactly.
+
+### Process learnings (3)
+
+- **Publish-crates workflow ran clean on its first live exercise.** The `5a658ef` patch (drop nonexistent `--wait-for-publish` flag) landed on `main` after the 0.2.1 close but was untested at tag-push time. v0.3.0's tag-triggered run was the first true end-to-end exercise: all three sequential `cargo publish` calls landed inside the workflow with no out-of-band intervention. Closes the gap from Phase 0.2.1 process learning #5; the workflow-driven publish half is now proven live.
+- **Local-only Phase 1C history pushed to origin in one bundled push.** Origin/main was 28 commits behind local at session start (`origin/main` at `739e595`, before any Phase 1C implementation). The release dispatch was authored assuming main was already up-to-date and the version-bump commit was "already on main"; in reality the version bump rode atop 28 unpushed commits. Decision under §3 was to push all 31 commits (28 Phase 1C + cb335f3 / b0a6c78 / fafd988) before the tag push, which surfaced no main-branch CI (release.yml is tag-triggered only — no `push: branches: [main]` listener) so the bundled push was safe. Lesson: future release dispatches should explicitly verify `git log origin/main..HEAD` is empty (or the expected-shape ship-prep sequence) at the §3 precondition step, not just verify local `git status --porcelain`.
+- **`jq` is not on the harness's Bash PATH on Windows.** Monitor scripts that depended on `jq` for filtering `gh run view` JSON silently emitted no events through the 50-minute CI window. `gh`'s built-in `--template` flag (`-t '{{.status}}/{{.conclusion}}'`) is the portable substitute; PowerShell's `ConvertFrom-Json` is the other path. Document for future release-monitoring scripts.
+
+### Stats
+
+- **338 tests passing** at close — unchanged from Phase 1C close.
+- `cargo build --release` / `cargo test --workspace` / `cargo clippy --workspace --all-targets -- -D warnings` / `cargo fmt --check --all` all green throughout.
+- 4 commits land on `main` for the release (`cb335f3` + `b0a6c78` + `fafd988` + this close commit). Tag base is `fafd988`.
+
+---
+
 ## Phase 1C — Conventions-promotion state machine ✦ 2026-05-13 → 2026-05-14
 
 **Spec:** `specs/Quorum-Phase1C-Spec-v1_1.md` (v1.0 implementation + 3-annotation micro-revision); v1.0, v0.2, v0.1, and three peer-review files retained for lineage.
