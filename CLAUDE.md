@@ -162,31 +162,23 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **Phase 1C closed; spec v1.1 committed; v0.3.0 release engineering next.**
+**Active:** **v0.3.0 shipped; Phase 1C public release complete.**
 
-Phase 1C shipped the conventions-promotion state machine — SQLite v1→v2
-migration with `state_transitions` / `conventions` / `schema_meta` tables;
-T1–T5 state machine; `quorum convention list/show/history/promote/demote/prune`
-CLI surface; `## Local conventions (auto-derived)` bundle subsection +
-§6.2 promote-but-uncommitted bridge; TUI dismissal-history view with
-`p` / `Shift+D` modals; AC 175 crash harness with idempotent re-promote
-recovery. 5 stages, 39 ACs, 338 tests (+141 from Phase 1B baseline).
+Tag `v0.3.0` → `fafd988`. CI run `25883652767` all 9 jobs green
+end-to-end. AC 132 LIVE re-verified on v0.3.0 assets, AC 93 / AC 94
+re-verified. All three crates on crates.io at 0.3.0; GitHub Release
+shipped with sigstore-attested per-target assets. First true live
+exercise of the `5a658ef`-patched publish-crates workflow — clean
+end-to-end pass closes the gap from 0.2.1 process learning #5.
 
-**Spec lifecycle:** v0.1 (peer-reviewed) → v1.0 (implementation target) → v1.1
-(three micro-revisions reconciling spec to as-built). Full close detail in
-`HISTORY.md` Phase 1C entry; service contract extensions in `SERVICES.md`
-§6.1; six BACKLOG follow-ups queued for v0.4 or later.
-
-**Repo state at Phase 1C close:**
+**Repo state at v0.3.0 close:**
 - 338 tests pass; clippy `-D warnings` + fmt `--check` clean throughout.
-- `accillion/quorum` remains public (irreversible from 0.2.1).
-- `../lippa` working tree untouched by Quorum across the full milestone.
+- `accillion/quorum` public (irreversible from 0.2.1).
+- `../lippa` working tree untouched by Quorum across the release session.
 
-**Next:** v0.3.0 release engineering — workspace version bump, cargo-dist
-sigstore attestation run, workflow-driven crates.io publish via the
-`5a658ef`-patched `publish-crates.yml`, GitHub Release. Parallel to the
-0.2.1 ship pattern; first live exercise of the publish-crates half of the
-release workflow (per 0.2.1 process learning #5).
+**Next:** undefined — Phase 1D scope not yet specified. Six Phase 1C
+BACKLOG follow-ups queued for v0.4 or later remain open in `BACKLOG.md`.
+Full close detail in `HISTORY.md` Phase 0.3.0 entry.
 
 ---
 
