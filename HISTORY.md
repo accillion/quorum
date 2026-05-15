@@ -4,6 +4,65 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
+## Phase 0.3.3 — Patch release (recovery from v0.3.1 + v0.3.2 cascade) ✦ 2026-05-15
+
+**Spec:** none — release engineering recovery of the v0.3.1 patch payload.
+**Status:** **Closed at `v0.3.3`**. Third attempt at shipping the BUG 1 keyring features fix + four smaller v0.3.1 bugs; first two attempts halted on distinct release-engineering issues. All three crates at matched versions on crates.io; GitHub Release v0.3.3 live with sigstore-attested assets. AC 132 / AC 93 / AC 94 live-verified; keyring round-trip live-verify deferred to Rolf (CC host lacks staging credentials).
+
+**Public release:**
+- crates.io: [`quorum-core 0.3.3`](https://crates.io/crates/quorum-core/0.3.3), [`quorum-lippa-client 0.3.3`](https://crates.io/crates/quorum-lippa-client/0.3.3), [`quorum-cli 0.3.3`](https://crates.io/crates/quorum-cli/0.3.3).
+- GitHub Release: [`v0.3.3`](https://github.com/accillion/quorum/releases/tag/v0.3.3).
+- CI run: [`25926404022`](https://github.com/accillion/quorum/actions/runs/25926404022) — all 9 jobs green (`plan` → `build-local-artifacts × 5 targets` → `build-global-artifacts` → `host` → `custom-publish-crates / publish-crates` → `announce`).
+
+Tag `v0.3.3` points at `83f59d8`; not rewritten across the session.
+
+### Cascade forensics
+
+The v0.3.1 patch payload (5 bug fixes + 12 new tests) landed on `main` at `aed4aa1` after the v0.3.0 close. Three release-engineering attempts were needed to deliver it:
+
+- **v0.3.1** (`7a9a720`, workflow run [`25924690415`](https://github.com/accillion/quorum/actions/runs/25924690415)) — failed at the cargo-dist `plan`-job self-consistency check. cargo-dist 0.31 ignores `[dist.dependencies.apt]` in `dist-workspace.toml`, so an earlier session had added a manual `Install libdbus on Linux` step to `release.yml`; `plan` then refused to run because the workflow file diverged from cargo-dist's generated shape. No artifacts published. Halted; no Release object created.
+- **v0.3.2** (`655174a`, workflow run [`25925457652`](https://github.com/accillion/quorum/actions/runs/25925457652)) — `7a61452` added `allow-dirty = ["ci"]` to `dist-workspace.toml`, which fixed the plan-job self-check. Plan + all 5 build matrix entries + `build-global-artifacts` + `host` + sigstore attestation went green. GitHub Release v0.3.2 was created with 19 assets. Then `custom-publish-crates / publish-crates` failed at `cargo publish -p quorum-lippa-client --verify`: `publish-crates.yml` runs on `ubuntu-22.04` with no system-dep install, and `cargo publish --verify` re-compiles the crate, transitively pulling `libdbus-sys` which `build.rs`-shells out to `pkg-config --libs --cflags dbus-1`. **`quorum-core 0.3.2` published successfully before the failure**; `quorum-lippa-client 0.3.2` and `quorum-cli 0.3.2` never published. Halted with a stranded `quorum-core 0.3.2` on crates.io and a partially-assembled GitHub Release.
+- **v0.3.3** (`83f59d8`, workflow run [`25926404022`](https://github.com/accillion/quorum/actions/runs/25926404022)) — single-file fix: WI-0 added the same `Install libdbus` apt step (`libdbus-1-dev` + `pkg-config`) to `publish-crates.yml` between the Rust toolchain install and the first `cargo publish` invocation. No `if: runner.os == 'Linux'` guard since `publish-crates.yml` is single-runner Linux-only. WI-1 bumped workspace version 0.3.2 → 0.3.3 (skipping `quorum-core 0.3.3` would have created a version skew; clean version-line wins over the cosmetic republish). All 9 jobs green; all three crates published in dependency order.
+
+**Tag state on origin:** v0.3.1 (dead, no artifacts, no Release object), v0.3.2 (dead, partial crates publish, GitHub Release object deleted at v0.3.3 close), v0.3.3 (this release). All three tags permanent per no-rewrite discipline. v0.3.2 tag preserved but its Release page removed from `/releases` (`gh release delete v0.3.2 --yes --cleanup-tag=false`).
+
+**crates.io state after v0.3.3 publish:**
+- `quorum-core`: 0.3.0, 0.3.2, 0.3.3 — 0.3.2 stranded but harmless (no yank issued; the stranded version isn't broken, just orphaned).
+- `quorum-lippa-client`: 0.3.0, 0.3.3 — clean 0.3.0 → 0.3.3 step.
+- `quorum-cli`: 0.3.0, 0.3.3 — clean 0.3.0 → 0.3.3 step.
+
+### Payload (unchanged from v0.3.1 plan)
+
+Five bug fixes + one cross-process test that would have caught BUG 1 before v0.3.0 shipped. All landed on `main` at `aed4aa1` before any release-engineering attempt; v0.3.1 / v0.3.2 / v0.3.3 differ only in workflow-file content and version-line.
+
+- **WI-1: Cross-process `OsKeyring` round-trip test.** Negative-control verified failing on unfixed `aed4aa1` — would have caught BUG 1 pre-release.
+- **WI-2: BUG 1 fix.** `keyring` v3 platform feature flags enabled (`apple-native`, `linux-native-sync-persistent`, `windows-native`). v0.3.0's published binary had no platform backends compiled in because the keyring crate's default features were disabled; storing a token succeeded in-process but a second process couldn't read it back. User-visible: every `quorum auth status` after a `quorum auth login` reported "not logged in."
+- **WI-3: BUG 2 fix.** `CliError::HttpStatus` split out from `CliError::Network`; 403/HTML response bodies stop dumping raw HTML to stderr. Network-layer errors (DNS, TCP, TLS) remain as `Network`; protocol-level non-success responses are now `HttpStatus` with status code + reason in the user-facing message.
+- **WI-4: BUG 3 fix.** `emit_history` distinguishes fresh v2 candidate rows (never had transitions) from pre-v2 migrated rows (transitions lost in the v1→v2 schema migration). The former shows "(no history)"; the latter shows "(pre-v2 row; transition history not available)" to avoid implying a row was never dismissed when in fact its history was lost in migration.
+- **WI-5: Stale `--help` text + `.quorum/` bundle exclusion + AC 139 `--text` body propagation.** Help text scrubbed of Phase 0.2.x-era flag references; `.quorum/` directory added to bundle assembly's exclude set so review bundles don't include the reviewer's own config / database / reviews; AC 139 `quorum convention promote --text "<body>"` propagation verified intact end-to-end.
+
+### Live verification
+
+- **AC 132 LIVE ✓** — `gh attestation verify quorum-cli-x86_64-unknown-linux-gnu.tar.xz --owner accillion` exits 0 against the v0.3.3 Linux asset.
+- **AC 93 LIVE ✓** — `cargo install --force quorum-cli` resolves `quorum-cli v0.3.3` from crates.io (alongside `quorum-core 0.3.3` and `quorum-lippa-client 0.3.3`); binary reports `quorum 0.3.3 (unknown)` consistent with the build.rs GIT_SHORT_SHA fallback observed in v0.3.0.
+- **AC 94 LIVE ✓** — downloaded `quorum-cli-x86_64-unknown-linux-gnu.tar.xz` from the v0.3.3 Release; SHA256 `6d4beec4cf6aa95a831c32ccac13db5e274aef1332ca5df34fc9e3c81686df7e` matches the `sha256.sum` entry exactly.
+- **Keyring round-trip LIVE — deferred to Rolf.** CC's host lacks Lippa staging credentials needed for an end-to-end `auth login` → cross-process `auth status` exercise. Constituent-part coverage exists (WI-1 unit + cross-process round-trip tests pass at HEAD); end-to-end exercise against a real Lippa instance is Rolf's to run.
+
+### Process learnings (3)
+
+- **`publish-crates.yml` was untested against `cargo publish --verify`'s recompile pass.** v0.3.0's publish-crates step ran clean because crates.io's pre-publish validation was lighter than `--verify`'s full recompile, or because system deps happened to be available at that point in time. v0.3.2 surfaced the gap. Lesson: when a release workflow runs in two halves on different runners (host job on `ubuntu-latest`-with-system-deps, publish-crates job on bare `ubuntu-22.04`), the publish-crates runner needs every system dep the crate's full compile path requires — `cargo publish --verify` is a full recompile, not just a metadata upload. Add a follow-up to declare this declaratively (see BACKLOG).
+- **Cascaded release failures don't mean the payload is broken.** The v0.3.1 patch payload landed on `main` at `aed4aa1` and remained healthy across all three release attempts. The cascade was purely release-engineering: workflow file shape (v0.3.1), system deps on the publish runner (v0.3.2), both fixed by v0.3.3. Tag-rewrite discipline (no force-push, no tag deletion, no yank) preserved the audit trail across all three attempts; the cost was three permanent dead tags + one stranded crates.io version, all harmless.
+- **Partial-publish recovery has a clean shape.** When `publish-crates` fails mid-sequence (one or more crates published, others not), the recovery is: identify the workflow bug, fix it, bump all crates to the next patch version (skipping bumps on the partially-published crate would create version skew with the others), republish all three. No yank of the partially-published version — it isn't broken, just orphaned. Document this explicitly so future cascaded partial-publish failures don't reach for `cargo yank` reflexively.
+
+### Stats
+
+- **350 tests passing** at close (unchanged from `aed4aa1` payload landing; +12 from v0.3.0's 338 baseline).
+- `cargo build --release` / `cargo test --workspace` / `cargo clippy --workspace --all-targets -- -D warnings` / `cargo fmt --check --all` all green throughout.
+- 2 release commits land on `main` for v0.3.3 (`1601fa7` publish-crates libdbus fix + `83f59d8` version bump), plus the three close commits (this HISTORY entry + BACKLOG + CLAUDE).
+- v0.3.1 contributed 1 release commit (`7a9a720`); v0.3.2 contributed 2 (`7a61452` allow-dirty + `655174a` version bump). Total release-engineering commit cost across the cascade: 5 commits + 3 dead tags.
+
+---
+
 ## Phase 0.3.0 — Public release of Phase 1C ✦ 2026-05-14
 
 **Spec:** none — release engineering of Phase 1C contents.
