@@ -162,23 +162,28 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **v0.3.0 shipped; Phase 1C public release complete.**
+**Active:** **v0.3.1 patch fixes landed; awaiting Rolf signoff before release dispatch.**
 
-Tag `v0.3.0` → `fafd988`. CI run `25883652767` all 9 jobs green
-end-to-end. AC 132 LIVE re-verified on v0.3.0 assets, AC 93 / AC 94
-re-verified. All three crates on crates.io at 0.3.0; GitHub Release
-shipped with sigstore-attested per-target assets. First true live
-exercise of the `5a658ef`-patched publish-crates workflow — clean
-end-to-end pass closes the gap from 0.2.1 process learning #5.
+Five WIs from the v0.3.1 dispatch landed against `aed4aa1` (v0.3.0 close):
+- **WI-1** cross-process `OsKeyring` round-trip test — would have caught
+  BUG 1 before v0.3.0 shipped; negative-control verified failing on
+  unfixed `aed4aa1`.
+- **WI-2** BUG 1 fix — keyring v3 platform feature flags enabled.
+- **WI-3** BUG 2 fix — `CliError::HttpStatus` split out from
+  `CliError::Network`; 403/HTML stops dumping raw HTML to stderr.
+- **WI-4** BUG 3 fix — `emit_history` distinguishes fresh v2 candidate
+  rows from pre-v2 migrated rows.
+- **WI-5** stale `--help` text scrubbed; `.quorum/` excluded from
+  bundle assembly; AC 139 `--text` body propagation verified intact.
 
-**Repo state at v0.3.0 close:**
-- 338 tests pass; clippy `-D warnings` + fmt `--check` clean throughout.
-- `accillion/quorum` public (irreversible from 0.2.1).
-- `../lippa` working tree untouched by Quorum across the release session.
+Repo state: 350 tests pass (was 338); clippy `-D warnings` + fmt
+`--check` clean; `../lippa` untouched by Quorum. No version bump,
+no schema change, no new public API surface. Release engineering
+(version bump, tag push, crates.io publish, GitHub Release) is a
+separate dispatch.
 
-**Next:** undefined — Phase 1D scope not yet specified. Six Phase 1C
-BACKLOG follow-ups queued for v0.4 or later remain open in `BACKLOG.md`.
-Full close detail in `HISTORY.md` Phase 0.3.0 entry.
+Full close detail will land in `HISTORY.md` at the v0.3.1 release
+dispatch, not here.
 
 ---
 
