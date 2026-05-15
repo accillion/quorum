@@ -162,28 +162,19 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **v0.3.1 patch fixes landed; awaiting Rolf signoff before release dispatch.**
+**Active:** **v0.3.3 shipped (recovers v0.3.1 + v0.3.2 cascade; keyring features regression fix landed). Phase 1D pending finding-schema redesign + identity-hash stability work — Lippa-coordinated; tracked in BACKLOG.md.**
 
-Five WIs from the v0.3.1 dispatch landed against `aed4aa1` (v0.3.0 close):
-- **WI-1** cross-process `OsKeyring` round-trip test — would have caught
-  BUG 1 before v0.3.0 shipped; negative-control verified failing on
-  unfixed `aed4aa1`.
-- **WI-2** BUG 1 fix — keyring v3 platform feature flags enabled.
-- **WI-3** BUG 2 fix — `CliError::HttpStatus` split out from
-  `CliError::Network`; 403/HTML stops dumping raw HTML to stderr.
-- **WI-4** BUG 3 fix — `emit_history` distinguishes fresh v2 candidate
-  rows from pre-v2 migrated rows.
-- **WI-5** stale `--help` text scrubbed; `.quorum/` excluded from
-  bundle assembly; AC 139 `--text` body propagation verified intact.
+v0.3.3 delivered the BUG 1 keyring features fix + four smaller v0.3.1
+bugs after two failed release-engineering attempts (v0.3.1 plan-job
+self-check, v0.3.2 publish-crates libdbus). All three crates published
+at matched 0.3.3 versions; `quorum-core 0.3.2` stranded on crates.io
+but harmless (no yank issued, per no-yank discipline). v0.3.2 GitHub
+Release object deleted; v0.3.1 / v0.3.2 / v0.3.3 tags all preserved
+per no-tag-rewrite discipline.
 
-Repo state: 350 tests pass (was 338); clippy `-D warnings` + fmt
-`--check` clean; `../lippa` untouched by Quorum. No version bump,
-no schema change, no new public API surface. Release engineering
-(version bump, tag push, crates.io publish, GitHub Release) is a
-separate dispatch.
-
-Full close detail will land in `HISTORY.md` at the v0.3.1 release
-dispatch, not here.
+Repo state: 350 tests pass; clippy `-D warnings` + fmt `--check` clean;
+`../lippa` untouched by Quorum across the cascade. Full close detail in
+`HISTORY.md` v0.3.3 entry, including v0.3.1 + v0.3.2 forensics.
 
 ---
 
