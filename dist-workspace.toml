@@ -21,3 +21,6 @@ publish-jobs = ["./publish-crates"]
 install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = false
+
+[dist.dependencies.apt]
+libdbus-1-dev = '*'
