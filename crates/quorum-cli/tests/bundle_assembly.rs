@@ -31,6 +31,69 @@ fn file(path: &str, body: &[u8], binary: bool) -> StagedFile {
 }
 
 #[test]
+fn quorum_state_dir_excluded_from_bundle() {
+    // .quorum/ holds Quorum's own state — config, sqlite db, archives.
+    // Even if `git add .` sweeps these into the index, they must not
+    // appear in the Lippa-bound bundle.
+    let files = vec![
+        file(".quorum/config.toml", b"project_id=\"p_x\"\n", false),
+        file(
+            ".quorum/dismissals.sqlite",
+            b"SQLite format 3\0fake-db-bytes\n",
+            false,
+        ),
+        file(
+            ".quorum/reviews/2026-05-15T10-00-00Z.json",
+            b"{\"sid\":\"abc\"}\n",
+            false,
+        ),
+        file("src/lib.rs", b"pub fn ok() {}\n", false),
+    ];
+    let staged = StagedDiff {
+        unified: String::new(),
+        files,
+        is_empty: false,
+    };
+    let conv = ConventionsState::Absent;
+    let disc = empty_discovery();
+    let res = assemble(&BundleInputs {
+        staged: &staged,
+        memory: None,
+        conventions: &conv,
+        discovery: &disc,
+        branch: "main",
+        head_sha: "abc",
+        remote_url: None,
+        local_conventions: &[],
+        local_convention_bundle_cap: 500,
+    })
+    .expect("assemble");
+    let excluded: Vec<&String> = res
+        .exclusions
+        .iter()
+        .filter_map(|(p, r)| match r {
+            FileExclusionReason::DenyList(_) => Some(p),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        excluded.iter().any(|p| p.as_str() == ".quorum/config.toml"),
+        "config.toml must be excluded; got {excluded:?}"
+    );
+    assert!(excluded
+        .iter()
+        .any(|p| p.as_str() == ".quorum/dismissals.sqlite"));
+    assert!(excluded
+        .iter()
+        .any(|p| p.as_str() == ".quorum/reviews/2026-05-15T10-00-00Z.json"));
+    // Body content of state files must not leak into the bundle.
+    assert!(!res.prompt.contains("SQLite format 3"));
+    assert!(!res.prompt.contains("project_id=\"p_x\""));
+    // The non-state file is still bundled.
+    assert!(res.prompt.contains("src/lib.rs"));
+}
+
+#[test]
 fn deny_listed_files_excluded_with_marker() {
     let files = vec![
         file(".env", b"SECRET=hunter2\n", false),

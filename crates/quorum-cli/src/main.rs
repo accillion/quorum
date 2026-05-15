@@ -32,9 +32,8 @@ enum Cmd {
     Review(ReviewArgs),
     Install(HookArgs),
     Uninstall(HookArgs),
-    /// Phase 1C — inspect dismissal-promotion state. Stage 3 ships the
-    /// read surface (`list`, `show`, `history`); `promote` / `demote` /
-    /// `prune` land in Stage 4.
+    /// Inspect and manage dismissal-promotion state — list / show /
+    /// history (read), promote / demote / prune (write).
     Convention(ConventionArgs),
 }
 
@@ -58,7 +57,7 @@ enum ConventionCmd {
         state: Option<String>,
         /// Print orphan reports (managed blocks in conventions.md with no
         /// SQLite row; SQLite rows whose managed block is missing from
-        /// conventions.md). Stage 3 read-only diagnostic.
+        /// conventions.md). Read-only diagnostic.
         #[arg(long)]
         orphans: bool,
         /// Emit a JSON array suitable for piping into `jq`.
@@ -75,15 +74,17 @@ enum ConventionCmd {
         /// Hex prefix (≥ 8 chars) or full 64-hex finding_identity_hash.
         hash: String,
     },
-    /// Promote a local_only dismissal to a written convention (T2).
-    /// Writes a managed block to `.quorum/conventions.md` and flips the
-    /// SQLite state. File-first-rename, then SQLite COMMIT (spec §3.2 T2).
+    /// Promote a local_only dismissal to a written convention. Writes a
+    /// managed block to `.quorum/conventions.md` and updates the SQLite
+    /// state atomically. Use `--text "<body>"` or `--from-editor` to
+    /// supply convention text; without either flag, the block carries
+    /// only the title-derived header line.
     Promote {
         /// Hex prefix (≥ 8 chars) or full 64-hex finding_identity_hash.
         hash: String,
         /// Inline convention body. Mutually exclusive with `--from-editor`.
         /// Without either flag, the managed block carries only the
-        /// title-derived header line (no body paragraph) per §4.4.
+        /// title-derived header line (no body paragraph).
         #[arg(long, value_name = "STRING", conflicts_with = "from_editor")]
         text: Option<String>,
         /// Spawn `$EDITOR` to author the convention body. Tests set
@@ -91,14 +92,16 @@ enum ConventionCmd {
         #[arg(long)]
         from_editor: bool,
     },
-    /// Demote a promoted_convention back to local_only (T3). Removes the
-    /// managed block from `.quorum/conventions.md` and flips SQLite state.
+    /// Demote a promoted_convention back to local_only. Removes the
+    /// managed block from `.quorum/conventions.md` and updates SQLite
+    /// state.
     Demote {
         /// Hex prefix (≥ 8 chars) or full 64-hex finding_identity_hash.
         hash: String,
     },
-    /// Prune candidate dismissals older than `[memory] candidate_expire_days`
-    /// (T4). Promoted/local_only rows are never touched.
+    /// Prune candidate dismissals older than the configured
+    /// `[memory] candidate_expire_days`. Promoted and local_only rows
+    /// are never touched.
     Prune {
         /// List the candidates that would be pruned; no DELETE.
         #[arg(long)]

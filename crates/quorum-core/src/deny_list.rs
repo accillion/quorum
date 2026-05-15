@@ -5,6 +5,11 @@
 //!     `.env` matches `infra/staging/.env` and `.env.production`.
 //!   - Patterns with `/` are suffix-globbed: `.aws/credentials` matches
 //!     `.aws/credentials` at any depth (`home/user/.aws/credentials`).
+//!   - Patterns ending in `/` are directory-prefix globs: `.quorum/`
+//!     matches any path whose first segment is `.quorum`. Used for
+//!     Quorum's own state directory (`.quorum/config.toml`,
+//!     `.quorum/dismissals.sqlite`, `.quorum/reviews/*`) which the user
+//!     never wants in a Lippa-bound bundle.
 //!   - Patterns are case-sensitive (Linux/macOS authoritative). Windows
 //!     filesystems are case-insensitive, but the *content* of the bundle
 //!     contains repo-relative paths exactly as git2 reports them.
@@ -27,6 +32,7 @@ const PATTERNS: &[&str] = &[
     "secrets.yml",
     "secrets.yaml",
     "secrets.json",
+    ".quorum/",
 ];
 
 /// `true` if `path` (repo-relative, forward-slashed) matches the deny-list.
@@ -35,7 +41,13 @@ pub fn is_denied(path: &str) -> bool {
     let path = path.replace('\\', "/");
     let basename = path.rsplit('/').next().unwrap_or(&path);
     for pat in PATTERNS {
-        if pat.contains('/') {
+        if pat.ends_with('/') {
+            // Directory-prefix match: path starts with `<pat>` and the
+            // separator is the one inside the pattern itself.
+            if path.starts_with(pat) {
+                return true;
+            }
+        } else if pat.contains('/') {
             // Suffix match: full path ends with `<sep?>pattern`.
             if path == *pat || path.ends_with(&format!("/{pat}")) {
                 return true;
@@ -78,7 +90,11 @@ pub fn reason(path: &str) -> Option<&'static str> {
     let path = path.replace('\\', "/");
     let basename = path.rsplit('/').next().unwrap_or(&path).to_string();
     for pat in PATTERNS {
-        if pat.contains('/') {
+        if pat.ends_with('/') {
+            if path.starts_with(pat) {
+                return Some(pat);
+            }
+        } else if pat.contains('/') {
             if path == *pat || path.ends_with(&format!("/{pat}")) {
                 return Some(pat);
             }
@@ -130,5 +146,30 @@ mod tests {
         assert_eq!(reason("infra/staging/.env"), Some(".env"));
         assert_eq!(reason(".aws/credentials"), Some(".aws/credentials"));
         assert_eq!(reason("src/main.rs"), None);
+    }
+
+    #[test]
+    fn quorum_state_dir_is_excluded() {
+        // Anything under `.quorum/` — config, SQLite db, reviews/*,
+        // session files — must never end up in a Lippa bundle.
+        assert!(is_denied(".quorum/config.toml"));
+        assert!(is_denied(".quorum/dismissals.sqlite"));
+        assert!(is_denied(".quorum/reviews/2025-01-01T00-00-00Z.json"));
+        assert!(is_denied(".quorum/conventions.md"));
+        assert_eq!(reason(".quorum/config.toml"), Some(".quorum/"));
+    }
+
+    #[test]
+    fn quorum_state_dir_match_is_first_segment_only() {
+        // A file *named* `.quorum` at any depth, or a sibling like
+        // `not.quorum/`, must not collide with the prefix rule.
+        assert!(!is_denied("src/.quorum"));
+        assert!(!is_denied("not.quorum/foo"));
+    }
+
+    #[test]
+    fn quorum_state_dir_windows_separators_normalized() {
+        assert!(is_denied(".quorum\\config.toml"));
+        assert!(is_denied(".quorum\\reviews\\x.json"));
     }
 }
