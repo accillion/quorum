@@ -27,3 +27,23 @@ Group by next-target version. Most-recent first.
 - **`review.rs` MemoryStore double-open consolidation** (Phase 1C Stage 2 — deferred). Bundle assembly and the dismissals-filter site each open the SQLite store independently per `quorum review` invocation. Consolidate into one handle threaded through the pipeline. Stage 4 design-judgment, not Phase 1C blocker.
 
 - **Transition-log in-memory cache for TUI body pane** (Phase 1C Stage 5 — perf optimization). `Command::LoadTransitions` fires per `j`/`k`/`g`/`G` cursor move in the dismissal-history view. Each query is an indexed `state_transitions` read by hash — fine for typical histories, but a small per-hash cache keyed in the TUI app state would avoid repeated reads when scrolling. Add only if perf data demands it.
+
+---
+
+## Phase 1D / v0.4 candidates from production dogfood (15 May 2026)
+
+### Quorum-side (v0.4)
+
+- **Bundle budget rethink for real repos.** 200KB diff cap truncated ~100 files' contents on the first dogfood run; output quality degraded vs an un-truncated re-run on a smaller staged slice. Options: raise the cap, smarter prioritization of changed-file context, or prominent docs on "stage a slice."
+- **Archive schema: model name normalization.** `model_names` uses vendor names (claude, google, openai); each finding's `supported_by` uses model names (gpt-4o, gemini-pro, claude-sonnet). A consumer of the JSON can't reliably join the two.
+- **Archive schema: `final_agreement_score` semantics.** Score reported as 1.0 contradicts per-finding `supported_by` counts of 2-of-3. Either the score is effectively always 1.0, or it measures something other than what a reader assumes. Reconcile or document.
+- **Archive schema: `dismissals_applied` accuracy.** Currently counts only dismissals that fired this run, not dismissals loaded from the store. Re-run archives report 0 even when a dismissal sits in the DB. Misleading observability signal.
+- **`convention list` side effect.** Writes a `.gitignore` entry (`.quorum/dismissals.sqlite*`) on first run — surprising for a read command. Move to an explicit step in `link` / `install`, or announce.
+- **Linux CI keyring round-trip test enablement.** The cross-process OsKeyring test added in v0.3.1 (`7cb7d46`) is `#[cfg_attr(target_os = "linux", ignore)]`. Enable on runners with `gnome-keyring` / `kwallet` available, or wire into a dedicated keyring-CI job.
+
+### Upstream / Lippa-coordination (tracked here for visibility; requires Lippa team engagement)
+
+- **BLOCKER for the memory wedge: Lippa consensus non-determinism on identical input.** Dogfood showed four runs on the same staged diff producing *disjoint* finding sets. Quorum's identity hash `title + source_type + sorted_models` can never match if titles vary. Without resolution, Phase 1C's whole machinery is inert by construction. Coordinate with Lippa team.
+- **Finding schema redesign: file path + line range + description + suggested fix per finding** in the archive schema. Currently findings carry only a title and metadata; the body is a restatement of confidence/supported-by. Prerequisite to a stable identity hash. Coordinate with Lippa team.
+- **Filter affirmation findings; assign severity meaningfully.** Several dogfood "findings" were statements that something is fine ("Sentry logging sufficiently addresses observability needs"). All 8 findings across 4 runs returned `severity: medium`. Lippa-side schema and prompt work.
+- **Task-spec-aware review.** Dogfood open question: extend the consensus prompt to take a task description / ticket / requirements alongside the diff. Strategic; joint Quorum/Lippa scoping.
