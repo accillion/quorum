@@ -143,6 +143,11 @@ jobs:
       - name: Install dependencies
         run: |
           ${{ matrix.packages_install }}
+      - name: Install libdbus on Linux (manual; cargo-dist 0.31 ignores [dist.dependencies.apt])
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev
       - name: Build artifacts
         run: |
           # Actually do builds and make zips and whatnot
