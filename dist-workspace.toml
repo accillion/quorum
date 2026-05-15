@@ -21,6 +21,17 @@ publish-jobs = ["./publish-crates"]
 install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = false
+# Tell cargo-dist's self-consistency check to leave release.yml alone.
+# We hand-maintain a libdbus-1-dev install step that cargo-dist 0.31
+# does not emit from [dist.dependencies.apt]. Removing this line will
+# cause the next `dist host --steps=create` to fail with "out of date
+# contents". See v0.3.1 failed release (workflow run 25924690415) for
+# the original incident.
+allow-dirty = ["ci"]
 
+# WARNING: allow-dirty only protects the self-consistency *check*.
+# Running `dist generate` will still overwrite release.yml and remove
+# the manual libdbus step below. After any `dist generate`, re-add the
+# manual step by hand.
 [dist.dependencies.apt]
 libdbus-1-dev = '*'
