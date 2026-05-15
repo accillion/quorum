@@ -37,6 +37,10 @@ jobs:
           rustup default stable
           rustc --version
           cargo --version
+      - name: Install libdbus (required for cargo package --verify of quorum-lippa-client)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev pkg-config
       - name: Publish quorum-core
         run: cargo publish -p quorum-core
       - name: Publish quorum-lippa-client
