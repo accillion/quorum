@@ -22,7 +22,7 @@ tracing = { workspace = true }
 tokio = { version = "1", features = ["time", "rt"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart", "cookies"] }
 url = "2"
-keyring = "3"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 rand = "0.8"
 
 [dev-dependencies]

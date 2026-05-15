@@ -39,6 +39,15 @@ API docs are published on docs.rs:
 Requires Rust stable (`rustup` recommended; `winget install
 Rustlang.Rustup` on Windows).
 
+On Linux, the OS keyring path links against the system D-Bus / Secret
+Service development headers. Install before building if you intend to
+use the keyring (omit if you only ever pass `--no-keyring`):
+
+```bash
+sudo apt-get install libdbus-1-dev pkg-config   # Debian / Ubuntu
+sudo dnf install dbus-devel pkgconf-pkg-config  # Fedora / RHEL
+```
+
 ```bash
 git clone https://github.com/accillion/quorum
 cd quorum
