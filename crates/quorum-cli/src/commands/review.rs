@@ -1,6 +1,6 @@
 //! `quorum review` — the main pipeline.
 
-use crate::exit::{CliError, Exit};
+use crate::exit::{classify_http_status, CliError, Exit};
 use crate::render::{render_review_markdown_with_dismissed, warn_if_large};
 use quorum_core::archive::{
     archive_filename, build as build_archive, ArchiveInputs, SuppressionSummary,
@@ -245,7 +245,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         }
         Err(ClientError::Transport(m)) => return Err(CliError::Network(m)),
         Err(ClientError::HttpStatus(s, b)) => {
-            return Err(CliError::Network(format!("{s}: {}", truncate(&b, 240))));
+            return Err(classify_http_status(s.as_u16(), &b));
         }
         Err(e) => return Err(CliError::Network(e.to_string())),
     };
@@ -264,6 +264,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
             Ok(t) => t,
             Err(ClientError::Auth(_)) => return Err(CliError::PollUnauthorized),
             Err(ClientError::Transport(m)) => return Err(CliError::Network(m)),
+            Err(ClientError::HttpStatus(s, b)) => return Err(classify_http_status(s.as_u16(), &b)),
             Err(e) => return Err(CliError::Network(e.to_string())),
         };
         match &status {
@@ -308,6 +309,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         Ok(v) => v,
         Err(ClientError::Auth(_)) => return Err(CliError::PollUnauthorized),
         Err(ClientError::Transport(m)) => return Err(CliError::Network(m)),
+        Err(ClientError::HttpStatus(s, b)) => return Err(classify_http_status(s.as_u16(), &b)),
         Err(e) => return Err(CliError::Network(e.to_string())),
     };
 
@@ -478,14 +480,6 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         Ok(Exit::HighSeverity)
     } else {
         Ok(Exit::Ok)
-    }
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}…", &s[..max])
     }
 }
 
