@@ -12,7 +12,7 @@ license = "Apache-2.0"
 repository = "https://github.com/accillion/quorum"
 authors = ["Rolf Larsen"]
 rust-version = "1.81"
-version = "0.3.1"
+version = "0.3.2"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
