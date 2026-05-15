@@ -336,7 +336,7 @@ pub fn history(quorum_dir: Option<&PathBuf>, hash_prefix: &str) -> Result<Exit, 
     let transitions = store
         .load_transitions(&row.finding_identity_hash)
         .map_err(|e| CliError::Io(format!("transition log read: {e}")))?;
-    emit_history(&transitions);
+    emit_history(&transitions, row.promotion_state);
     Ok(Exit::Ok)
 }
 
@@ -364,12 +364,23 @@ fn emit_show(row: &Dismissal, transitions: &[StateTransitionRow]) {
     println!("last-seen:   {last_seen}");
     println!();
     println!("transitions:");
-    emit_history(transitions);
+    emit_history(transitions, row.promotion_state);
 }
 
-fn emit_history(transitions: &[StateTransitionRow]) {
+fn emit_history(transitions: &[StateTransitionRow], current_state: PromotionState) {
     if transitions.is_empty() {
-        println!("(no transition history — dismissal predates schema v2)");
+        // Distinguish a fresh v2 candidate row (initial state — no
+        // transition row is ever written when entering `candidate`) from
+        // a row whose state advanced past candidate without leaving a
+        // transition trail (only possible for pre-v2 rows migrated under
+        // the schema v2 epoch). BUG 3 fix: the old code reported every
+        // empty-transitions row as "predates schema v2", which is
+        // misleading on the most common case (fresh v2 candidates).
+        if current_state == PromotionState::Candidate {
+            println!("(no transitions yet — dismissal is in initial state)");
+        } else {
+            println!("(no transition history — dismissal predates schema v2)");
+        }
         return;
     }
     for t in transitions {

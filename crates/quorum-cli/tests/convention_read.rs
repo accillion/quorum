@@ -467,9 +467,14 @@ fn show_renders_all_fields_for_v2_row() {
 
 #[test]
 fn show_pre_v2_row_emits_no_history_note() {
+    // BUG 3: a row that has advanced past `candidate` with zero
+    // state_transitions rows can only come from a v1 row migrated under
+    // schema v2 — v2 rows leaving `candidate` always write a T1
+    // transition. Forcing the row to `local_only` (no transitions
+    // inserted) simulates that pre-v2 migration shape.
     let td = init_repo();
     let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
-    let h = dismiss_then_force_state(&store, "pre-v2", PromotionState::Candidate);
+    let h = dismiss_then_force_state(&store, "pre-v2", PromotionState::LocalOnly);
 
     let out = quorum()
         .args([
@@ -483,6 +488,37 @@ fn show_pre_v2_row_emits_no_history_note() {
         .success();
     let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
     assert!(stdout.contains("predates schema v2"));
+    assert!(
+        !stdout.contains("dismissal is in initial state"),
+        "non-candidate row should not get the v2-initial-state message"
+    );
+}
+
+#[test]
+fn show_fresh_candidate_emits_initial_state_note() {
+    // BUG 3: a fresh v2 candidate row with no transitions must NOT be
+    // reported as "predates schema v2". `candidate` is the initial state
+    // and no transition row is written when a row enters it.
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let h = dismiss_then_force_state(&store, "fresh-cand", PromotionState::Candidate);
+
+    let out = quorum()
+        .args([
+            "convention",
+            "--quorum-dir",
+            td.path().to_str().unwrap(),
+            "show",
+            &h.to_hex(),
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("dismissal is in initial state"));
+    assert!(
+        !stdout.contains("predates schema v2"),
+        "fresh candidate row must not be misreported as pre-v2"
+    );
 }
 
 #[test]
@@ -561,9 +597,11 @@ fn history_renders_transition_log_oldest_first() {
 
 #[test]
 fn history_pre_v2_row_emits_note() {
+    // BUG 3: pre-v2 simulation uses a non-candidate state with no
+    // transitions (see show_pre_v2_row_emits_no_history_note).
     let td = init_repo();
     let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
-    let h = dismiss_then_force_state(&store, "pre-v2-h", PromotionState::Candidate);
+    let h = dismiss_then_force_state(&store, "pre-v2-h", PromotionState::LocalOnly);
     let out = quorum()
         .args([
             "convention",
@@ -576,6 +614,27 @@ fn history_pre_v2_row_emits_note() {
         .success();
     let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
     assert!(stdout.contains("predates schema v2"));
+}
+
+#[test]
+fn history_fresh_candidate_emits_initial_state_note() {
+    // BUG 3: companion to show_fresh_candidate_emits_initial_state_note —
+    // verifies the `history` subcommand also distinguishes the two cases.
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let h = dismiss_then_force_state(&store, "fresh-cand-h", PromotionState::Candidate);
+    let out = quorum()
+        .args([
+            "convention",
+            "--quorum-dir",
+            td.path().to_str().unwrap(),
+            "history",
+            &h.to_hex(),
+        ])
+        .assert()
+        .success();
+    let stdout = String::from_utf8(out.get_output().stdout.clone()).unwrap();
+    assert!(stdout.contains("dismissal is in initial state"));
 }
 
 // ---------------------------------------------------------------------------
