@@ -1126,6 +1126,36 @@ fn ac188_related_files_respect_size_and_binary_checks() {
         .any(|(p, r)| p == "src/bin.ts" && matches!(r, FileExclusionReason::Binary)));
 }
 
+/// AC 188 — related files respect `MAX_FILE_BYTES` (2 MB), the same
+/// ceiling changed files get. Covers the size half of AC 188; the binary
+/// half is covered above.
+#[test]
+fn ac188_related_files_respect_max_file_bytes() {
+    let tree = Tree::new(&[("src/a.ts", "")]);
+    // Just over the 2 MB ceiling.
+    let huge = "x".repeat(2 * 1024 * 1024 + 1);
+    tree.untracked("src/huge.ts", &huge);
+    let mut tracked = tree.tracked.clone();
+    tracked.insert("src/huge.ts".to_string());
+    let ctx = RelatedContext {
+        repo_root: Some(tree.dir.path()),
+        tracked: Some(&tracked),
+        cfg: BundleConfig {
+            include: vec!["src/huge.ts".into()],
+            ..BundleConfig::default()
+        },
+    };
+    let res = assemble_with(vec![file("src/a.ts", b"const a = 1;\n", false)], ctx);
+    assert!(
+        !included_paths(&res).contains(&"src/huge.ts".to_string()),
+        "a related file over MAX_FILE_BYTES must be excluded"
+    );
+    assert!(res
+        .exclusions
+        .iter()
+        .any(|(p, r)| p == "src/huge.ts" && matches!(r, FileExclusionReason::TooLarge)));
+}
+
 /// AC 189 — a specifier resolving outside the repository root is skipped.
 #[test]
 fn ac189_related_discovery_never_leaves_the_repo() {

@@ -475,6 +475,81 @@ mod tests {
         );
     }
 
+    /// AC 179 — the same hunk counting applies to `DiffSource::CommitRange`,
+    /// not only to the staged-index path, and deleted files carry 0.
+    #[test]
+    fn hunk_count_populated_for_commit_range_and_zero_for_deletes() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+        let sig = git2::Signature::now("t", "t@e").unwrap();
+
+        let commit_all = |repo: &git2::Repository, msg: &str, parent: Option<git2::Oid>| {
+            let mut idx = repo.index().unwrap();
+            idx.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+                .unwrap();
+            idx.write().unwrap();
+            let tree_id = idx.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let parents: Vec<git2::Commit> = parent
+                .into_iter()
+                .map(|p| repo.find_commit(p).unwrap())
+                .collect();
+            let refs: Vec<&git2::Commit> = parents.iter().collect();
+            repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &refs)
+                .unwrap()
+        };
+
+        // Base: two files, one of which we will later delete.
+        let base_body: String = (1..=40).map(|i| format!("line {i}\n")).collect();
+        std::fs::write(dir.path().join("a.txt"), &base_body).unwrap();
+        std::fs::write(dir.path().join("gone.txt"), "bye\n").unwrap();
+        let c1 = commit_all(&repo, "base", None);
+
+        // Head: two separated edits in a.txt, and gone.txt removed.
+        let edited: String = (1..=40)
+            .map(|i| match i {
+                2 => "line 2 CHANGED\n".to_string(),
+                38 => "line 38 CHANGED\n".to_string(),
+                _ => format!("line {i}\n"),
+            })
+            .collect();
+        std::fs::write(dir.path().join("a.txt"), &edited).unwrap();
+        std::fs::remove_file(dir.path().join("gone.txt")).unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.remove_path(std::path::Path::new("gone.txt")).unwrap();
+        idx.write().unwrap();
+        let c2 = commit_all(&repo, "head", Some(c1));
+
+        let diff = compute_range(&repo, &c1.to_string(), &c2.to_string()).unwrap();
+
+        let a = diff.files.iter().find(|f| f.path == "a.txt").unwrap();
+        assert_eq!(
+            a.hunk_count, 2,
+            "commit-range diffs must carry hunk counts too"
+        );
+
+        let gone = diff.files.iter().find(|f| f.path == "gone.txt").unwrap();
+        assert_eq!(gone.status, FileStatus::Deleted);
+        assert_eq!(gone.hunk_count, 0, "deleted files carry hunk_count = 0");
+    }
+
+    /// AC 179 — binary files carry 0 regardless of how libgit2 counted them.
+    #[test]
+    fn hunk_count_zero_for_binary_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+
+        std::fs::write(dir.path().join("b.bin"), [0x00u8, 0x01, 0x02, 0x00]).unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("b.bin")).unwrap();
+        idx.write().unwrap();
+
+        let diff = compute(&repo).unwrap();
+        let f = diff.files.iter().find(|f| f.path == "b.bin").unwrap();
+        assert!(f.is_binary, "null bytes must be detected as binary");
+        assert_eq!(f.hunk_count, 0, "binary files carry hunk_count = 0");
+    }
+
     #[test]
     fn detect_binary_finds_null_byte() {
         assert!(detect_binary(&[0xff, 0x00, b'h', b'i']));
