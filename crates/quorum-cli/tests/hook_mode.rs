@@ -136,3 +136,81 @@ fn pre_commit_outside_a_git_repo_errors_cleanly() {
         .failure()
         .code(predicate::eq(2));
 }
+
+// ===================== v0.4 AC 194a / AC 192 — CLI surface =====================
+
+/// A linked repo whose `.quorum/config.toml` carries the given
+/// `[bundle]` body (may be empty).
+fn linked_repo(bundle_section: &str) -> TempDir {
+    let td = init_repo();
+    let qd = td.path().join(".quorum");
+    std::fs::create_dir_all(&qd).unwrap();
+    std::fs::write(
+        qd.join("config.toml"),
+        format!("project_id = \"p_1\"\nbase_url = \"https://app.lippa.ai\"\n{bundle_section}"),
+    )
+    .unwrap();
+    td
+}
+
+/// AC 194a — above the 200 KB default, `quorum review` warns that an
+/// oversized bundle is not rejected by Lippa: it reserves credits, runs,
+/// and comes back `failed`.
+#[test]
+fn ac194a_oversized_total_budget_warns_about_credit_spend() {
+    let td = linked_repo("[bundle]\ntotal_budget_kb = 400\n");
+    quorum()
+        .current_dir(td.path())
+        .env("QUORUM_LIPPA_SESSION", "fake-cookie-for-warning-path")
+        .args(["review"])
+        .assert()
+        .stderr(
+            predicate::str::contains("total_budget_kb = 400")
+                .and(predicate::str::contains("credits"))
+                .and(predicate::str::contains("failed")),
+        );
+}
+
+/// AC 194a — at or below the default there is nothing to warn about.
+#[test]
+fn ac194a_default_total_budget_is_silent() {
+    for section in ["", "[bundle]\ntotal_budget_kb = 200\n"] {
+        let td = linked_repo(section);
+        quorum()
+            .current_dir(td.path())
+            .env("QUORUM_LIPPA_SESSION", "fake-cookie-for-warning-path")
+            .args(["review"])
+            .assert()
+            .stderr(predicate::str::contains("total_budget_kb").not());
+    }
+}
+
+/// AC 194a — the warning is suppressed under `--hook-mode=*` so CI and
+/// hook output stay clean.
+#[test]
+fn ac194a_warning_suppressed_under_hook_mode() {
+    let td = linked_repo("[bundle]\ntotal_budget_kb = 400\n");
+    quorum()
+        .current_dir(td.path())
+        .env("QUORUM_LIPPA_SESSION", "fake-cookie-for-warning-path")
+        .args(["review", "--hook-mode=pre-commit"])
+        .assert()
+        .stderr(predicate::str::contains("total_budget_kb").not());
+}
+
+/// AC 192 — an out-of-range `[bundle]` value exits 2 and names the key.
+/// It is never clamped into range and the review never proceeds.
+#[test]
+fn ac192_out_of_range_bundle_config_exits_2() {
+    let td = linked_repo("[bundle]\ntotal_budget_kb = 5000\n");
+    quorum()
+        .current_dir(td.path())
+        .env("QUORUM_LIPPA_SESSION", "fake-cookie-for-warning-path")
+        .args(["review"])
+        .assert()
+        .failure()
+        .code(predicate::eq(2))
+        .stderr(
+            predicate::str::contains("total_budget_kb").and(predicate::str::contains("100..=1024")),
+        );
+}

@@ -27,6 +27,15 @@ fn file(path: &str, body: &[u8], binary: bool) -> StagedFile {
         index_blob: if binary { None } else { Some(body.to_vec()) },
         is_binary: binary,
         size_bytes: body.len() as u64,
+        hunk_count: 1,
+    }
+}
+
+/// Same as [`file`] but with an explicit hunk count (AC 176 scoring).
+fn file_hunks(path: &str, body: &[u8], hunk_count: u32) -> StagedFile {
+    StagedFile {
+        hunk_count,
+        ..file(path, body, false)
     }
 }
 
@@ -66,6 +75,7 @@ fn quorum_state_dir_excluded_from_bundle() {
         remote_url: None,
         local_conventions: &[],
         local_convention_bundle_cap: 500,
+        context: Default::default(),
     })
     .expect("assemble");
     let excluded: Vec<&String> = res
@@ -119,6 +129,7 @@ fn deny_listed_files_excluded_with_marker() {
         remote_url: None,
         local_conventions: &[],
         local_convention_bundle_cap: 500,
+        context: Default::default(),
     })
     .expect("assemble");
     let excluded: Vec<&String> = res
@@ -160,6 +171,7 @@ fn binary_files_excluded() {
         remote_url: None,
         local_conventions: &[],
         local_convention_bundle_cap: 500,
+        context: Default::default(),
     })
     .unwrap();
     assert!(res
@@ -186,6 +198,7 @@ fn oversized_diff_triggers_truncation_marker() {
         remote_url: None,
         local_conventions: &[],
         local_convention_bundle_cap: 500,
+        context: Default::default(),
     })
     .unwrap();
     assert!(res.diff_truncated);
@@ -219,12 +232,13 @@ fn bundle_over_total_cap_errors() {
         remote_url: None,
         local_conventions: &[],
         local_convention_bundle_cap: 500,
+        context: Default::default(),
     });
     // Per-section budgets may keep total under cap; verify either succeeds
     // (with each section truncated) or returns BundleTooLarge.
     match res {
         Ok(r) => assert!(r.bytes_used <= BUDGET_TOTAL, "stays under cap"),
-        Err(BundleError::BundleTooLarge(n)) => assert!(n > BUDGET_TOTAL, "reports excess"),
+        Err(BundleError::BundleTooLarge(n, _)) => assert!(n > BUDGET_TOTAL, "reports excess"),
     }
 }
 
@@ -297,6 +311,7 @@ fn assemble_memory_only<'a>(
         remote_url: None,
         local_conventions: local,
         local_convention_bundle_cap: cap,
+        context: Default::default(),
     })
     .expect("assemble");
     res.prompt
@@ -681,10 +696,11 @@ fn ac156_total_bundle_stays_under_cap_with_local_conventions() {
         remote_url: None,
         local_conventions: &rows,
         local_convention_bundle_cap: 2048,
+        context: Default::default(),
     });
     match res {
         Ok(r) => assert!(r.bytes_used <= BUDGET_TOTAL),
-        Err(BundleError::BundleTooLarge(n)) => assert!(n > BUDGET_TOTAL),
+        Err(BundleError::BundleTooLarge(n, _)) => assert!(n > BUDGET_TOTAL),
     }
 }
 
@@ -719,3 +735,667 @@ fn claude_md_content_precedes_local_conventions_subsection() {
 // BUDGET_MEMORY (kept available for future fixtures).
 #[allow(dead_code)]
 const _: usize = BUDGET_MEMORY;
+
+// ===== v0.4 Stage 1 — WI-1 priority scoring =====
+
+/// Build a body of `kb` kilobytes as 80-byte lines (79 chars + newline),
+/// so the AC 182a line-number gutter arithmetic is exercised realistically.
+fn body_kb(kb: usize, fill: char) -> Vec<u8> {
+    let line: String = std::iter::repeat(fill).take(79).collect::<String>() + "\n";
+    line.repeat(kb * 1024 / 80).into_bytes()
+}
+
+/// AC 178 — the exact dogfood shape from the external review. Two large
+/// markdown files must not evict the code under review.
+#[test]
+fn ac178_large_markdown_does_not_evict_code_under_review() {
+    let a_md = body_kb(60, 'a');
+    let b_md = body_kb(30, 'b');
+    let x_ts = body_kb(4, 'x');
+    let x_test_ts = body_kb(2, 't');
+    let types_ts = body_kb(1, 'y');
+
+    let files = vec![
+        file("a.md", &a_md, false),
+        file("b.md", &b_md, false),
+        file("src/x.ts", &x_ts, false),
+        file("src/x.test.ts", &x_test_ts, false),
+        file("types.ts", &types_ts, false),
+    ];
+    let staged = StagedDiff {
+        unified: String::new(),
+        files,
+        is_empty: false,
+    };
+    let conv = ConventionsState::Absent;
+    let disc = empty_discovery();
+    let res = assemble(&BundleInputs {
+        staged: &staged,
+        memory: None,
+        conventions: &conv,
+        discovery: &disc,
+        branch: "main",
+        head_sha: "abc",
+        remote_url: None,
+        local_conventions: &[],
+        local_convention_bundle_cap: 500,
+        context: Default::default(),
+    })
+    .expect("assemble");
+
+    // The three code files are present in full.
+    for (path, body) in [
+        ("src/x.ts", &x_ts),
+        ("src/x.test.ts", &x_test_ts),
+        ("types.ts", &types_ts),
+    ] {
+        assert!(
+            !res.files_omitted.contains(&path.to_string()),
+            "{path} must not be omitted; omitted = {:?}",
+            res.files_omitted
+        );
+        let last_line = String::from_utf8(body.clone())
+            .unwrap()
+            .lines()
+            .last()
+            .unwrap()
+            .to_string();
+        assert!(
+            res.prompt.contains(&last_line),
+            "{path} must be included in full (last line missing)"
+        );
+    }
+
+    // The largest markdown file is evicted, not the code.
+    assert!(
+        res.files_omitted.contains(&"a.md".to_string()),
+        "a.md (60KB docs) must be omitted; omitted = {:?}",
+        res.files_omitted
+    );
+}
+
+// ===================== v0.4 Stage 1 — WI-2 related files =====================
+
+use quorum_core::bundle::{class_rank, FileClass, RelatedContext};
+use quorum_core::config::BundleConfig;
+use std::collections::HashSet;
+
+/// A working tree on disk plus the set of paths "tracked at HEAD".
+struct Tree {
+    dir: tempfile::TempDir,
+    tracked: HashSet<String>,
+}
+
+impl Tree {
+    fn new(files: &[(&str, &str)]) -> Tree {
+        let dir = tempfile::tempdir().unwrap();
+        let mut tracked = HashSet::new();
+        for (path, body) in files {
+            let abs = dir.path().join(path);
+            std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
+            std::fs::write(&abs, body).unwrap();
+            tracked.insert((*path).to_string());
+        }
+        Tree { dir, tracked }
+    }
+
+    /// Write a file that exists on disk but is NOT tracked at HEAD.
+    fn untracked(&self, path: &str, body: &str) {
+        let abs = self.dir.path().join(path);
+        std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
+        std::fs::write(&abs, body).unwrap();
+    }
+
+    fn ctx(&self, cfg: BundleConfig) -> RelatedContext<'_> {
+        RelatedContext {
+            repo_root: Some(self.dir.path()),
+            tracked: Some(&self.tracked),
+            cfg,
+        }
+    }
+}
+
+fn assemble_with(
+    files: Vec<StagedFile>,
+    ctx: RelatedContext<'_>,
+) -> quorum_core::bundle::BundleResult {
+    let staged = StagedDiff {
+        unified: String::new(),
+        files,
+        is_empty: false,
+    };
+    let conv = ConventionsState::Absent;
+    let disc = empty_discovery();
+    assemble(&BundleInputs {
+        staged: &staged,
+        memory: None,
+        conventions: &conv,
+        discovery: &disc,
+        branch: "main",
+        head_sha: "abc",
+        remote_url: None,
+        local_conventions: &[],
+        local_convention_bundle_cap: 500,
+        context: ctx,
+    })
+    .expect("assemble")
+}
+
+fn included_paths(res: &quorum_core::bundle::BundleResult) -> Vec<String> {
+    res.inclusion_order
+        .iter()
+        .filter(|r| r.included)
+        .map(|r| r.path.clone())
+        .collect()
+}
+
+/// AC 183 — config-allowlist files are read from the working tree, and
+/// are labelled `(unchanged, context)` so a model cannot mistake them for
+/// part of the diff.
+#[test]
+fn ac183_config_allowlist_pulled_in_and_labelled() {
+    let tree = Tree::new(&[
+        ("package.json", "{\"name\":\"demo\"}\n"),
+        ("tsconfig.json", "{\"compilerOptions\":{}}\n"),
+        ("src/app.ts", "export const a = 1;\n"),
+    ]);
+    let res = assemble_with(
+        vec![file("src/app.ts", b"export const a = 2;\n", false)],
+        tree.ctx(BundleConfig::default()),
+    );
+    let inc = included_paths(&res);
+    assert!(inc.contains(&"package.json".to_string()), "got {inc:?}");
+    assert!(inc.contains(&"tsconfig.json".to_string()), "got {inc:?}");
+    assert!(res.prompt.contains("### package.json (unchanged, context)"));
+    assert!(res
+        .prompt
+        .contains("### tsconfig.json (unchanged, context)"));
+    // The changed file carries no such label.
+    assert!(res.prompt.contains("### src/app.ts\n"));
+    // Working-tree bytes, not the staged blob.
+    assert!(res.prompt.contains("\"name\":\"demo\""));
+}
+
+/// AC 183 — a Rust change pulls Cargo.toml, not the JS/TS config set.
+#[test]
+fn ac183_allowlist_is_keyed_on_the_changed_language() {
+    let tree = Tree::new(&[
+        ("Cargo.toml", "[package]\nname = \"x\"\n"),
+        ("package.json", "{}\n"),
+        ("src/lib.rs", "pub fn a() {}\n"),
+    ]);
+    let res = assemble_with(
+        vec![file("src/lib.rs", b"pub fn a() {}\n", false)],
+        tree.ctx(BundleConfig::default()),
+    );
+    let inc = included_paths(&res);
+    assert!(inc.contains(&"Cargo.toml".to_string()), "got {inc:?}");
+    assert!(
+        !inc.contains(&"package.json".to_string()),
+        "a Rust change must not drag in the JS config set; got {inc:?}"
+    );
+}
+
+/// AC 184 — one hop only. `a.ts` imports `b.ts`, which imports `c.ts`.
+/// `b.ts` is context; `c.ts` must never appear.
+#[test]
+fn ac184_resolution_is_one_hop_only() {
+    let tree = Tree::new(&[
+        ("src/a.ts", "import { b } from './b';\n"),
+        (
+            "src/b.ts",
+            "import { c } from './c';\nexport const b = 1;\n",
+        ),
+        ("src/c.ts", "export const c = 2;\n"),
+    ]);
+    let res = assemble_with(
+        vec![file("src/a.ts", b"import { b } from './b';\n", false)],
+        tree.ctx(BundleConfig::default()),
+    );
+    let inc = included_paths(&res);
+    assert!(inc.contains(&"src/b.ts".to_string()), "got {inc:?}");
+    assert!(
+        !inc.contains(&"src/c.ts".to_string()),
+        "neighbours of neighbours must never be added; got {inc:?}"
+    );
+}
+
+/// AC 184 — the same guarantee for Rust `mod` / `crate::` references.
+#[test]
+fn ac184_one_hop_for_rust_module_references() {
+    let tree = Tree::new(&[
+        ("src/main.rs", "mod helper;\nuse crate::deep::thing;\n"),
+        ("src/helper.rs", "mod nested;\npub fn h() {}\n"),
+        ("src/helper/nested.rs", "pub fn n() {}\n"),
+        ("src/deep.rs", "pub struct thing;\n"),
+    ]);
+    let res = assemble_with(
+        vec![file(
+            "src/main.rs",
+            b"mod helper;\nuse crate::deep::thing;\n",
+            false,
+        )],
+        tree.ctx(BundleConfig::default()),
+    );
+    let inc = included_paths(&res);
+    assert!(inc.contains(&"src/helper.rs".to_string()), "got {inc:?}");
+    assert!(inc.contains(&"src/deep.rs".to_string()), "got {inc:?}");
+    assert!(
+        !inc.contains(&"src/helper/nested.rs".to_string()),
+        "second hop must not be followed; got {inc:?}"
+    );
+}
+
+/// AC 185 — related files never displace a changed file. The budget is
+/// set so that only some candidates fit; every changed file must survive.
+#[test]
+fn ac185_related_files_never_displace_changed_files() {
+    let big = "x".repeat(40 * 1024);
+    let tree = Tree::new(&[
+        ("src/a.ts", "import './ctx1';\nimport './ctx2';\n"),
+        ("src/ctx1.ts", &big),
+        ("src/ctx2.ts", &big),
+    ]);
+    let cfg = BundleConfig {
+        total_budget_kb: 100,
+        ..BundleConfig::default()
+    };
+    let changed_body = b"import './ctx1';\nimport './ctx2';\n";
+    let res = assemble_with(vec![file("src/a.ts", changed_body, false)], tree.ctx(cfg));
+    assert!(
+        !res.files_omitted.contains(&"src/a.ts".to_string()),
+        "the changed file must never be evicted by context; omitted = {:?}",
+        res.files_omitted
+    );
+    // The changed file is first in the ordering, ahead of both context files.
+    assert_eq!(res.inclusion_order[0].path, "src/a.ts");
+}
+
+/// AC 186 — at most `related_file_max` related files; the overflow is
+/// reported in the inclusion-order block.
+#[test]
+fn ac186_related_file_cap_binds_and_is_reported() {
+    let mut files: Vec<(&str, &str)> = vec![("src/a.ts", "")];
+    let owned: Vec<(String, String)> = (0..10)
+        .map(|i| {
+            (
+                format!("src/m{i}.ts"),
+                format!("export const m{i} = {i};\n"),
+            )
+        })
+        .collect();
+    for (p, b) in &owned {
+        files.push((p.as_str(), b.as_str()));
+    }
+    let tree = Tree::new(&files);
+
+    let body: String = (0..10).map(|i| format!("import './m{i}';\n")).collect();
+    let cfg = BundleConfig {
+        related_file_max: 3,
+        ..BundleConfig::default()
+    };
+    let res = assemble_with(
+        vec![file("src/a.ts", body.as_bytes(), false)],
+        tree.ctx(cfg),
+    );
+    let related: Vec<_> = res
+        .inclusion_order
+        .iter()
+        .filter(|r| r.path != "src/a.ts")
+        .collect();
+    assert_eq!(related.len(), 3, "cap must bind at 3");
+    assert_eq!(res.related_capped_out, 7);
+    assert!(
+        res.prompt
+            .contains("[related-file cap reached: related_file_max=3;"),
+        "the cap must be visible in the inclusion-order block"
+    );
+}
+
+/// AC 186 — `related_file_max = 0` admits no related files at all.
+#[test]
+fn ac186_related_file_max_zero_admits_nothing() {
+    let tree = Tree::new(&[
+        ("Cargo.toml", "[package]\n"),
+        ("src/lib.rs", "pub fn a() {}\n"),
+    ]);
+    let cfg = BundleConfig {
+        related_file_max: 0,
+        ..BundleConfig::default()
+    };
+    let res = assemble_with(
+        vec![file("src/lib.rs", b"pub fn a() {}\n", false)],
+        tree.ctx(cfg),
+    );
+    assert_eq!(included_paths(&res), vec!["src/lib.rs".to_string()]);
+}
+
+/// AC 187 — deny-list rules apply identically to related files.
+#[test]
+fn ac187_denylist_applies_to_related_files() {
+    let tree = Tree::new(&[
+        ("src/a.ts", "import './secret.env';\n"),
+        (".env", "API_KEY=sk-live-should-never-ship\n"),
+        ("src/keys.ts", "export const k = 1;\n"),
+    ]);
+    let cfg = BundleConfig {
+        include: vec![".env".into(), "src/*.ts".into()],
+        ..BundleConfig::default()
+    };
+    let res = assemble_with(
+        vec![file("src/a.ts", b"import './keys';\n", false)],
+        tree.ctx(cfg),
+    );
+    let inc = included_paths(&res);
+    assert!(
+        !inc.contains(&".env".to_string()),
+        "a deny-listed related file must never be included; got {inc:?}"
+    );
+    assert!(!res.prompt.contains("sk-live-should-never-ship"));
+    assert!(res
+        .exclusions
+        .iter()
+        .any(|(p, r)| p == ".env" && matches!(r, FileExclusionReason::DenyList(_))));
+}
+
+/// AC 188 — related files respect MAX_FILE_BYTES and the binary check.
+#[test]
+fn ac188_related_files_respect_size_and_binary_checks() {
+    let tree = Tree::new(&[("src/a.ts", "")]);
+    // A tracked "related" file containing a null byte.
+    tree.untracked("src/bin.ts", "");
+    std::fs::write(tree.dir.path().join("src/bin.ts"), [0xffu8, 0x00, b'h']).unwrap();
+    let mut tracked = tree.tracked.clone();
+    tracked.insert("src/bin.ts".to_string());
+    let ctx = RelatedContext {
+        repo_root: Some(tree.dir.path()),
+        tracked: Some(&tracked),
+        cfg: BundleConfig {
+            include: vec!["src/bin.ts".into()],
+            ..BundleConfig::default()
+        },
+    };
+    let res = assemble_with(vec![file("src/a.ts", b"const a = 1;\n", false)], ctx);
+    assert!(
+        !included_paths(&res).contains(&"src/bin.ts".to_string()),
+        "a binary related file must be excluded"
+    );
+    assert!(res
+        .exclusions
+        .iter()
+        .any(|(p, r)| p == "src/bin.ts" && matches!(r, FileExclusionReason::Binary)));
+}
+
+/// AC 189 — a specifier resolving outside the repository root is skipped.
+#[test]
+fn ac189_related_discovery_never_leaves_the_repo() {
+    let tree = Tree::new(&[("src/a.ts", "")]);
+    // A file that exists just outside the repo root.
+    let outside = tree.dir.path().parent().unwrap().join("outside_secret.ts");
+    std::fs::write(&outside, "export const leaked = 1;\n").ok();
+    let res = assemble_with(
+        vec![file(
+            "src/a.ts",
+            b"import '../../outside_secret';\nimport '../outside_secret';\n",
+            false,
+        )],
+        tree.ctx(BundleConfig::default()),
+    );
+    assert!(!res.prompt.contains("leaked"));
+    assert_eq!(included_paths(&res), vec!["src/a.ts".to_string()]);
+    std::fs::remove_file(&outside).ok();
+}
+
+/// AC 190 — `related_files = false` restores exactly the v0.3.3 candidate
+/// set: the changed files and nothing else.
+#[test]
+fn ac190_related_files_false_restores_v033_candidate_set() {
+    let tree = Tree::new(&[
+        ("Cargo.toml", "[package]\nname = \"x\"\n"),
+        ("src/lib.rs", "mod helper;\n"),
+        ("src/helper.rs", "pub fn h() {}\n"),
+    ]);
+    let changed = || {
+        vec![
+            file("src/lib.rs", b"mod helper;\n", false),
+            file("README.md", b"# docs\n", false),
+        ]
+    };
+
+    let on = assemble_with(changed(), tree.ctx(BundleConfig::default()));
+    let off = assemble_with(
+        changed(),
+        tree.ctx(BundleConfig {
+            related_files: false,
+            ..BundleConfig::default()
+        }),
+    );
+
+    let mut off_paths = included_paths(&off);
+    off_paths.sort();
+    assert_eq!(
+        off_paths,
+        vec!["README.md".to_string(), "src/lib.rs".to_string()],
+        "with related_files = false the candidate set is the changed set"
+    );
+    // And discovery really was doing something with the flag on.
+    assert!(included_paths(&on).contains(&"src/helper.rs".to_string()));
+    assert_eq!(off.related_capped_out, 0);
+}
+
+/// AC 182 — no file is included twice, including when a path is both in
+/// the changed set and matched by the config allowlist.
+#[test]
+fn ac182_no_file_included_twice() {
+    let tree = Tree::new(&[
+        ("Cargo.toml", "[package]\nname = \"x\"\n"),
+        ("src/lib.rs", "pub fn a() {}\n"),
+    ]);
+    // Cargo.toml is BOTH changed and on the allowlist for the changed .rs.
+    let cfg = BundleConfig {
+        // ...and matched by an include glob as well, for good measure.
+        include: vec!["Cargo.toml".into(), "src/*.rs".into()],
+        ..BundleConfig::default()
+    };
+    let res = assemble_with(
+        vec![
+            file("Cargo.toml", b"[package]\nname = \"x\"\n", false),
+            file("src/lib.rs", b"pub fn a() {}\n", false),
+        ],
+        tree.ctx(cfg),
+    );
+    let inc = included_paths(&res);
+    let mut uniq = inc.clone();
+    uniq.sort();
+    uniq.dedup();
+    assert_eq!(inc.len(), uniq.len(), "duplicate paths in {inc:?}");
+    assert_eq!(
+        res.prompt.matches("### Cargo.toml").count(),
+        1,
+        "Cargo.toml emitted more than once"
+    );
+    // The changed copy wins: no "(unchanged, context)" label on it.
+    assert!(!res.prompt.contains("### Cargo.toml (unchanged, context)"));
+}
+
+/// AC 193 — `include` globs match repo-relative paths and enter at the
+/// class their path implies, not at a privileged rank.
+#[test]
+fn ac193_include_globs_enter_at_their_implied_class() {
+    let tree = Tree::new(&[
+        ("src/a.rs", "pub fn a() {}\n"),
+        ("docs/notes.md", "# notes\n"),
+        ("schema/001.sql", "CREATE TABLE t();\n"),
+    ]);
+    let cfg = BundleConfig {
+        include: vec!["docs/*.md".into(), "schema/*.sql".into()],
+        ..BundleConfig::default()
+    };
+    let res = assemble_with(
+        vec![file("src/a.rs", b"pub fn a() {}\n", false)],
+        tree.ctx(cfg),
+    );
+    let by_path = |p: &str| {
+        res.inclusion_order
+            .iter()
+            .find(|r| r.path == p)
+            .unwrap_or_else(|| panic!("{p} missing from {:?}", included_paths(&res)))
+    };
+    assert_eq!(by_path("docs/notes.md").class, FileClass::Docs);
+    assert_eq!(by_path("schema/001.sql").class, FileClass::Source);
+    assert_eq!(class_rank("schema/001.sql"), FileClass::Source);
+    // Not privileged: the changed source file still comes first.
+    assert_eq!(res.inclusion_order[0].path, "src/a.rs");
+}
+
+/// AC 180 — the `## File inclusion order` block records path, class and
+/// hunk count for each file, so the ordering is auditable from the
+/// archived prompt without re-running the review.
+#[test]
+fn ac180_inclusion_order_block_is_emitted() {
+    let tree = Tree::new(&[
+        ("Cargo.toml", "[package]\n"),
+        ("src/lib.rs", "pub fn a() {}\n"),
+    ]);
+    let res = assemble_with(
+        vec![
+            file_hunks("src/lib.rs", b"pub fn a() {}\n", 4),
+            file_hunks("README.md", b"# hi\n", 1),
+        ],
+        tree.ctx(BundleConfig::default()),
+    );
+    assert!(res.prompt.contains("## File inclusion order"));
+    assert!(res
+        .prompt
+        .contains("src/lib.rs class=source hunks=4 bytes=14 origin=changed included"));
+    assert!(res
+        .prompt
+        .contains("README.md class=docs hunks=1 bytes=5 origin=changed included"));
+    // The related Cargo.toml is attributed to the allowlist.
+    assert!(res.prompt.contains("Cargo.toml class=config hunks=0"));
+    assert!(res.prompt.contains("origin=config-allowlist"));
+    // Block order matches emission order.
+    let pos_src = res.prompt.find("src/lib.rs class=").unwrap();
+    let pos_doc = res.prompt.find("README.md class=").unwrap();
+    assert!(pos_src < pos_doc, "block must follow the real ordering");
+}
+
+/// AC 181 — `files_omitted` still lists every omitted path, and the
+/// `[file omitted: …; budget exhausted]` marker keeps its v0.3.3 shape.
+#[test]
+fn ac181_omission_marker_shape_is_unchanged() {
+    let big = body_kb(90, 'z');
+    let res = assemble_with(
+        vec![
+            file("src/small.rs", b"pub fn a() {}\n", false),
+            file("huge.md", &big, false),
+        ],
+        Default::default(),
+    );
+    assert_eq!(res.files_omitted, vec!["huge.md".to_string()]);
+    assert!(
+        res.prompt.contains(&format!(
+            "[file omitted: huge.md, {} bytes; budget exhausted]",
+            big.len()
+        )),
+        "marker shape changed"
+    );
+}
+
+/// AC 182a — every file body in the changed-file section carries a
+/// 1-based `%6d | ` gutter.
+#[test]
+fn ac182a_changed_file_bodies_are_line_numbered() {
+    let res = assemble_with(
+        vec![file("src/a.rs", b"fn one() {}\nfn two() {}\n", false)],
+        Default::default(),
+    );
+    assert!(res.prompt.contains("     1 | fn one() {}"));
+    assert!(res.prompt.contains("     2 | fn two() {}"));
+}
+
+/// AC 182b — context files are numbered too, and the section says the
+/// numbers refer to the working tree at HEAD rather than to the diff.
+#[test]
+fn ac182b_context_files_are_line_numbered_and_explained() {
+    let tree = Tree::new(&[
+        ("Cargo.toml", "[package]\nname = \"x\"\n"),
+        ("src/lib.rs", "pub fn a() {}\n"),
+    ]);
+    let res = assemble_with(
+        vec![file("src/lib.rs", b"pub fn a() {}\n", false)],
+        tree.ctx(BundleConfig::default()),
+    );
+    assert!(res.prompt.contains("### Cargo.toml (unchanged, context)"));
+    assert!(res.prompt.contains("     1 | [package]"));
+    assert!(res.prompt.contains("     2 | name = \"x\""));
+    assert!(
+        res.prompt.contains("working tree") && res.prompt.contains("HEAD"),
+        "the section must explain what the context line numbers refer to"
+    );
+}
+
+/// AC 194 — raising `total_budget_kb` admits more content; the section
+/// budgets are derived, not hard-coded.
+#[test]
+fn ac194_raising_total_budget_admits_more_files() {
+    let changed = || {
+        vec![
+            file("src/a.rs", &body_kb(40, 'a'), false),
+            file("src/b.rs", &body_kb(40, 'b'), false),
+            file("src/c.rs", &body_kb(40, 'c'), false),
+        ]
+    };
+    let small = assemble_with(changed(), Default::default());
+    let large = assemble_with(
+        changed(),
+        RelatedContext {
+            cfg: BundleConfig {
+                total_budget_kb: 400,
+                ..BundleConfig::default()
+            },
+            ..Default::default()
+        },
+    );
+    assert!(
+        !small.files_omitted.is_empty(),
+        "120KB of source must not fit the 200KB default file budget"
+    );
+    assert!(
+        large.files_omitted.len() < small.files_omitted.len(),
+        "raising total_budget_kb must admit more: {:?} vs {:?}",
+        large.files_omitted,
+        small.files_omitted
+    );
+}
+
+/// `tracked_paths` really reports what git has at HEAD — the input the
+/// one-hop resolver trusts (AC 184 / AC 190).
+#[test]
+fn tracked_paths_reflects_head() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+    std::fs::create_dir_all(dir.path().join("src")).unwrap();
+    std::fs::write(dir.path().join("src/a.rs"), "pub fn a() {}\n").unwrap();
+    std::fs::write(dir.path().join("Cargo.toml"), "[package]\n").unwrap();
+    let mut idx = repo.index().unwrap();
+    idx.add_path(std::path::Path::new("src/a.rs")).unwrap();
+    idx.add_path(std::path::Path::new("Cargo.toml")).unwrap();
+    idx.write().unwrap();
+    let tree_id = idx.write_tree().unwrap();
+    let tree = repo.find_tree(tree_id).unwrap();
+    let sig = git2::Signature::now("t", "t@e").unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "c", &tree, &[])
+        .unwrap();
+
+    // An untracked file on disk must not appear.
+    std::fs::write(dir.path().join("src/scratch.rs"), "// scratch\n").unwrap();
+
+    let tracked = quorum_core::git::tracked_paths(&repo);
+    assert!(tracked.contains("src/a.rs"));
+    assert!(tracked.contains("Cargo.toml"));
+    assert!(
+        !tracked.contains("src/scratch.rs"),
+        "untracked files must not be offered as context"
+    );
+}

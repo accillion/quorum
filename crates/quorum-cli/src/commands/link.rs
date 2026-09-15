@@ -28,6 +28,7 @@ pub fn link_write(
         base_url,
         remote_url,
         memory: MemoryConfig::default(),
+        bundle: quorum_core::config::BundleConfig::default(),
     };
     let p = write(repo_root, &cfg).map_err(|e| CliError::Config(e.to_string()))?;
     println!("Wrote {}", p.display());

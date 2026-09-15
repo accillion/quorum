@@ -26,6 +26,11 @@ pub struct StagedFile {
     pub is_binary: bool,
     /// Size of the index blob, even if `index_blob` is None.
     pub size_bytes: u64,
+    /// v0.4 AC 179 — number of diff hunks touching this file, from
+    /// libgit2's own hunk callback (`Diff::foreach`). Deleted and binary
+    /// files carry 0. Feeds the WI-1 priority scorer: more hunks means
+    /// more of the change under review lives in this file.
+    pub hunk_count: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,6 +121,7 @@ fn compute(repo: &git2::Repository) -> Result<StagedDiff, GitError> {
     })?;
 
     // Walk file deltas.
+    let hunks = hunk_counts(&diff);
     let mut files: Vec<StagedFile> = Vec::new();
     let stats_count = diff.deltas().len();
     for i in 0..stats_count {
@@ -158,12 +164,20 @@ fn compute(repo: &git2::Repository) -> Result<StagedDiff, GitError> {
             (None, false, 0)
         };
 
+        // AC 179: deleted and binary files carry hunk_count = 0.
+        let hunk_count = if status == FileStatus::Deleted || is_binary {
+            0
+        } else {
+            hunks.get(&path).copied().unwrap_or(0)
+        };
+
         files.push(StagedFile {
             path,
             status,
             index_blob,
             is_binary,
             size_bytes,
+            hunk_count,
         });
     }
 
@@ -173,6 +187,41 @@ fn compute(repo: &git2::Repository) -> Result<StagedDiff, GitError> {
         files,
         is_empty,
     })
+}
+
+/// v0.4 AC 179 / CC-Recon-v04-2 — per-file hunk counts straight from
+/// libgit2. `Diff::foreach`'s hunk callback fires once per hunk with the
+/// owning `DiffDelta`, so no `@@`-header counting of the patch text is
+/// needed. (`DiffStats` exposes only files_changed / insertions /
+/// deletions, never per-file hunks — hence `foreach`.)
+///
+/// Keyed on the delta's *new* path, forward-slashed, to match the key
+/// used when building `StagedFile::path`.
+fn hunk_counts(diff: &git2::Diff<'_>) -> std::collections::HashMap<String, u32> {
+    let mut counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut file_cb = |_d: git2::DiffDelta<'_>, _p: f32| true;
+    let mut hunk_cb = |d: git2::DiffDelta<'_>, _h: git2::DiffHunk<'_>| {
+        if let Some(p) = d
+            .new_file()
+            .path()
+            .and_then(|p| p.to_str())
+            .map(|s| s.replace('\\', "/"))
+        {
+            *counts.entry(p).or_insert(0) += 1;
+        }
+        true
+    };
+    // A failure here is non-fatal: hunk counts are a ranking signal, not
+    // correctness. Fall back to whatever was collected before the error.
+    let _ = diff.foreach(&mut file_cb, None, Some(&mut hunk_cb), None);
+    counts
+}
+
+/// v0.4 WI-2 — the same null-byte heuristic used for index blobs, made
+/// public so related-file discovery applies an identical binary check to
+/// working-tree reads (AC 188).
+pub fn looks_binary(bytes: &[u8]) -> bool {
+    detect_binary(bytes)
 }
 
 fn detect_binary(bytes: &[u8]) -> bool {
@@ -225,6 +274,7 @@ fn compute_range(repo: &git2::Repository, base: &str, head: &str) -> Result<Stag
         true
     })?;
 
+    let hunks = hunk_counts(&diff);
     let mut files: Vec<StagedFile> = Vec::new();
     let n = diff.deltas().len();
     for i in 0..n {
@@ -267,12 +317,20 @@ fn compute_range(repo: &git2::Repository, base: &str, head: &str) -> Result<Stag
             (None, false, 0)
         };
 
+        // AC 179: deleted and binary files carry hunk_count = 0.
+        let hunk_count = if status == FileStatus::Deleted || is_binary {
+            0
+        } else {
+            hunks.get(&path).copied().unwrap_or(0)
+        };
+
         files.push(StagedFile {
             path,
             status,
             index_blob: blob_bytes,
             is_binary,
             size_bytes,
+            hunk_count,
         });
     }
 
@@ -282,6 +340,32 @@ fn compute_range(repo: &git2::Repository, base: &str, head: &str) -> Result<Stag
         files,
         is_empty,
     })
+}
+
+/// v0.4 WI-2 — the set of repo-relative, forward-slashed paths tracked at
+/// HEAD. One-hop related-file resolution consults this so an untracked
+/// scratch file next to a changed source file is never pulled into the
+/// bundle (spec §4.3: "a specifier that does not resolve to a tracked
+/// file is skipped silently").
+///
+/// A repo with no HEAD commit yields an empty set, which makes every
+/// one-hop candidate resolve to nothing — fail-closed, as intended.
+pub fn tracked_paths(repo: &git2::Repository) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    let tree = match repo.head().and_then(|h| h.peel_to_tree()) {
+        Ok(t) => t,
+        Err(_) => return out,
+    };
+    let _ = tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        if entry.kind() == Some(git2::ObjectType::Blob) {
+            if let Some(name) = entry.name() {
+                let full = format!("{dir}{name}").replace('\\', "/");
+                out.insert(full);
+            }
+        }
+        git2::TreeWalkResult::Ok
+    });
+    out
 }
 
 /// Extract the repo metadata `quorum review` needs for the JSON archive.
@@ -343,6 +427,51 @@ mod tests {
         assert_eq!(
             strip_https_creds("https://github.com/o/r".to_string()),
             "https://github.com/o/r"
+        );
+    }
+
+    /// AC 179 — a modification with two separated hunks reports 2.
+    #[test]
+    fn hunk_count_reports_two_for_two_hunk_modification() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+
+        // 40 numbered lines committed as the baseline.
+        let base: String = (1..=40).map(|i| format!("line {i}\n")).collect();
+        let f = dir.path().join("a.txt");
+        std::fs::write(&f, &base).unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("a.txt")).unwrap();
+        idx.write().unwrap();
+        let tree_id = idx.write_tree().unwrap();
+        {
+            let tree = repo.find_tree(tree_id).unwrap();
+            let sig = git2::Signature::now("t", "t@e").unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "base", &tree, &[])
+                .unwrap();
+        }
+
+        // Edit line 2 and line 38 — far enough apart (more than twice the
+        // 3-line context window) that libgit2 emits two distinct hunks
+        // rather than coalescing them into one.
+        let edited: String = (1..=40)
+            .map(|i| match i {
+                2 => "line 2 CHANGED\n".to_string(),
+                38 => "line 38 CHANGED\n".to_string(),
+                _ => format!("line {i}\n"),
+            })
+            .collect();
+        std::fs::write(&f, &edited).unwrap();
+        let mut idx = repo.index().unwrap();
+        idx.add_path(std::path::Path::new("a.txt")).unwrap();
+        idx.write().unwrap();
+
+        let diff = compute(&repo).unwrap();
+        let file = diff.files.iter().find(|f| f.path == "a.txt").unwrap();
+        assert_eq!(
+            file.hunk_count, 2,
+            "two separated edits must report 2 hunks; unified diff was:\n{}",
+            diff.unified
         );
     }
 

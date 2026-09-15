@@ -78,6 +78,23 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         Err(e) => return Err(CliError::Config(e.to_string())),
     };
 
+    // v0.4 AC 194a — Lippa enforces no maximum prompt size (recon-v04-1).
+    // An oversized bundle is not rejected: it reserves credits, runs, and
+    // comes back `failed`. Warn once, and never from inside a hook.
+    if cfg.bundle.total_budget_kb > quorum_core::config::TOTAL_BUDGET_KB_WARN_ABOVE
+        && opts.hook_mode == HookMode::None
+    {
+        eprintln!(
+            "warning: [bundle] total_budget_kb = {} exceeds the {} KB default. \
+             Lippa applies no maximum prompt size, so an oversized bundle is not \
+             rejected — it reserves credits, runs, and returns session status \
+             `failed`. The real ceiling is the narrowest context window in the \
+             model roster, which Quorum cannot see.",
+            cfg.bundle.total_budget_kb,
+            quorum_core::config::TOTAL_BUDGET_KB_WARN_ABOVE
+        );
+    }
+
     // ===== Storage / cookie =====
     //
     // Resolution order per spec §4.4 / §4.6.1 (P11):
@@ -193,6 +210,14 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         };
 
     // ===== Bundle assembly =====
+    // WI-2 related-file discovery reads the working tree, and resolves
+    // one-hop specifiers only against paths tracked at HEAD.
+    let tracked = quorum_core::git::tracked_paths(&repo);
+    let bundle_context = quorum_core::bundle::RelatedContext {
+        repo_root: Some(workdir.as_path()),
+        tracked: Some(&tracked),
+        cfg: cfg.bundle.clone(),
+    };
     let bundle_inputs = BundleInputs {
         staged: &staged,
         memory,
@@ -207,10 +232,11 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         },
         local_conventions: &bundle_local_conventions,
         local_convention_bundle_cap: cfg.memory.local_convention_bundle_cap as usize,
+        context: bundle_context,
     };
     let bundle = match assemble(&bundle_inputs) {
         Ok(b) => b,
-        Err(quorum_core::bundle::BundleError::BundleTooLarge(n)) => {
+        Err(quorum_core::bundle::BundleError::BundleTooLarge(n, _cap_kb)) => {
             return Err(CliError::BundleTooLarge(n / 1024));
         }
     };
@@ -224,6 +250,14 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         eprintln!(
             "note: file contents omitted: {}",
             bundle.files_omitted.join(", ")
+        );
+    }
+    // AC 186 — when `related_file_max` binds, say so.
+    if bundle.related_capped_out > 0 {
+        eprintln!(
+            "note: related-file cap reached ([bundle] related_file_max = {}); \
+             {} further context file(s) not offered",
+            cfg.bundle.related_file_max, bundle.related_capped_out
         );
     }
 

@@ -10,6 +10,12 @@
 //! candidate_threshold = 3           # 2..=100; auto-promote N
 //! local_convention_bundle_cap = 500 # 100..=2048; per-entry bundle bytes
 //! candidate_expire_days = 90        # 0..=3650; 0 disables auto-expire
+//!
+//! [bundle]                          # v0.4 — all keys optional
+//! total_budget_kb = 200             # 100..=1024; sections scale proportionally
+//! related_files = true              # false restores v0.3.3 candidate selection
+//! related_file_max = 12             # 0..=64
+//! include = []                      # extra globs, always offered as candidates
 //! ```
 
 use std::path::Path;
@@ -24,6 +30,76 @@ pub struct QuorumConfig {
     /// to [`MemoryConfig::default`] (no warning, per spec §3.4).
     #[serde(default)]
     pub memory: MemoryConfig,
+    /// v0.4 — `[bundle]` section. Absent falls back to
+    /// [`BundleConfig::default`] with no warning, matching the `[memory]`
+    /// precedent (AC 191).
+    #[serde(default)]
+    pub bundle: BundleConfig,
+}
+
+/// v0.4 §4.4 — `[bundle]` section keys. Ranges are hard: out-of-range
+/// values surface as [`ConfigError::OutOfRange`] and are never clamped
+/// (AC 192).
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct BundleConfig {
+    #[serde(default = "default_total_budget_kb")]
+    pub total_budget_kb: u32,
+    #[serde(default = "default_related_files")]
+    pub related_files: bool,
+    #[serde(default = "default_related_file_max")]
+    pub related_file_max: u32,
+    /// Extra globs matched against repo-relative paths; matched files
+    /// enter as candidates at the class their path implies (AC 193).
+    #[serde(default)]
+    pub include: Vec<String>,
+}
+
+impl Default for BundleConfig {
+    fn default() -> Self {
+        BundleConfig {
+            total_budget_kb: default_total_budget_kb(),
+            related_files: default_related_files(),
+            related_file_max: default_related_file_max(),
+            include: Vec::new(),
+        }
+    }
+}
+
+const fn default_total_budget_kb() -> u32 {
+    200
+}
+const fn default_related_files() -> bool {
+    true
+}
+const fn default_related_file_max() -> u32 {
+    12
+}
+
+/// Inclusive hard ranges from spec §4.4.
+const TOTAL_BUDGET_KB_RANGE: (u32, u32) = (100, 1024);
+const RELATED_FILE_MAX_RANGE: (u32, u32) = (0, 64);
+
+/// The default `total_budget_kb`. Above this, `quorum review` warns that
+/// an oversized bundle is not rejected by Lippa — it reserves credits,
+/// runs, and comes back `failed` (AC 194a).
+pub const TOTAL_BUDGET_KB_WARN_ABOVE: u32 = 200;
+
+impl BundleConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        check_range_in(
+            "bundle",
+            "total_budget_kb",
+            self.total_budget_kb,
+            TOTAL_BUDGET_KB_RANGE,
+        )?;
+        check_range_in(
+            "bundle",
+            "related_file_max",
+            self.related_file_max,
+            RELATED_FILE_MAX_RANGE,
+        )?;
+        Ok(())
+    }
 }
 
 fn default_true() -> bool {
@@ -93,10 +169,19 @@ impl MemoryConfig {
     }
 }
 
-fn check_range(key: &str, value: u32, (lo, hi): (u32, u32)) -> Result<(), String> {
+fn check_range(key: &str, value: u32, range: (u32, u32)) -> Result<(), String> {
+    check_range_in("memory", key, value, range)
+}
+
+fn check_range_in(
+    section: &str,
+    key: &str,
+    value: u32,
+    (lo, hi): (u32, u32),
+) -> Result<(), String> {
     if value < lo || value > hi {
         Err(format!(
-            "[memory] {key} = {value} is outside the allowed range {lo}..={hi}"
+            "[{section}] {key} = {value} is outside the allowed range {lo}..={hi}"
         ))
     } else {
         Ok(())
@@ -127,6 +212,7 @@ pub fn read(repo_root: &Path) -> Result<QuorumConfig, ConfigError> {
     let text = std::fs::read_to_string(&path)?;
     let cfg = toml::from_str::<QuorumConfig>(&text)?;
     cfg.memory.validate().map_err(ConfigError::OutOfRange)?;
+    cfg.bundle.validate().map_err(ConfigError::OutOfRange)?;
     Ok(cfg)
 }
 
@@ -152,6 +238,7 @@ mod tests {
             base_url: "https://app.lippa.ai".into(),
             remote_url: true,
             memory: MemoryConfig::default(),
+            bundle: BundleConfig::default(),
         };
         let path = write(dir.path(), &cfg).unwrap();
         assert!(path.exists());
@@ -287,5 +374,153 @@ mod tests {
              [memory]\ncandidate_expire_days = 0\n",
         );
         read(dir.path()).expect("0 is the disable sentinel and must be allowed");
+    }
+
+    // ===================== v0.4 `[bundle]` section =====================
+
+    /// AC 191 — all four keys optional; an absent `[bundle]` section
+    /// yields the documented defaults with no warning, exactly as the
+    /// `[memory]` precedent does.
+    #[test]
+    fn ac191_bundle_defaults_when_section_absent() {
+        let dir = tempdir().unwrap();
+        write_raw(
+            dir.path(),
+            "project_id = \"p_1\"\nbase_url = \"https://app.lippa.ai\"\n",
+        );
+        let cfg = read(dir.path()).unwrap();
+        assert_eq!(cfg.bundle.total_budget_kb, 200);
+        assert!(cfg.bundle.related_files);
+        assert_eq!(cfg.bundle.related_file_max, 12);
+        assert!(cfg.bundle.include.is_empty());
+    }
+
+    /// AC 191 — a partial `[bundle]` section fills the rest from defaults.
+    #[test]
+    fn ac191_bundle_partial_section_fills_defaults() {
+        let dir = tempdir().unwrap();
+        write_raw(
+            dir.path(),
+            "project_id = \"p\"\nbase_url = \"u\"\n[bundle]\nrelated_files = false\n",
+        );
+        let cfg = read(dir.path()).unwrap();
+        assert!(!cfg.bundle.related_files);
+        assert_eq!(cfg.bundle.total_budget_kb, 200);
+        assert_eq!(cfg.bundle.related_file_max, 12);
+    }
+
+    #[test]
+    fn ac191_bundle_explicit_values_parsed() {
+        let dir = tempdir().unwrap();
+        write_raw(
+            dir.path(),
+            "project_id = \"p\"\nbase_url = \"u\"\n\
+             [bundle]\n\
+             total_budget_kb = 512\n\
+             related_files = false\n\
+             related_file_max = 64\n\
+             include = [\"schema/*.sql\", \"**/*.proto\"]\n",
+        );
+        let cfg = read(dir.path()).unwrap();
+        assert_eq!(cfg.bundle.total_budget_kb, 512);
+        assert!(!cfg.bundle.related_files);
+        assert_eq!(cfg.bundle.related_file_max, 64);
+        assert_eq!(cfg.bundle.include, vec!["schema/*.sql", "**/*.proto"]);
+    }
+
+    /// AC 192 — out-of-range values produce `OutOfRange`; never clamped.
+    #[test]
+    fn ac192_total_budget_kb_out_of_range_rejected() {
+        for bad in [0u32, 1, 99, 1025, 100_000] {
+            let dir = tempdir().unwrap();
+            write_raw(
+                dir.path(),
+                &format!(
+                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                     [bundle]\ntotal_budget_kb = {bad}\n"
+                ),
+            );
+            match read(dir.path()) {
+                Err(ConfigError::OutOfRange(m)) => {
+                    assert!(
+                        m.contains("total_budget_kb") && m.contains("[bundle]"),
+                        "error must name the section and key, got: {m}"
+                    );
+                }
+                other => panic!("expected OutOfRange for {bad}, got {other:?}"),
+            }
+        }
+        // Boundaries pass, and are not silently rewritten.
+        for ok in [100u32, 1024] {
+            let dir = tempdir().unwrap();
+            write_raw(
+                dir.path(),
+                &format!(
+                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                     [bundle]\ntotal_budget_kb = {ok}\n"
+                ),
+            );
+            let cfg = read(dir.path()).expect("boundary value must pass");
+            assert_eq!(cfg.bundle.total_budget_kb, ok, "value must not be clamped");
+        }
+    }
+
+    /// AC 192 — `related_file_max` range 0..=64; 0 is a legal "no related
+    /// files" setting, not an error.
+    #[test]
+    fn ac192_related_file_max_out_of_range_rejected() {
+        for bad in [65u32, 100, 10_000] {
+            let dir = tempdir().unwrap();
+            write_raw(
+                dir.path(),
+                &format!(
+                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                     [bundle]\nrelated_file_max = {bad}\n"
+                ),
+            );
+            match read(dir.path()) {
+                Err(ConfigError::OutOfRange(m)) => {
+                    assert!(m.contains("related_file_max"), "got: {m}");
+                }
+                other => panic!("expected OutOfRange for {bad}, got {other:?}"),
+            }
+        }
+        for ok in [0u32, 64] {
+            let dir = tempdir().unwrap();
+            write_raw(
+                dir.path(),
+                &format!(
+                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                     [bundle]\nrelated_file_max = {ok}\n"
+                ),
+            );
+            let cfg = read(dir.path()).expect("boundary must pass");
+            assert_eq!(cfg.bundle.related_file_max, ok);
+        }
+    }
+
+    /// The `[bundle]` section survives a write/read round trip, so
+    /// `quorum link` never silently drops a user's settings.
+    #[test]
+    fn bundle_config_round_trips() {
+        let dir = tempdir().unwrap();
+        let cfg = QuorumConfig {
+            project_id: "p_1".into(),
+            base_url: "https://app.lippa.ai".into(),
+            remote_url: true,
+            memory: MemoryConfig::default(),
+            bundle: BundleConfig {
+                total_budget_kb: 300,
+                related_files: false,
+                related_file_max: 5,
+                include: vec!["schema/*.sql".into()],
+            },
+        };
+        write(dir.path(), &cfg).unwrap();
+        let got = read(dir.path()).unwrap();
+        assert_eq!(got.bundle.total_budget_kb, 300);
+        assert!(!got.bundle.related_files);
+        assert_eq!(got.bundle.related_file_max, 5);
+        assert_eq!(got.bundle.include, vec!["schema/*.sql"]);
     }
 }
