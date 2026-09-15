@@ -34,7 +34,7 @@ Group by next-target version. Most-recent first.
 
 ### Quorum-side (v0.4)
 
-- **Bundle budget rethink for real repos.** 200KB diff cap truncated ~100 files' contents on the first dogfood run; output quality degraded vs an un-truncated re-run on a smaller staged slice. Options: raise the cap, smarter prioritization of changed-file context, or prominent docs on "stage a slice."
+- ~~**Bundle budget rethink for real repos.**~~ **CLOSED by v0.4 Stage 1.** Resolved as "smarter prioritization" rather than a raised cap: changed-file inclusion is now priority-scored (class, changed-before-context, hunk count, size ascending) instead of largest-first, and `[bundle] total_budget_kb` makes the cap tunable 100..=1024 for users who do want to raise it. A 25-commit dogfood range on this repo now evicts `HISTORY.md` (52 KB) last instead of admitting it first. See SERVICES.md §2.1.
 - **Archive schema: model name normalization.** `model_names` uses vendor names (claude, google, openai); each finding's `supported_by` uses model names (gpt-4o, gemini-pro, claude-sonnet). A consumer of the JSON can't reliably join the two.
 - **Archive schema: `final_agreement_score` semantics.** Score reported as 1.0 contradicts per-finding `supported_by` counts of 2-of-3. Either the score is effectively always 1.0, or it measures something other than what a reader assumes. Reconcile or document.
 - **Archive schema: `dismissals_applied` accuracy.** Currently counts only dismissals that fired this run, not dismissals loaded from the store. Re-run archives report 0 even when a dismissal sits in the DB. Misleading observability signal.
@@ -47,3 +47,34 @@ Group by next-target version. Most-recent first.
 - **Finding schema redesign: file path + line range + description + suggested fix per finding** in the archive schema. Currently findings carry only a title and metadata; the body is a restatement of confidence/supported-by. Prerequisite to a stable identity hash. Coordinate with Lippa team.
 - **Filter affirmation findings; assign severity meaningfully.** Several dogfood "findings" were statements that something is fine ("Sentry logging sufficiently addresses observability needs"). All 8 findings across 4 runs returned `severity: medium`. Lippa-side schema and prompt work.
 - **Task-spec-aware review.** Dogfood open question: extend the consensus prompt to take a task description / ticket / requirements alongside the diff. Strategic; joint Quorum/Lippa scoping.
+
+---
+
+## Deferred from v0.4 Stage 1 (15 Sep 2026)
+
+- **`truncate_with_marker` can panic on multi-byte UTF-8.** Pre-existing
+  since Phase 1A: `bundle.rs::truncate_with_marker` slices with
+  `text[..budget_for_text]`, which panics if the cut lands inside a
+  codepoint. The per-entry local-convention path already uses
+  `truncate_at_codepoint_boundary`; the diff / memory / conventions
+  sections do not. Reachable with a large non-ASCII diff. Not touched in
+  Stage 1 because it is outside WI-1/WI-2/WI-3 and a fix changes marker
+  byte counts, which several tests pin.
+- **`.yml` / `.yaml` / `.sql` / `.sh` carry no class of their own.** They
+  fall through `class_rank` to `Source` (rank 0), so a changed CI workflow
+  outranks changed tests and docs. That is faithful to the spec's §4.2
+  table, and defensible — they were changed — but the dogfood probe makes
+  it visible (`.github/workflows/release.yml` sorted above every test
+  file). Worth a spec decision in a later stage, not a CC call.
+- **One-hop resolution does not cover Python or Go.** The spec's specifier
+  list (`./`, `../`, `crate::`, `super::`) is JS/TS and Rust only, so
+  `.py` and `.go` changed files contribute config-allowlist candidates but
+  no import neighbours. Deliberate scope, recorded so it is not mistaken
+  for a bug.
+- **`include` globs are independent of `related_files`.** AC 190 requires
+  `related_files = false` to restore the v0.3.3 candidate set exactly;
+  that holds at the default `include = []`. A user who sets both
+  `related_files = false` and a non-empty `include` still gets the
+  included files, on the reading that an explicit glob is a direct
+  instruction rather than part of the automatic discovery AC 190 disables.
+  Flagged for confirmation.

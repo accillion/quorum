@@ -35,14 +35,96 @@ just point to here.
   Unstaged hunks in modified files do not appear in the bundle.
 - Rename detection is enabled (`find_similar` with `renames=true,
   copies=false`).
-- Per-section budgets (hard caps, all bytes):
-  - Diff body: `BUDGET_DIFF = 100 KB`
-  - Changed-file contents: `BUDGET_FILES = 80 KB` (largest-first inclusion)
-  - Memory context: `BUDGET_MEMORY = 20 KB`
-  - Conventions: `BUDGET_CONVENTIONS = 10 KB`
-  - Envelope + headers: ~2 KB hard
-  - Total assembled hard cap: `BUDGET_TOTAL = 200 KB`
-- Overflow markers: `[diff truncated: N bytes exceeded 100KB; review only top portion]`,
+- Per-section budgets are **derived at runtime** from `[bundle]
+  total_budget_kb` (default 200, range 100..=1024) via
+  `Budgets::from_total_kb`, not hard-coded. Every section scales by the
+  same ratio, rounded down, with the ~2 KB envelope overhead held
+  constant. At the 200 KB default they evaluate to the historic values:
+  - Diff body: 100 KB (`BUDGET_DIFF`)
+  - Changed-file + related contents: 80 KB (`BUDGET_FILES`)
+  - Memory context: 20 KB (`BUDGET_MEMORY`)
+  - Conventions: 10 KB (`BUDGET_CONVENTIONS`)
+  - Envelope + headers: ~2 KB, constant
+  - Total assembled hard cap: `total_budget_kb` (`BUDGET_TOTAL` = 200 KB
+    default). Only the **total** is enforced by `assemble()`; the section
+    budgets are maxima, not reservations, and deliberately oversubscribe.
+- **Only the total is a hard error.** `assemble()` returns
+  `BundleError::BundleTooLarge(bytes, cap_kb)`; sections overflow into
+  their own markers instead.
+- Lippa applies **no maximum** prompt size (Phase 1A preflight, Blocker 3):
+  an oversized bundle is not rejected — it reserves credits, runs, and
+  returns session status `failed`. The real ceiling is the narrowest
+  context window in a model roster Quorum cannot see. Above the 200 KB
+  default, `quorum review` therefore emits a one-line stderr warning
+  naming that risk; it is suppressed under `--hook-mode=*`.
+
+### 2.1 Changed-file ordering (v0.4 WI-1)
+
+The changed-file section is **not** filled largest-first. Candidates are
+ordered by a deterministic lexicographic key, most significant first:
+
+1. **Class rank** — `class_rank(path)`, a pure function of the path
+   string: `Source` (0), `Config` (1), `Test` (2), `Docs` (3). Evaluated
+   most-specific-first; `*.toml` counts as config only at the repo root.
+2. **Changed before context** — every file in the diff precedes every
+   unchanged context file *of the same class*, including when the changed
+   file has `hunk_count == 0`.
+3. **Hunk count, descending**, capped at 99. Sourced from libgit2's own
+   `Diff::foreach` hunk callback; deleted and binary files carry 0.
+4. **Size ascending** — so a tie admits more files rather than fewer.
+5. **Path**, lexicographically — ordering is fully deterministic.
+
+Size is a tiebreak and never a primary key: this is what stops two large
+markdown files evicting the code under review.
+
+The ordering actually used is emitted as a `## File inclusion order`
+block (path, class, hunk count, bytes, origin, included/omitted) so it is
+auditable from the archived prompt without re-running the review.
+
+### 2.2 File bodies carry line numbers (v0.4 AC 182a/182b)
+
+Every file body in the changed-file section is emitted with 1-based line
+numbers in a fixed `%6d | ` gutter — changed and context files alike. The
+gutter costs exactly 9 bytes per line (verified against this repo) and is
+charged against the section budget before a file is admitted. The section
+preamble states that the numbers are not part of the file, and that
+`(unchanged, context)` files are numbered against the working tree at
+HEAD rather than against the diff.
+
+### 2.3 Related (unchanged) files (v0.4 WI-2)
+
+Two bounded sources of unchanged context, both reported, both off when
+`[bundle] related_files = false`:
+
+- **Config allowlist.** A changed file's extension implies its repo-root
+  config files (`.ts/.tsx/.js/.jsx/.mjs/.cjs` → eslint + tsconfig +
+  package.json; `.rs` → Cargo.toml; `.py` → pyproject.toml + setup.cfg;
+  `.go` → go.mod). These enter at `Config` rank even though unchanged.
+- **One-hop neighbours.** First-party relative specifiers in each changed
+  file, resolved textually and conservatively: JS/TS `./` and `../`
+  specifiers against a fixed extension-candidate order, and Rust `mod x;`,
+  `use crate::…`, `use super::…`. **One hop only** — neighbours of
+  neighbours are never followed, which is structural: only changed files
+  are ever scanned.
+
+Rules that apply identically to related files: the deny-list, the
+`MAX_FILE_BYTES` ceiling, and the binary check. Related files are read
+from the **working tree**, must resolve to a path **tracked at HEAD**, and
+may never leave the repository root — a specifier that climbs out is
+dropped, never clamped. At most `related_file_max` (default 12, range
+0..=64) are offered; when the cap binds it is reported both on stderr and
+in the inclusion-order block.
+
+`[bundle] include` globs are matched against repo-relative paths by a
+hand-rolled matcher (`*`, `**`, `?`) — no glob crate is in the dependency
+set and CLAUDE.md forbids adding one. Matched files enter at the class
+their path implies, never at a privileged rank. `include` is an explicit
+user instruction and is therefore independent of `related_files`.
+
+No file is ever included twice: a path in the diff is registered before
+related discovery runs and can never be offered again.
+- Overflow markers (the KB figure tracks the derived section budget):
+  `[diff truncated: N bytes exceeded 100KB; review only top portion]`,
   `[file omitted: <path>, <bytes>; budget exhausted]`,
   `[memory truncated …]`, `[conventions truncated …]`. Every overflow
   point produces a marker; no silent truncation.

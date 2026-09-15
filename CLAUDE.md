@@ -162,19 +162,35 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **v0.3.3 shipped (recovers v0.3.1 + v0.3.2 cascade; keyring features regression fix landed). Phase 1D pending finding-schema redesign + identity-hash stability work — Lippa-coordinated; tracked in BACKLOG.md.**
+**Active:** **v0.4 Stage 1 (Bundle composition) complete — halted at the
+stage boundary for approval. Stages 2–4 not started.**
 
-v0.3.3 delivered the BUG 1 keyring features fix + four smaller v0.3.1
-bugs after two failed release-engineering attempts (v0.3.1 plan-job
-self-check, v0.3.2 publish-crates libdbus). All three crates published
-at matched 0.3.3 versions; `quorum-core 0.3.2` stranded on crates.io
-but harmless (no yank issued, per no-yank discipline). v0.3.2 GitHub
-Release object deleted; v0.3.1 / v0.3.2 / v0.3.3 tags all preserved
-per no-tag-rewrite discipline.
+Spec: `specs/Quorum-v0_4-Spec-v0_1.md` (AC range 176–241, four stages).
+Stage 1 covers ACs 176–194 and closes the external reviewers' items 4
+("file budget favours big docs over code") and 2 ("only diff + changed
+files are visible"):
 
-Repo state: 350 tests pass; clippy `-D warnings` + fmt `--check` clean;
-`../lippa` untouched by Quorum across the cascade. Full close detail in
-`HISTORY.md` v0.3.3 entry, including v0.3.1 + v0.3.2 forensics.
+- **WI-1.** Changed-file inclusion is priority-scored — class, then
+  changed-before-context, then hunk count descending, then size
+  *ascending* — replacing `sort_by_key(Reverse(size_bytes))`. Size is now
+  a tiebreak, never a primary key. `StagedFile::hunk_count` comes from
+  libgit2's `Diff::foreach` hunk callback for both `DiffSource` variants.
+- **WI-2.** Bounded unchanged-file context: a language-keyed repo-root
+  config allowlist plus conservative one-hop import resolution (JS/TS
+  relative specifiers; Rust `mod`/`crate::`/`super::`), capped by
+  `related_file_max` and reported. Every file body now carries a 1-based
+  `%6d | ` line-number gutter.
+- **WI-3.** A `[bundle]` config section; section budgets are derived from
+  `total_budget_kb` at runtime rather than hard-coded.
+
+Behavioural rules live in `SERVICES.md` §2.1–2.3. The §5.3 budget
+*rebalance* (80/72/16/24/6 + the review-policy section) is deliberately
+Stage 2's, not Stage 1's — Stage 1 ships the derivation mechanism while
+preserving v0.3.3 proportions.
+
+Repo state: 393 tests pass (352 before this stage); clippy `-D warnings`
++ fmt `--check` clean; `../lippa` untouched. Stage 1 deferrals are in
+`BACKLOG.md`. Prior milestone detail: `HISTORY.md` v0.3.3 entry.
 
 ---
 
