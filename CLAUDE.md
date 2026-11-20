@@ -129,6 +129,12 @@ to the subsystem doc, not here.
 - **Build:** `cargo build --release` from repo root
 - **Lint discipline:** `cargo clippy -- -D warnings` and `cargo fmt --check`
   must pass before any commit
+- **crates.io publish auth:** Trusted Publishing (OIDC) via
+  `rust-lang/crates-io-auth-action@v1` in `publish-crates.yml`; no stored
+  `CARGO_REGISTRY_TOKEN`. crates.io matches the OIDC `workflow_ref`
+  claim, i.e. the *caller*, so each crate's trusted-publisher entry names
+  `release.yml`. Renaming `release.yml` breaks publishing until the three
+  crates.io entries are updated.
 
 ---
 

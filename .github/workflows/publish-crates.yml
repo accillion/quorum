@@ -9,8 +9,14 @@
 #
 # Default `cargo publish` blocks until the new version is queryable
 # on the registry index, so the next publish in the chain resolves
-# the just-published path-dep version. CARGO_REGISTRY_TOKEN is
-# inherited via `secrets: inherit` from release.yml.
+# the just-published path-dep version.
+#
+# Auth is crates.io Trusted Publishing: rust-lang/crates-io-auth-action
+# exchanges this job's GitHub OIDC token for a short-lived crates.io
+# token (revoked in the action's post step). No stored secret is used.
+# crates.io matches the OIDC `workflow_ref` claim, which for a reusable
+# workflow is the *caller* — so each crate's trusted-publisher config on
+# crates.io names `release.yml`, not this file.
 
 name: publish-crates
 
@@ -24,8 +30,11 @@ on:
 jobs:
   publish-crates:
     runs-on: ubuntu-22.04
-    env:
-      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    # Same effective grant the caller (release.yml) already gives this
+    # job; listed explicitly so the OIDC requirement is visible here.
+    permissions:
+      id-token: write
+      packages: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -41,9 +50,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libdbus-1-dev pkg-config
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
       - name: Publish quorum-core
         run: cargo publish -p quorum-core
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
       - name: Publish quorum-lippa-client
         run: cargo publish -p quorum-lippa-client
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
       - name: Publish quorum-cli
         run: cargo publish -p quorum-cli
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
