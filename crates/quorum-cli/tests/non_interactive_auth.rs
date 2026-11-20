@@ -36,6 +36,7 @@ fn quorum_in(repo: &Path, cfg_dir: &Path) -> Command {
         .env("APPDATA", cfg_dir) // Windows config dir
         .env("XDG_CONFIG_HOME", cfg_dir) // Linux config dir
         .env_remove("QUORUM_LIPPA_SESSION")
+        .env_remove("QUORUM_LIPPA_BASE_URL")
         .env_remove("QUORUM_LIPPA_EMAIL")
         .env_remove("QUORUM_LIPPA_PASSWORD");
     c
@@ -323,6 +324,8 @@ fn session_env_var_precedence_note_suppressed_under_hook_mode() {
     quorum_in(td.path(), cfg.path())
         .args(["review", "--hook-mode=pre-commit", "--no-keyring"])
         .env("QUORUM_LIPPA_SESSION", "env-cookie-value")
+        // SEC-1: the env session needs its host pinned to be used at all.
+        .env("QUORUM_LIPPA_BASE_URL", server.url())
         // Stage staged content so the bundle actually has something
         // to review (otherwise it short-circuits with "no staged
         // changes — nothing to review"). Easy: skip; the auth
@@ -371,6 +374,8 @@ fn session_env_var_precedence_note_emitted_in_interactive_review() {
     quorum_in(td.path(), cfg.path())
         .args(["review", "--no-keyring"])
         .env("QUORUM_LIPPA_SESSION", "env-cookie-value")
+        // SEC-1: the env session needs its host pinned to be used at all.
+        .env("QUORUM_LIPPA_BASE_URL", server.url())
         .assert()
         .stderr(predicate::str::contains("env var takes precedence"));
 }

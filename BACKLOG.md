@@ -5,6 +5,40 @@ Group by next-target version. Most-recent first.
 
 ---
 
+## Surfaced by SEC-1 (20 Nov 2026)
+
+- **Deny-list pattern coverage gaps.** Found alongside the three SEC-1
+  egress fixes and deliberately left out of that PR. `deny_list.rs` does
+  not cover `credentials.json`, `.git-credentials`, `*.tfvars`,
+  `terraform.tfstate`, `.kube/config` or `*.jks`. Matching is
+  case-sensitive, so on case-insensitive filesystems (macOS default APFS,
+  Windows) `.ENV` or `ID_RSA` names the same kind of file and passes. The
+  directory-prefix rule (`pat.ends_with('/')`) tests `path.starts_with`,
+  so `.quorum/` matches only as the *first* path segment:
+  `packages/app/.quorum/config.toml` is not denied. Each widening also
+  needs README's NEVER-sent list updated.
+- **A rename away from a denied name still sends the blob in the
+  changed-file section.** SEC-1 drops the *diff* section when either side
+  of a rename is denied. The changed-file section checks only
+  `StagedFile::path`, the new name, so `git mv .env notes.txt` sends the
+  former `.env` content as `notes.txt`. Arguably correct, since the file
+  is no longer named like a secret and is about to be committed, but it is
+  a deny-list semantics decision. Carrying the old path needs a new
+  `StagedFile` field from `git.rs`.
+- **No CI job runs `cargo test`.** `.github/workflows/` holds only
+  `release.yml` and `publish-crates.yml`. The SEC-1 leaf-symlink tests
+  skip loudly on Windows without Developer Mode and are authoritative
+  only on Unix, so today they run only when someone runs the suite on
+  Linux or macOS. An ubuntu job running `cargo test --workspace` (with the
+  libdbus apt step, see the v0.4 CI item below) would make them, and the
+  rest of the suite, a gate.
+- **`auth login|logout|status --url` accept plain http.** These take a
+  *user*-supplied URL rather than a repository-chosen one, so they are
+  outside SEC-1. But `auth login --url http://host` sends the password in
+  cleartext. Consider applying `validate_base_url` there too.
+
+---
+
 ## Closed in v0.3.3 (originally planned for v0.3.1)
 
 - ~~**Stale `--help` text in `convention` subcommand group.**~~ Closed by WI-5 in the v0.3.1 fixes payload (landed at `aed4aa1`); shipped to users in v0.3.3.

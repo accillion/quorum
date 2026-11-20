@@ -188,9 +188,24 @@ Behavioural rules live in `SERVICES.md` §2.1–2.3. The §5.3 budget
 Stage 2's, not Stage 1's — Stage 1 ships the derivation mechanism while
 preserving v0.3.3 proportions.
 
-Repo state: 393 tests pass (352 before this stage); clippy `-D warnings`
-+ fmt `--check` clean; `../lippa` untouched. Stage 1 deferrals are in
-`BACKLOG.md`. Prior milestone detail: `HISTORY.md` v0.3.3 entry.
+**SEC-1 (bug fix, no spec gate) is in review, not closed:** branch
+`fix/sec-1-egress`, PR #2, unmerged. Mark it closed here only once that
+PR merges. It targets three paths by which a credential left the
+machine, as three separately revertable commits:
+
+1. the deny list drops whole per-file diff sections, not just their
+   header lines (SERVICES.md §5.1);
+2. related-file working-tree reads never follow a link out of the repo,
+   and allowlist hits must be tracked (§2.4);
+3. `base_url` must be https, and `QUORUM_LIPPA_SESSION` is sent only when
+   the required `QUORUM_LIPPA_BASE_URL` names the same host (§4.1).
+
+The deny-list pattern gaps it surfaced are open in `BACKLOG.md`.
+
+Repo state on the branch: 425 tests pass, 1 ignored, on Linux (397
+before SEC-1); clippy `-D warnings` + fmt `--check` clean; `../lippa`
+untouched. Stage 1 deferrals are in `BACKLOG.md`. Prior milestone
+detail: `HISTORY.md` v0.3.3 entry.
 
 ---
 

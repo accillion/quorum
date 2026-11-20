@@ -99,7 +99,8 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     //
     // Resolution order per spec §4.4 / §4.6.1 (P11):
     //   1. QUORUM_LIPPA_SESSION env var — direct cookie passthrough,
-    //      no keyring read. Cookie wrapped in Secret at env read.
+    //      no keyring read. Cookie wrapped in Secret at env read. Used
+    //      only with a matching QUORUM_LIPPA_BASE_URL pin (SEC-1).
     //   2. Keyring entry for host.
     //   3. --no-keyring file fallback (still under `storage`).
     //
@@ -122,6 +123,17 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         .filter(|s| !s.is_empty())
         .map(quorum_lippa_client::Secret::new);
     let cookie = if let Some(env_secret) = env_session {
+        // SEC-1 layer 2 — a keyring entry is host-scoped and fails closed
+        // for an unknown host. The env-var cookie is not, so it is sent only
+        // when `QUORUM_LIPPA_BASE_URL` names the same host as `base_url`. An
+        // unset pin is refused like a mismatched one, in every mode: there
+        // is no warn-and-proceed path, because hook mode (no human reading
+        // stderr, fired on `git push` in a cloned repo) is the attack path.
+        let pin = std::env::var(quorum_core::config::SESSION_PIN_ENV)
+            .ok()
+            .filter(|s| !s.is_empty());
+        quorum_core::config::check_session_pin(&cfg.base_url, pin.as_deref())
+            .map_err(CliError::Config)?;
         // Probe keyring strictly to decide whether to emit the
         // precedence note; the env value wins regardless.
         if opts.hook_mode == HookMode::None {
@@ -240,8 +252,15 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
             return Err(CliError::BundleTooLarge(n / 1024));
         }
     };
-    for (path, _reason) in &bundle.exclusions {
-        eprintln!("excluded: {path}");
+    for (path, reason) in &bundle.exclusions {
+        match reason {
+            // SEC-1 — a refused working-tree read says why, so a user who
+            // sees `tsconfig.json` skipped knows it was a link, not a bug.
+            quorum_core::bundle::FileExclusionReason::UnsafePath(why) => {
+                eprintln!("excluded: {path} ({why})");
+            }
+            _ => eprintln!("excluded: {path}"),
+        }
     }
     if bundle.diff_truncated {
         eprintln!("note: diff truncated to fit budget");

@@ -100,6 +100,8 @@ Two bounded sources of unchanged context, both reported, both off when
   config files (`.ts/.tsx/.js/.jsx/.mjs/.cjs` → eslint + tsconfig +
   package.json; `.rs` → Cargo.toml; `.py` → pyproject.toml + setup.cfg;
   `.go` → go.mod). These enter at `Config` rank even though unchanged.
+  An allowlist hit must be **tracked at HEAD**: an untracked or
+  gitignored `package.json` beside the repo root is never offered.
 - **One-hop neighbours.** First-party relative specifiers in each changed
   file, resolved textually and conservatively: JS/TS `./` and `../`
   specifiers against a fixed extension-candidate order, and Rust `mod x;`,
@@ -137,6 +139,31 @@ related discovery runs and can never be offered again.
   `<<<QUORUM_REPO_CONTENT_BEGIN>>> … <<<QUORUM_REPO_CONTENT_END>>>` so
   Lippa-side handlers can treat the payload as untrusted data, never
   instructions.
+
+### 2.4 Working-tree reads never follow a link out of the repo (SEC-1)
+
+git stores a symlink as a blob, so a committed `tsconfig.json ->
+~/.aws/credentials` is a **tracked** path. The changed-file section is safe
+by construction: it reads index blobs, and a link's blob is only its target
+string. Every **working-tree** read (related files: allowlist, one-hop,
+`include`) goes through one gate, `resolve_working_tree_file`:
+
+1. `symlink_metadata` on the path itself. Anything that is neither a
+   regular file nor a symlink (directory, FIFO, socket, device) is refused.
+2. `canonicalize`, which resolves links in every component. The result
+   must `starts_with` the canonicalized repository root.
+3. The resolved target must be a regular file.
+4. If the path resolves anywhere other than itself, the **target's**
+   repo-relative path must also pass the deny-list and be tracked. Those
+   checks ran on the name, and the link chose the name.
+5. The read uses the canonical path, so it never re-resolves a link.
+
+A link to a tracked, non-denied file inside the repository is normal and
+is followed. A refused path is never silent: it is recorded as
+`FileExclusionReason::UnsafePath(<why>)` and printed as `excluded: <path>
+(<why>)`. A path missing from the working tree is skipped silently, since
+nothing was read. If the repository root cannot be canonicalized, related
+discovery is off.
 
 ## 3. Lippa-Client Surface
 
@@ -209,6 +236,45 @@ related discovery runs and can never be offered again.
   correct under either rolling or fixed-window regimes — preflight
   observed no rolling renewal during a 16-poll converged session.
 
+### 4.1 `base_url` is repository-chosen (SEC-1)
+
+**Crates:** `quorum-core::config` (rules) + `quorum-cli::commands::review`
+(enforcement). `base_url` comes only from the repository's own
+`.quorum/config.toml`. There is no CLI flag and no env override, so a
+cloned repository chooses where the session and the bundle are sent.
+
+- **Scheme.** `validate_base_url` requires `https`. Plain `http` is
+  accepted only on an explicit loopback host: `localhost`, `127.0.0.1`,
+  `::1`. That list is literal: no `127.0.0.0/8`, no `*.localhost`, no DNS
+  lookup. Anything else, including an unparseable URL, is
+  `ConfigError::InsecureBaseUrl`. It is checked in `config::read`, so
+  every command that loads the config exits 2 the same way, before any
+  network. `config::write` checks too, so `quorum link` cannot write a
+  config that later commands reject. Under `--hook-mode=*` this is a
+  normal exit 2, which the hook template fails open on by default: the
+  push proceeds and nothing is sent.
+- **Keyring cookie.** Already safe: entries are host-scoped
+  (`lippa-session@<host>`), so an unknown host loads `None`. The pin
+  below does not apply to it.
+- **Env-var cookie.** `QUORUM_LIPPA_SESSION` is not host-scoped, so it
+  is used only together with the pin `QUORUM_LIPPA_BASE_URL`
+  (`SESSION_PIN_ENV`). The pin never replaces `base_url`; it only
+  vouches for it. The scheme rule alone does not protect the session,
+  because a certificate for a domain the repository's author controls
+  is free. `check_session_pin` compares hosts as the keyring does
+  (`host_str`, case-insensitive, port ignored):
+  - **pin set, hosts match:** the cookie is used, with no note.
+  - **anything else** (the pin is unset, empty, not a URL with a host, or
+    names a different host): refused with `CliError::Config` (exit 2).
+    The message names `QUORUM_LIPPA_BASE_URL` and the host(s), and the
+    server is never contacted. No mode warns and proceeds: under
+    `--hook-mode=*`, the mode a hostile clone's config fires in on
+    `git push`, nobody reads stderr. The refusal does not fall back to
+    the keyring either, since setting the env var chose that session.
+    Under a hook, exit 2 follows the template's policy: fail-open by
+    default, so the push proceeds unreviewed and the error line still
+    prints.
+
 ## 5. Deny-list
 
 **Crate:** `quorum-core::deny_list`.
@@ -227,11 +293,41 @@ related discovery runs and can never be offered again.
   slashes before matching, so `infra\staging\.env` matches `.env`.
 - A matching file appears in the bundle as
   `[excluded by deny-list: <path>, pattern=<p>]`. The file's contents
-  do not appear anywhere in the assembled bundle (verified by
-  `tests/bundle_assembly.rs::deny_listed_files_excluded_with_marker`).
+  do not appear anywhere in the assembled bundle: not in the changed-file
+  section (`deny_listed_files_excluded_with_marker`) and not in the diff
+  body (§5.1, `sec1_staged_env_contributes_nothing_to_the_diff_body`).
 - Known false-positive class: `*.key` matches license-key files in
   some Java/.NET projects. This is an accepted defense-in-depth
   trade-off; Phase 2's customizable patterns will let users opt out.
+
+### 5.1 Deny-listed files are filtered per diff section (SEC-1)
+
+**Crate:** `quorum-core::bundle` (`diff_section`).
+
+The diff body is filtered as **whole per-file sections**, never line by
+line. The unified diff is split on lines that begin with `diff --git `;
+only a libgit2 file header can begin that way, because every content line
+carries a one-character origin prefix (` `, `+`, `-`, …).
+
+- A section's paths come from **its own header**: the `diff --git` line
+  (git's C-quoting decoded, so `"a/caf\303\251/.env"` reads as
+  `café/.env`) plus any `rename from|to` / `copy from|to` lines before the
+  first `@@`. Never from a substring search of the body.
+- **Both sides count.** A section is dropped if its old *or* new path is
+  deny-listed, so a deletion of `.env` or a rename away from it sends
+  nothing. An old path absent from the file list is still added to the
+  exclusion summary and to `BundleResult::exclusions`.
+- A dropped section is replaced **in place** by
+  `[excluded by deny-list: <path>, pattern=<p>]`, in addition to the
+  summary at the top of `## Diff`.
+- **Fail closed:** a `diff --git` line from which no path can be read is
+  replaced by `[excluded: diff section whose header names no parseable path]`.
+- Kept sections pass through **byte-for-byte**. A content line that merely
+  mentions `a/.env` is never touched.
+
+Pinned by the `sec1_*` diff tests in `tests/bundle_assembly.rs`, which
+stage real changes in a real repository; synthetic `unified:
+String::new()` fixtures cannot exercise this path.
 
 ## 6. Dismissals store (Phase 1B)
 
