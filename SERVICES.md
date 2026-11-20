@@ -227,11 +227,41 @@ related discovery runs and can never be offered again.
   slashes before matching, so `infra\staging\.env` matches `.env`.
 - A matching file appears in the bundle as
   `[excluded by deny-list: <path>, pattern=<p>]`. The file's contents
-  do not appear anywhere in the assembled bundle (verified by
-  `tests/bundle_assembly.rs::deny_listed_files_excluded_with_marker`).
+  do not appear anywhere in the assembled bundle: not in the changed-file
+  section (`deny_listed_files_excluded_with_marker`) and not in the diff
+  body (§5.1, `sec1_staged_env_contributes_nothing_to_the_diff_body`).
 - Known false-positive class: `*.key` matches license-key files in
   some Java/.NET projects. This is an accepted defense-in-depth
   trade-off; Phase 2's customizable patterns will let users opt out.
+
+### 5.1 Deny-listed files are filtered per diff section (SEC-1)
+
+**Crate:** `quorum-core::bundle` (`diff_section`).
+
+The diff body is filtered as **whole per-file sections**, never line by
+line. The unified diff is split on lines that begin with `diff --git `;
+only a libgit2 file header can begin that way, because every content line
+carries a one-character origin prefix (` `, `+`, `-`, …).
+
+- A section's paths come from **its own header**: the `diff --git` line
+  (git's C-quoting decoded, so `"a/caf\303\251/.env"` reads as
+  `café/.env`) plus any `rename from|to` / `copy from|to` lines before the
+  first `@@`. Never from a substring search of the body.
+- **Both sides count.** A section is dropped if its old *or* new path is
+  deny-listed, so a deletion of `.env` or a rename away from it sends
+  nothing. An old path absent from the file list is still added to the
+  exclusion summary and to `BundleResult::exclusions`.
+- A dropped section is replaced **in place** by
+  `[excluded by deny-list: <path>, pattern=<p>]`, in addition to the
+  summary at the top of `## Diff`.
+- **Fail closed:** a `diff --git` line from which no path can be read is
+  replaced by `[excluded: diff section whose header names no parseable path]`.
+- Kept sections pass through **byte-for-byte**. A content line that merely
+  mentions `a/.env` is never touched.
+
+Pinned by the `sec1_*` diff tests in `tests/bundle_assembly.rs`, which
+stage real changes in a real repository; synthetic `unified:
+String::new()` fixtures cannot exercise this path.
 
 ## 6. Dismissals store (Phase 1B)
 

@@ -1429,3 +1429,292 @@ fn tracked_paths_reflects_head() {
         "untracked files must not be offered as context"
     );
 }
+
+// ===================== SEC-1 — deny-list filters the diff BODY =====================
+//
+// Every test below builds a real repository and stages real changes, so the
+// unified diff under test is libgit2's own output rather than a synthetic
+// string. The pre-SEC-1 deny-list tests all passed `unified: String::new()`,
+// which is how a filter that only ever removed the `diff --git` / `---` /
+// `+++` lines shipped while README.md promised denied files appear "never as
+// content".
+
+/// Commit `base` at HEAD, then write and `git add` each of `staged`
+/// (`None` = delete from index and working tree). Returns the tempdir (keep
+/// it alive) and the staged diff exactly as `quorum review` computes it.
+fn staged_repo(
+    base: &[(&str, &str)],
+    staged: &[(&str, Option<&str>)],
+) -> (tempfile::TempDir, StagedDiff) {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = git2::Repository::init(dir.path()).unwrap();
+    let write = |path: &str, body: &str| {
+        let abs = dir.path().join(path);
+        std::fs::create_dir_all(abs.parent().unwrap()).unwrap();
+        std::fs::write(abs, body).unwrap();
+    };
+    let mut idx = repo.index().unwrap();
+    for (p, b) in base {
+        write(p, b);
+        idx.add_path(std::path::Path::new(p)).unwrap();
+    }
+    idx.write().unwrap();
+    let tree_id = idx.write_tree().unwrap();
+    {
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = git2::Signature::now("t", "t@e").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "base", &tree, &[])
+            .unwrap();
+    }
+    for (p, b) in staged {
+        match b {
+            Some(body) => {
+                write(p, body);
+                idx.add_path(std::path::Path::new(p)).unwrap();
+            }
+            None => {
+                std::fs::remove_file(dir.path().join(p)).unwrap();
+                idx.remove_path(std::path::Path::new(p)).unwrap();
+            }
+        }
+    }
+    idx.write().unwrap();
+    drop(repo);
+    let (_repo, diff) = quorum_core::git::staged_diff(dir.path()).unwrap();
+    (dir, diff)
+}
+
+fn assemble_staged(staged: &StagedDiff) -> quorum_core::bundle::BundleResult {
+    let conv = ConventionsState::Absent;
+    let disc = empty_discovery();
+    assemble(&BundleInputs {
+        staged,
+        memory: None,
+        conventions: &conv,
+        discovery: &disc,
+        branch: "main",
+        head_sha: "0000000000000000000000000000000000000000",
+        remote_url: None,
+        local_conventions: &[],
+        local_convention_bundle_cap: 500,
+        context: Default::default(),
+    })
+    .expect("assemble")
+}
+
+/// The diff section of `unified` for an unrenamed `path`, verbatim.
+fn section_of<'a>(unified: &'a str, path: &str) -> &'a str {
+    let head = format!("diff --git a/{path} b/{path}\n");
+    let start = unified
+        .find(&head)
+        .unwrap_or_else(|| panic!("no section for {path} in:\n{unified}"));
+    let body_start = start + head.len();
+    let end = unified[body_start..]
+        .find("\ndiff --git ")
+        .map(|i| body_start + i + 1)
+        .unwrap_or(unified.len());
+    &unified[start..end]
+}
+
+/// The short (7-hex) blob id git prints on a section's `index` line.
+fn short_blob_id(body: &str) -> String {
+    git2::Oid::hash_object(git2::ObjectType::Blob, body.as_bytes())
+        .unwrap()
+        .to_string()[..7]
+        .to_string()
+}
+
+/// Everything before the changed-file section: the envelope plus the diff.
+fn diff_part(prompt: &str) -> &str {
+    prompt.split("## Changed-file contents").next().unwrap()
+}
+
+const ENV_OLD: &str = "DB_HOST=prod.internal\nAWS_SECRET_ACCESS_KEY=old\n";
+const ENV_NEW: &str = "DB_HOST=prod.internal\n\
+                       AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI_EXAMPLE\n\
+                       STRIPE_SECRET_KEY=sk_live_51H8xQ2\n";
+
+/// Assert that nothing a denied blob contributes to a diff reaches `text`:
+/// no line of any listed blob, and not the blob id on its `index` line.
+fn assert_no_trace(text: &str, label: &str, blobs: &[&str]) {
+    for blob in blobs {
+        for line in blob.lines().filter(|l| !l.is_empty()) {
+            assert!(
+                !text.contains(line),
+                "{label}: denied-file line {line:?} leaked into the bundle:\n{text}"
+            );
+        }
+        let id = short_blob_id(blob);
+        assert!(
+            !text.contains(&id),
+            "{label}: denied blob id {id} (its `index` line) leaked into the bundle:\n{text}"
+        );
+    }
+}
+
+/// SEC-1 negative control. A staged `.env` must contribute no byte of its
+/// content to the bundle. Before the fix only the three header lines that
+/// contain `a/.env` / `b/.env` were dropped; the `index` line, the `@@`
+/// header and every `+` / `-` / context line survived.
+#[test]
+fn sec1_staged_env_contributes_nothing_to_the_diff_body() {
+    let (_dir, staged) = staged_repo(&[(".env", ENV_OLD)], &[(".env", Some(ENV_NEW))]);
+    // Precondition: the raw diff really carries the secret, so the
+    // assertions below cannot pass vacuously.
+    assert!(staged
+        .unified
+        .contains("+STRIPE_SECRET_KEY=sk_live_51H8xQ2"));
+    assert!(staged.unified.contains(&short_blob_id(ENV_NEW)));
+
+    let res = assemble_staged(&staged);
+    assert_no_trace(&res.prompt, "modified .env", &[ENV_OLD, ENV_NEW]);
+    // `.env` is the only change, so no hunk header may survive either.
+    assert!(
+        !res.prompt.contains("@@"),
+        "a hunk header from the denied section survived:\n{}",
+        res.prompt
+    );
+}
+
+/// SEC-1 — the same guarantee for a staged deletion, where every line of
+/// the old blob appears as a `-` line, and for a rename *away from* a
+/// denied name, where only the old path is one the deny-list knows.
+#[test]
+fn sec1_deleted_or_renamed_away_env_contributes_nothing_to_the_diff() {
+    let (_d1, deleted) = staged_repo(&[(".env", ENV_NEW)], &[(".env", None)]);
+    assert!(deleted
+        .unified
+        .contains("-STRIPE_SECRET_KEY=sk_live_51H8xQ2"));
+    let res = assemble_staged(&deleted);
+    assert_no_trace(&res.prompt, "deleted .env", &[ENV_NEW]);
+    assert!(res
+        .prompt
+        .contains("[excluded by deny-list: .env, pattern=.env]"));
+
+    // Rename plus an edit, so the section carries hunks, not just headers.
+    let renamed_body = format!("{ENV_NEW}EXTRA=1\n");
+    let (_d2, renamed) = staged_repo(
+        &[(".env", ENV_NEW)],
+        &[(".env", None), ("config/env.txt", Some(&renamed_body))],
+    );
+    assert!(
+        renamed.unified.contains("rename from .env"),
+        "precondition: libgit2 must detect the rename:\n{}",
+        renamed.unified
+    );
+    let res = assemble_staged(&renamed);
+    let diff = diff_part(&res.prompt);
+    assert_no_trace(diff, "renamed-away .env", &[ENV_NEW]);
+    assert!(diff.contains("[excluded by deny-list: .env, pattern=.env]"));
+    assert!(res
+        .exclusions
+        .iter()
+        .any(|(p, r)| p == ".env" && matches!(r, FileExclusionReason::DenyList(_))));
+}
+
+/// SEC-1 — the old predicate was an unanchored substring test over every
+/// line, so a content line in an innocent file that merely *mentions*
+/// `a/.env` was silently deleted from the diff the models reviewed.
+#[test]
+fn sec1_content_mentioning_a_denied_path_is_not_mutilated() {
+    let readme_old = "# Setup\n";
+    let readme_new = "# Setup\n\
+                      Copy a/.env.example to b/.env before running.\n\
+                      diff --git a/.env b/.env is what git prints for it.\n";
+    let (_dir, staged) = staged_repo(
+        &[(".env", ENV_OLD), ("README.md", readme_old)],
+        &[(".env", Some(ENV_NEW)), ("README.md", Some(readme_new))],
+    );
+    let readme = section_of(&staged.unified, "README.md");
+    assert!(readme.contains("+Copy a/.env.example to b/.env before running."));
+    let res = assemble_staged(&staged);
+    assert!(
+        res.prompt.contains(readme),
+        "README.md's diff section must reach the bundle byte-for-byte.\n\
+         expected section:\n{readme}\nbundle:\n{}",
+        res.prompt
+    );
+    assert_no_trace(&res.prompt, ".env beside README", &[ENV_OLD, ENV_NEW]);
+}
+
+/// SEC-1 — the exclusion marker sits where the denied file's section was,
+/// in addition to the header summary, and `exclusions` still records it.
+#[test]
+fn sec1_marker_replaces_the_denied_section_in_place() {
+    let (_dir, staged) = staged_repo(
+        &[(".env", ENV_OLD), ("src/main.rs", "fn main() {}\n")],
+        &[
+            (".env", Some(ENV_NEW)),
+            ("src/main.rs", Some("fn main() { println!(\"hi\"); }\n")),
+        ],
+    );
+    let res = assemble_staged(&staged);
+    let marker = "[excluded by deny-list: .env, pattern=.env]";
+    let diff = diff_part(&res.prompt);
+    assert_eq!(
+        diff.matches(marker).count(),
+        2,
+        "expected the header-summary marker plus one in place:\n{diff}"
+    );
+    // libgit2 orders deltas by path, so `.env` precedes `src/main.rs`: the
+    // in-place marker must sit immediately before main.rs's section.
+    let in_place = format!("{marker}\ndiff --git a/src/main.rs b/src/main.rs\n");
+    assert!(diff.contains(&in_place), "marker not in place:\n{diff}");
+    assert!(res
+        .exclusions
+        .iter()
+        .any(|(p, r)| p == ".env" && matches!(r, FileExclusionReason::DenyList(".env"))));
+}
+
+/// SEC-1 — a denied file alongside a normal one: the normal file's diff
+/// section survives byte-for-byte (index line, hunk header, every line).
+#[test]
+fn sec1_normal_file_beside_denied_file_is_intact() {
+    let pem_old = "-----OLD PEM BODY-----\n";
+    let pem_new = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n";
+    let (_dir, staged) = staged_repo(
+        &[
+            ("src/main.rs", "fn main() {}\n"),
+            ("deploy/server.pem", pem_old),
+        ],
+        &[
+            (
+                "src/main.rs",
+                Some("fn main() {\n    let token = std::env::var(\"API\");\n}\n"),
+            ),
+            ("deploy/server.pem", Some(pem_new)),
+        ],
+    );
+    let main = section_of(&staged.unified, "src/main.rs");
+    assert!(main.contains("@@"), "precondition: main.rs has a hunk");
+    let res = assemble_staged(&staged);
+    assert!(
+        res.prompt.contains(main),
+        "src/main.rs's section must survive intact.\nexpected:\n{main}\nbundle:\n{}",
+        res.prompt
+    );
+    assert_no_trace(&res.prompt, "server.pem", &[pem_old, pem_new]);
+}
+
+/// SEC-1 — git C-quotes a path containing non-ASCII bytes in its
+/// `diff --git` header (`"a/caf\303\251/.env"`). The section's path must be
+/// decoded from that form, or the deny-list sees `.env"` and lets it pass.
+#[test]
+fn sec1_quoted_header_path_is_still_filtered() {
+    let (_dir, staged) = staged_repo(
+        &[("café/.env", ENV_OLD), ("src/lib.rs", "pub fn a() {}\n")],
+        &[
+            ("café/.env", Some(ENV_NEW)),
+            ("src/lib.rs", Some("pub fn a() -> u8 { 1 }\n")),
+        ],
+    );
+    assert!(staged.unified.contains("STRIPE_SECRET_KEY=sk_live_51H8xQ2"));
+    let res = assemble_staged(&staged);
+    assert_no_trace(&res.prompt, "quoted café/.env", &[ENV_OLD, ENV_NEW]);
+    assert!(res
+        .prompt
+        .contains("[excluded by deny-list: café/.env, pattern=.env]"));
+    assert!(res
+        .prompt
+        .contains(section_of(&staged.unified, "src/lib.rs")));
+}

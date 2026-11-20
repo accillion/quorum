@@ -191,19 +191,48 @@ fn diff_section(
     budget: usize,
     exclusions: &mut Vec<(String, FileExclusionReason)>,
 ) -> (String, bool) {
-    // Mark deny-listed files in the diff section. Lippa receives the diff
-    // already filtered for content -- the body for those files is the
-    // marker line, not the patch hunks. We use a placeholder approach:
-    // include the unified diff verbatim but prepend an exclusion summary.
-    let mut header = String::new();
-    let mut excluded_paths = Vec::new();
+    // SEC-1 — deny-listed files are removed from the diff body as whole
+    // per-file sections, each replaced *in place* by its exclusion marker.
+    // A section's path is read from its own `diff --git` header, never
+    // found by substring search against the file list: that search only
+    // ever matched the three header lines naming the file, so the `index`
+    // line, the hunk headers and every content line of a denied file were
+    // sent, and an innocent line that merely mentioned `a/.env` was deleted.
+    let mut excluded_paths: Vec<(String, &'static str)> = Vec::new();
     for f in files {
         if let Some(reason) = deny_list::reason(&f.path) {
             excluded_paths.push((f.path.clone(), reason));
-            exclusions.push((f.path.clone(), FileExclusionReason::DenyList(reason)));
         }
     }
-    header.push_str("\n## Diff\n");
+    let mut diff_body = String::with_capacity(unified.len());
+    for section in split_diff_sections(unified) {
+        let marker = match section_verdict(section) {
+            SectionVerdict::Keep => {
+                diff_body.push_str(section);
+                continue;
+            }
+            SectionVerdict::Deny(path, reason) => {
+                let marker = format!("[excluded by deny-list: {path}, pattern={reason}]\n");
+                // A rename away from a denied name lists only the new path
+                // in `files`; record the old one so stderr reports it too.
+                if !excluded_paths.iter().any(|(p, _)| *p == path) {
+                    excluded_paths.push((path, reason));
+                }
+                marker
+            }
+            SectionVerdict::Unparseable => {
+                "[excluded: diff section whose header names no parseable path]\n".to_string()
+            }
+        };
+        if !diff_body.is_empty() && !diff_body.ends_with('\n') {
+            diff_body.push('\n');
+        }
+        diff_body.push_str(&marker);
+    }
+    for (path, reason) in &excluded_paths {
+        exclusions.push((path.clone(), FileExclusionReason::DenyList(reason)));
+    }
+    let mut header = String::from("\n## Diff\n");
     if !excluded_paths.is_empty() {
         for (path, reason) in &excluded_paths {
             header.push_str(&format!(
@@ -212,18 +241,188 @@ fn diff_section(
         }
         header.push('\n');
     }
-    let mut diff_body = String::new();
-    for line in unified.lines() {
-        let is_excluded_path_line = excluded_paths
-            .iter()
-            .any(|(p, _)| line.contains(&format!("a/{p}")) || line.contains(&format!("b/{p}")));
-        if !is_excluded_path_line {
-            diff_body.push_str(line);
-            diff_body.push('\n');
-        }
-    }
     let (body, truncated) = truncate_with_marker(&diff_body, budget, "diff");
     (format!("{header}{body}"), truncated)
+}
+
+/// Every per-file section of a unified diff opens with this line prefix.
+const DIFF_HEADER: &str = "diff --git ";
+
+/// Split a unified diff into slices, each beginning at a `diff --git `
+/// line, plus any leading text before the first one. The slices
+/// concatenate back to `unified` byte-for-byte.
+///
+/// Only a file header can start such a line: libgit2 prefixes every
+/// content line with its one-character origin (` `, `+`, `-`, …), so a
+/// file whose *content* reads `diff --git …` can never open a section.
+fn split_diff_sections(unified: &str) -> Vec<&str> {
+    let mut starts: Vec<usize> = Vec::new();
+    let mut offset = 0;
+    for line in unified.split_inclusive('\n') {
+        if line.starts_with(DIFF_HEADER) {
+            starts.push(offset);
+        }
+        offset += line.len();
+    }
+    let mut out = Vec::with_capacity(starts.len() + 1);
+    let first = starts.first().copied().unwrap_or(unified.len());
+    if first > 0 {
+        out.push(&unified[..first]);
+    }
+    for (i, &start) in starts.iter().enumerate() {
+        let end = starts.get(i + 1).copied().unwrap_or(unified.len());
+        out.push(&unified[start..end]);
+    }
+    out
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SectionVerdict {
+    Keep,
+    /// The header names a deny-listed path (old *or* new side).
+    Deny(String, &'static str),
+    /// A `diff --git` line from which no path could be read. Fail closed.
+    Unparseable,
+}
+
+/// Decide whether one diff section may be sent, from the paths its own
+/// header names. Text before the first `diff --git` line belongs to no file
+/// and is kept.
+///
+/// Both sides count: a deletion or a rename *away from* `.env` still shows
+/// the old blob's lines. `rename from` / `rename to` (and `copy …`) lines
+/// name each side unambiguously, which settles renames whose unquoted
+/// `diff --git` line could be split more than one way.
+fn section_verdict(section: &str) -> SectionVerdict {
+    let mut lines = section.lines();
+    let rest = match lines.next().and_then(|l| l.strip_prefix(DIFF_HEADER)) {
+        Some(r) => r,
+        None => return SectionVerdict::Keep,
+    };
+    let mut paths = header_paths(rest);
+    // Extended header lines come before the first hunk; content never does.
+    for line in lines.take_while(|l| !l.starts_with("@@")) {
+        for key in ["rename from ", "rename to ", "copy from ", "copy to "] {
+            if let Some(p) = line.strip_prefix(key) {
+                paths.push(match parse_c_quoted(p) {
+                    Some((decoded, "")) => decoded,
+                    _ => p.to_string(),
+                });
+            }
+        }
+    }
+    if paths.is_empty() {
+        return SectionVerdict::Unparseable;
+    }
+    for p in paths {
+        if let Some(reason) = deny_list::reason(&p) {
+            return SectionVerdict::Deny(p, reason);
+        }
+    }
+    SectionVerdict::Keep
+}
+
+/// The paths a `diff --git <old> <new>` header names, `a/` / `b/` stripped.
+///
+/// git C-quotes a name containing `"`, `\`, control or non-ASCII bytes
+/// (`"a/caf\303\251/.env"`). An unquoted name may contain spaces, which
+/// makes `a/x b/y` ambiguous in principle; a non-rename names the same path
+/// twice, which pins the split exactly. For an unquoted rename every
+/// possible split is returned, so the caller fails closed.
+fn header_paths(rest: &str) -> Vec<String> {
+    let mut raw: Vec<String> = Vec::new();
+    if rest.starts_with('"') {
+        if let Some((old, tail)) = parse_c_quoted(rest) {
+            raw.push(old);
+            if let Some(new) = tail.strip_prefix(' ') {
+                raw.push(match parse_c_quoted(new) {
+                    Some((decoded, "")) => decoded,
+                    _ => new.to_string(),
+                });
+            }
+        }
+    } else if let Some(i) = rest.find(" \"") {
+        // An unquoted old name cannot contain `"`, so this is the boundary
+        // before a quoted new name.
+        raw.push(rest[..i].to_string());
+        if let Some((new, _)) = parse_c_quoted(&rest[i + 1..]) {
+            raw.push(new);
+        }
+    } else {
+        let splits: Vec<usize> = rest.match_indices(" b/").map(|(i, _)| i).collect();
+        let symmetric = splits
+            .iter()
+            .find(|&&i| rest[..i].strip_prefix("a/") == Some(&rest[i + 3..]));
+        match symmetric {
+            Some(&i) => raw.push(rest[i + 1..].to_string()),
+            None => {
+                for i in splits {
+                    raw.push(rest[..i].to_string());
+                    raw.push(rest[i + 1..].to_string());
+                }
+            }
+        }
+    }
+    raw.iter().map(|p| strip_side_prefix(p)).collect()
+}
+
+/// Drop git's `a/` / `b/` side prefix; a name without one is kept whole.
+fn strip_side_prefix(p: &str) -> String {
+    p.strip_prefix("a/")
+        .or_else(|| p.strip_prefix("b/"))
+        .unwrap_or(p)
+        .to_string()
+}
+
+/// Decode one git C-style quoted name at the start of `s`: `"…"` with
+/// `\\ \" \a \b \t \n \v \f \r` and three-digit octal escapes, the octal
+/// bytes reassembled as UTF-8. Returns the decoded name and the text after
+/// the closing quote, or `None` if `s` does not open with a complete one.
+fn parse_c_quoted(s: &str) -> Option<(String, &str)> {
+    let bytes = s.as_bytes();
+    if bytes.first() != Some(&b'"') {
+        return None;
+    }
+    let mut out: Vec<u8> = Vec::new();
+    let mut i = 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'"' => return Some((String::from_utf8_lossy(&out).into_owned(), &s[i + 1..])),
+            b'\\' => {
+                let c = *bytes.get(i + 1)?;
+                i += 2;
+                out.push(match c {
+                    b'a' => 0x07,
+                    b'b' => 0x08,
+                    b't' => b'\t',
+                    b'n' => b'\n',
+                    b'v' => 0x0b,
+                    b'f' => 0x0c,
+                    b'r' => b'\r',
+                    b'0'..=b'7' => {
+                        let mut v = u32::from(c - b'0');
+                        for _ in 0..2 {
+                            match bytes.get(i) {
+                                Some(&d) if (b'0'..=b'7').contains(&d) => {
+                                    v = v * 8 + u32::from(d - b'0');
+                                    i += 1;
+                                }
+                                _ => break,
+                            }
+                        }
+                        (v & 0xff) as u8
+                    }
+                    // `\\`, `\"`, and anything unrecognised: the byte itself.
+                    other => other,
+                });
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    None
 }
 
 fn files_section(
@@ -1636,5 +1835,128 @@ mod tests {
         );
         assert_eq!(crate_src_root("src/main.rs").as_deref(), Some("src"));
         assert_eq!(crate_src_root("build.rs"), None);
+    }
+
+    // ===================== SEC-1 — per-section diff filtering =====================
+
+    #[test]
+    fn sec1_sections_split_only_on_header_lines_and_rejoin_exactly() {
+        let unified = "preamble\n\
+                       diff --git a/x b/x\n@@ -1 +1 @@\n-diff --git a/.env b/.env\n+y\n\
+                       diff --git a/z b/z\r\n+crlf\r\n";
+        let parts = split_diff_sections(unified);
+        assert_eq!(parts.len(), 3, "{parts:?}");
+        assert_eq!(parts[0], "preamble\n");
+        assert!(parts[1].starts_with("diff --git a/x b/x\n"));
+        // A content line reading `diff --git …` carries its origin prefix
+        // and therefore never opens a section.
+        assert!(parts[1].contains("-diff --git a/.env b/.env\n"));
+        assert_eq!(parts.concat(), unified, "split must be lossless");
+        assert!(split_diff_sections("").is_empty());
+        assert_eq!(split_diff_sections("no header"), vec!["no header"]);
+    }
+
+    #[test]
+    fn sec1_header_paths_cover_git_quoting_and_spaces() {
+        assert_eq!(header_paths("a/.env b/.env"), vec![".env"]);
+        // Spaces are left unquoted by git; the symmetric split is exact.
+        assert_eq!(
+            header_paths("a/my dir/x b/y.rs b/my dir/x b/y.rs"),
+            vec!["my dir/x b/y.rs"]
+        );
+        // Non-ASCII is octal-escaped and must be decoded as UTF-8.
+        assert_eq!(
+            header_paths(r#""a/caf\303\251/.env" "b/caf\303\251/.env""#),
+            vec!["café/.env", "café/.env"]
+        );
+        assert_eq!(
+            header_paths(r#""a/tab\there" "b/quote\"d""#),
+            vec!["tab\there", "quote\"d"]
+        );
+        // Mixed: only the new name needed quoting.
+        assert_eq!(
+            header_paths(r#"a/plain "b/caf\303\251""#),
+            vec!["plain", "café"]
+        );
+        // Unquoted rename with an ambiguous split: every reading returned.
+        let r = header_paths("a/x b/y b/z");
+        assert!(r.contains(&"x".to_string()) && r.contains(&"y b/z".to_string()));
+        assert!(r.contains(&"x b/y".to_string()) && r.contains(&"z".to_string()));
+        assert!(header_paths("garbage").is_empty());
+    }
+
+    #[test]
+    fn sec1_section_verdicts() {
+        use SectionVerdict::*;
+        assert_eq!(
+            section_verdict("diff --git a/src/a.rs b/src/a.rs\n+x\n"),
+            Keep
+        );
+        assert_eq!(
+            section_verdict("diff --git a/.env b/.env\n+x\n"),
+            Deny(".env".into(), ".env")
+        );
+        // Either side of a rename counts, and `rename from` settles it even
+        // when the `diff --git` line itself is ambiguous.
+        assert_eq!(
+            section_verdict(
+                "diff --git a/.env b/notes.txt\nsimilarity index 90%\n\
+                 rename from .env\nrename to notes.txt\n@@ -1 +1 @@\n-SECRET=1\n"
+            ),
+            Deny(".env".into(), ".env")
+        );
+        assert_eq!(
+            section_verdict("diff --git a/x b/y b/z\nrename from x b/y\nrename to keys/id_rsa\n"),
+            Deny("keys/id_rsa".into(), "id_rsa")
+        );
+        // A quoted `rename from` is decoded too.
+        assert_eq!(
+            section_verdict(
+                "diff --git \"a/caf\\303\\251\" b/x\nrename from \"caf\\303\\251/.env\"\n"
+            ),
+            Deny("café/.env".into(), ".env")
+        );
+        // A `rename from .env` *inside a hunk* is content, not a header.
+        assert_eq!(
+            section_verdict("diff --git a/a.md b/a.md\n@@ -1 +1 @@\n+rename from .env\n"),
+            Keep
+        );
+        // No path readable: fail closed rather than guess.
+        assert_eq!(section_verdict("diff --git garbage\n+x\n"), Unparseable);
+        // Leading text that belongs to no file section is kept.
+        assert_eq!(section_verdict("not a header\n"), Keep);
+    }
+
+    #[test]
+    fn sec1_diff_section_replaces_denied_sections_in_place() {
+        let unified = "diff --git a/.env b/.env\n@@ -1 +1 @@\n+K=secret\n\
+                       diff --git a/ok.rs b/ok.rs\n@@ -1 +1 @@\n+fn ok() {} // a/.env\n\
+                       diff --git garbage\n+mystery\n";
+        let mut exclusions = Vec::new();
+        let (out, truncated) = diff_section(unified, &[], 100 * 1024, &mut exclusions);
+        assert!(!truncated);
+        assert!(!out.contains("K=secret"));
+        assert!(!out.contains("mystery"));
+        assert!(out.contains("+fn ok() {} // a/.env\n"));
+        assert!(out
+            .contains("[excluded by deny-list: .env, pattern=.env]\ndiff --git a/ok.rs b/ok.rs\n"));
+        assert!(out.contains("[excluded: diff section whose header names no parseable path]"));
+        // Header-derived exclusions reach `exclusions` even with no file list.
+        assert!(matches!(
+            exclusions.as_slice(),
+            [(p, FileExclusionReason::DenyList(".env"))] if p == ".env"
+        ));
+    }
+
+    #[test]
+    fn sec1_parse_c_quoted_edges() {
+        assert_eq!(
+            parse_c_quoted(r#""a\\b" rest"#),
+            Some(("a\\b".to_string(), " rest"))
+        );
+        assert_eq!(parse_c_quoted(r#""\101\102""#), Some(("AB".into(), "")));
+        assert_eq!(parse_c_quoted(r#""unterminated"#), None);
+        assert_eq!(parse_c_quoted(r#""trailing\"#), None);
+        assert_eq!(parse_c_quoted("noquote"), None);
     }
 }
