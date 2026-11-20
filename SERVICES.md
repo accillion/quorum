@@ -236,6 +236,45 @@ discovery is off.
   correct under either rolling or fixed-window regimes — preflight
   observed no rolling renewal during a 16-poll converged session.
 
+### 4.1 `base_url` is repository-chosen (SEC-1)
+
+**Crates:** `quorum-core::config` (rules) + `quorum-cli::commands::review`
+(enforcement). `base_url` comes only from the repository's own
+`.quorum/config.toml`. There is no CLI flag and no env override, so a
+cloned repository chooses where the session and the bundle are sent.
+
+- **Scheme.** `validate_base_url` requires `https`. Plain `http` is
+  accepted only on an explicit loopback host: `localhost`, `127.0.0.1`,
+  `::1`. That list is literal: no `127.0.0.0/8`, no `*.localhost`, no DNS
+  lookup. Anything else, including an unparseable URL, is
+  `ConfigError::InsecureBaseUrl`. It is checked in `config::read`, so
+  every command that loads the config exits 2 the same way, before any
+  network. `config::write` checks too, so `quorum link` cannot write a
+  config that later commands reject. Under `--hook-mode=*` this is a
+  normal exit 2, which the hook template fails open on by default: the
+  push proceeds and nothing is sent.
+- **Keyring cookie.** Already safe: entries are host-scoped
+  (`lippa-session@<host>`), so an unknown host loads `None`. The pin
+  below does not apply to it.
+- **Env-var cookie.** `QUORUM_LIPPA_SESSION` is not host-scoped, so it
+  is used only together with the pin `QUORUM_LIPPA_BASE_URL`
+  (`SESSION_PIN_ENV`). The pin never replaces `base_url`; it only
+  vouches for it. The scheme rule alone does not protect the session,
+  because a certificate for a domain the repository's author controls
+  is free. `check_session_pin` compares hosts as the keyring does
+  (`host_str`, case-insensitive, port ignored):
+  - **pin set, hosts match:** the cookie is used, with no note.
+  - **anything else** (the pin is unset, empty, not a URL with a host, or
+    names a different host): refused with `CliError::Config` (exit 2).
+    The message names `QUORUM_LIPPA_BASE_URL` and the host(s), and the
+    server is never contacted. No mode warns and proceeds: under
+    `--hook-mode=*`, the mode a hostile clone's config fires in on
+    `git push`, nobody reads stderr. The refusal does not fall back to
+    the keyring either, since setting the env var chose that session.
+    Under a hook, exit 2 follows the template's policy: fail-open by
+    default, so the push proceeds unreviewed and the error line still
+    prints.
+
 ## 5. Deny-list
 
 **Crate:** `quorum-core::deny_list`.

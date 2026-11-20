@@ -284,8 +284,9 @@ stage. Phase 2 introduces customizable redaction patterns.
 Phase 1B Stage 4 adds three CI-friendly auth shapes, prioritized by
 preference:
 
-1. **`QUORUM_LIPPA_SESSION` (preferred).** Already-captured cookie
-   passed directly via environment. `quorum review` consumes it
+1. **`QUORUM_LIPPA_SESSION` + `QUORUM_LIPPA_BASE_URL` (preferred).** An
+   already-captured cookie passed directly via environment, together
+   with the Lippa URL it belongs to. `quorum review` consumes them
    without touching the keyring and without an `auth login` step.
 
    ```bash
@@ -294,8 +295,22 @@ preference:
    # ... copy the printed value into your CI secret manager,
    # then in CI:
    export QUORUM_LIPPA_SESSION=<value>
+   export QUORUM_LIPPA_BASE_URL=https://app.lippa.ai   # required with the session
    quorum review --hook-mode=pre-commit   # or just `quorum review`
    ```
+
+   **`QUORUM_LIPPA_BASE_URL` is required whenever `QUORUM_LIPPA_SESSION`
+   is set.** The session is not tied to a host, and `base_url` comes
+   from the repository's own `.quorum/config.toml`, which anyone who can
+   commit to the repository can change. So the session is sent only
+   when the two name the same host; scheme, port and path are ignored.
+   An unset or empty pin, a pin that is not a URL, or a different host is
+   refused with exit 2 before anything is sent, in every mode, hooks
+   included. The error names the variable to set. Under a hook, the
+   default fail-open policy lets the commit or push proceed unreviewed,
+   and the error still prints. CI that already reaches the session's
+   own host needs only the one extra line. A keyring entry needs no pin:
+   it is stored per host and is never offered to a different one.
 
    When both `QUORUM_LIPPA_SESSION` and a keyring entry are present,
    the env var wins. A one-line stderr note is emitted in interactive
@@ -321,6 +336,14 @@ The non-interactive paths above trade one operational property
 (unattended auth) for several attack surfaces you should be aware of.
 Phase 1B `0.2.0` ships honest, narrow defenses; deeper hardening is
 deferred to Phase 2+ (the redaction layer is the natural place).
+
+**Repository-chosen endpoint.** `base_url` comes from the repository's
+`.quorum/config.toml`, so a cloned repository chooses where reviews are
+sent. It must be `https`. Plain `http` is accepted only for `localhost`,
+`127.0.0.1` and `::1`; any other value is a config error (exit 2) for
+every command, before anything is sent. https alone does not stop a
+repository naming a host its author controls, so the env-var session is
+also sent only when `QUORUM_LIPPA_BASE_URL` names the same host (above).
 
 **Process inspection.** On Linux any process running as the same uid
 can read `/proc/<pid>/environ`. On macOS the equivalent requires

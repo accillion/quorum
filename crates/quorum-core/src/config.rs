@@ -202,6 +202,90 @@ pub enum ConfigError {
     /// includes the offending key, its value, and the allowed range.
     #[error("config out of range: {0}")]
     OutOfRange(String),
+    /// SEC-1 — `base_url` is not `https` (or `http` on a loopback host).
+    #[error("{0}")]
+    InsecureBaseUrl(String),
+}
+
+/// SEC-1 — `base_url` is chosen by the repository, so it must not be able
+/// to route the session cookie and the bundle over cleartext. `https` is
+/// required; plain `http` is accepted only on an explicit loopback host
+/// (`localhost`, `127.0.0.1`, `::1`) for local Lippa servers and test
+/// doubles. The list is deliberately literal: not `127.0.0.0/8`, not
+/// `*.localhost`, and never a DNS lookup.
+pub fn validate_base_url(base_url: &str) -> Result<(), String> {
+    let allowed = "use https (plain http is accepted only for localhost, 127.0.0.1 and ::1)";
+    let url = url::Url::parse(base_url)
+        .map_err(|e| format!("base_url = {base_url:?} is not a valid URL ({e}); {allowed}"))?;
+    match url.scheme() {
+        "https" if url.host().is_some() => Ok(()),
+        "http" if is_loopback_host(&url) => Ok(()),
+        "http" => Err(format!(
+            "base_url = {base_url:?} uses plain http to a non-loopback host, which would send \
+             the session cookie and the review bundle in cleartext; {allowed}"
+        )),
+        other => Err(format!(
+            "base_url = {base_url:?} has scheme {other:?}; {allowed}"
+        )),
+    }
+}
+
+fn is_loopback_host(url: &url::Url) -> bool {
+    match url.host() {
+        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(ip)) => ip == std::net::Ipv4Addr::LOCALHOST,
+        Some(url::Host::Ipv6(ip)) => ip == std::net::Ipv6Addr::LOCALHOST,
+        None => false,
+    }
+}
+
+/// SEC-1 — env var naming the host `QUORUM_LIPPA_SESSION` belongs to. It is
+/// required whenever the session is set. Unlike a keyring entry, the env-var
+/// cookie is not host-scoped, so without a pin it would follow whatever host
+/// the repository's config names.
+pub const SESSION_PIN_ENV: &str = "QUORUM_LIPPA_BASE_URL";
+
+/// SEC-1 layer 2 — may the `QUORUM_LIPPA_SESSION` cookie be sent to
+/// `base_url`? Only when `pin` names the same host. Hosts are compared
+/// exactly as the keyring scopes entries (`host_str`, case-insensitive,
+/// port ignored). An unset pin is refused just like a mismatched one, and
+/// so is a pin that does not parse as a URL with a host; none of these
+/// falls back to sending. `Err` carries the message to show, naming the
+/// variable and the host(s).
+pub fn check_session_pin(base_url: &str, pin: Option<&str>) -> Result<(), String> {
+    let host_of = |u: &str| {
+        url::Url::parse(u)
+            .ok()
+            .and_then(|p| p.host_str().map(str::to_ascii_lowercase))
+    };
+    let cfg_host =
+        host_of(base_url).ok_or_else(|| format!("base_url = {base_url:?} names no host"))?;
+    let pin = match pin {
+        None => {
+            return Err(format!(
+                "refusing to send QUORUM_LIPPA_SESSION to {cfg_host}, the host named by base_url \
+                 in this repository's .quorum/config.toml: {SESSION_PIN_ENV} is not set. Set \
+                 {SESSION_PIN_ENV} to the Lippa URL the session belongs to (e.g. \
+                 {SESSION_PIN_ENV}=https://app.lippa.ai); the session is then sent only to that \
+                 host. Or unset QUORUM_LIPPA_SESSION to use a login stored by `quorum auth login`."
+            ))
+        }
+        Some(p) => p,
+    };
+    let pin_host = host_of(pin).ok_or_else(|| {
+        format!(
+            "{SESSION_PIN_ENV} = {pin:?} is not a URL with a host \
+             (expected e.g. https://app.lippa.ai); refusing to send QUORUM_LIPPA_SESSION"
+        )
+    })?;
+    if pin_host == cfg_host {
+        Ok(())
+    } else {
+        Err(format!(
+            "refusing to send QUORUM_LIPPA_SESSION to {cfg_host}: .quorum/config.toml base_url \
+             names host {cfg_host}, but {SESSION_PIN_ENV} pins {pin_host}"
+        ))
+    }
 }
 
 pub fn read(repo_root: &Path) -> Result<QuorumConfig, ConfigError> {
@@ -211,12 +295,18 @@ pub fn read(repo_root: &Path) -> Result<QuorumConfig, ConfigError> {
     }
     let text = std::fs::read_to_string(&path)?;
     let cfg = toml::from_str::<QuorumConfig>(&text)?;
+    // SEC-1 — checked at load, so every command that reads the config
+    // fails the same way (exit 2), not only `quorum review`.
+    validate_base_url(&cfg.base_url).map_err(ConfigError::InsecureBaseUrl)?;
     cfg.memory.validate().map_err(ConfigError::OutOfRange)?;
     cfg.bundle.validate().map_err(ConfigError::OutOfRange)?;
     Ok(cfg)
 }
 
 pub fn write(repo_root: &Path, cfg: &QuorumConfig) -> Result<std::path::PathBuf, ConfigError> {
+    // SEC-1 — refuse at the write site too, rather than writing a config
+    // that every later command would reject.
+    validate_base_url(&cfg.base_url).map_err(ConfigError::InsecureBaseUrl)?;
     let dir = repo_root.join(".quorum");
     std::fs::create_dir_all(&dir)?;
     let path = dir.join("config.toml");
@@ -302,7 +392,7 @@ mod tests {
             write_raw(
                 dir.path(),
                 &format!(
-                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                    "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n\
                      [memory]\ncandidate_threshold = {bad}\n"
                 ),
             );
@@ -322,7 +412,7 @@ mod tests {
             write_raw(
                 dir.path(),
                 &format!(
-                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                    "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n\
                      [memory]\ncandidate_threshold = {ok}\n"
                 ),
             );
@@ -338,7 +428,7 @@ mod tests {
             write_raw(
                 dir.path(),
                 &format!(
-                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                    "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n\
                      [memory]\nlocal_convention_bundle_cap = {bad}\n"
                 ),
             );
@@ -357,7 +447,7 @@ mod tests {
         let dir = tempdir().unwrap();
         write_raw(
             dir.path(),
-            "project_id = \"p\"\nbase_url = \"u\"\n\
+            "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n\
              [memory]\ncandidate_expire_days = 3651\n",
         );
         match read(dir.path()) {
@@ -370,7 +460,7 @@ mod tests {
         let dir = tempdir().unwrap();
         write_raw(
             dir.path(),
-            "project_id = \"p\"\nbase_url = \"u\"\n\
+            "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n\
              [memory]\ncandidate_expire_days = 0\n",
         );
         read(dir.path()).expect("0 is the disable sentinel and must be allowed");
@@ -401,7 +491,7 @@ mod tests {
         let dir = tempdir().unwrap();
         write_raw(
             dir.path(),
-            "project_id = \"p\"\nbase_url = \"u\"\n[bundle]\nrelated_files = false\n",
+            "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n[bundle]\nrelated_files = false\n",
         );
         let cfg = read(dir.path()).unwrap();
         assert!(!cfg.bundle.related_files);
@@ -414,7 +504,7 @@ mod tests {
         let dir = tempdir().unwrap();
         write_raw(
             dir.path(),
-            "project_id = \"p\"\nbase_url = \"u\"\n\
+            "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n\
              [bundle]\n\
              total_budget_kb = 512\n\
              related_files = false\n\
@@ -436,7 +526,7 @@ mod tests {
             write_raw(
                 dir.path(),
                 &format!(
-                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                    "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n\
                      [bundle]\ntotal_budget_kb = {bad}\n"
                 ),
             );
@@ -456,7 +546,7 @@ mod tests {
             write_raw(
                 dir.path(),
                 &format!(
-                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                    "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n\
                      [bundle]\ntotal_budget_kb = {ok}\n"
                 ),
             );
@@ -474,7 +564,7 @@ mod tests {
             write_raw(
                 dir.path(),
                 &format!(
-                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                    "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n\
                      [bundle]\nrelated_file_max = {bad}\n"
                 ),
             );
@@ -490,7 +580,7 @@ mod tests {
             write_raw(
                 dir.path(),
                 &format!(
-                    "project_id = \"p\"\nbase_url = \"u\"\n\
+                    "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n\
                      [bundle]\nrelated_file_max = {ok}\n"
                 ),
             );
@@ -522,5 +612,106 @@ mod tests {
         assert!(!got.bundle.related_files);
         assert_eq!(got.bundle.related_file_max, 5);
         assert_eq!(got.bundle.include, vec!["schema/*.sql"]);
+    }
+
+    // ===================== SEC-1 — base_url scheme + session pin =====================
+
+    fn config_with_base_url(base_url: &str) -> tempfile::TempDir {
+        let dir = tempdir().unwrap();
+        write_raw(
+            dir.path(),
+            &format!("project_id = \"p\"\nbase_url = \"{base_url}\"\n"),
+        );
+        dir
+    }
+
+    /// An `http://` base_url on a non-loopback host is rejected at load,
+    /// along with every other non-https scheme and anything unparseable.
+    #[test]
+    fn sec1_insecure_base_url_rejected_at_load() {
+        for bad in [
+            "http://evil.example",
+            "http://app.lippa.ai",
+            "http://app.lippa.ai:443/",
+            "http://localhost.evil.example",
+            "http://127.0.0.2",
+            "http://10.0.0.1:8000",
+            "ftp://app.lippa.ai",
+            "file:///etc/passwd",
+            "app.lippa.ai",
+            "u",
+            "",
+        ] {
+            let dir = config_with_base_url(bad);
+            match read(dir.path()) {
+                Err(ConfigError::InsecureBaseUrl(m)) => {
+                    assert!(m.contains("https"), "message must say what is allowed: {m}");
+                }
+                other => panic!("expected InsecureBaseUrl for {bad:?}, got {other:?}"),
+            }
+        }
+    }
+
+    /// https is accepted on any host; plain http only on the three
+    /// explicit loopback spellings.
+    #[test]
+    fn sec1_https_and_loopback_http_accepted_at_load() {
+        for ok in [
+            "https://app.lippa.ai",
+            "https://staging.lippa.example:8443/base",
+            "http://localhost",
+            "http://LOCALHOST:8000",
+            "http://127.0.0.1:1",
+            "http://[::1]:9000",
+        ] {
+            let dir = config_with_base_url(ok);
+            let cfg = read(dir.path()).unwrap_or_else(|e| panic!("{ok:?} rejected: {e}"));
+            assert_eq!(cfg.base_url, ok, "value must not be rewritten");
+        }
+    }
+
+    /// `quorum link` cannot write a config that every command would reject.
+    #[test]
+    fn sec1_insecure_base_url_rejected_at_write() {
+        let dir = tempdir().unwrap();
+        let cfg = QuorumConfig {
+            project_id: "p".into(),
+            base_url: "http://evil.example".into(),
+            remote_url: true,
+            memory: MemoryConfig::default(),
+            bundle: BundleConfig::default(),
+        };
+        assert!(matches!(
+            write(dir.path(), &cfg),
+            Err(ConfigError::InsecureBaseUrl(_))
+        ));
+        assert!(!dir.path().join(".quorum").join("config.toml").exists());
+    }
+
+    #[test]
+    fn sec1_session_pin_outcomes() {
+        // No pin, no env cookie: the refusal names the variable to set and
+        // the host the repository asked for.
+        let err = check_session_pin("https://evil.example", None).expect_err("unset pin refuses");
+        assert!(
+            err.contains(SESSION_PIN_ENV) && err.contains("evil.example"),
+            "must name the variable and the host: {err}"
+        );
+        // Host-only, as the keyring scopes entries: scheme, port and path
+        // do not matter, case does not matter.
+        assert_eq!(
+            check_session_pin("https://app.lippa.ai", Some("https://APP.lippa.ai:8443/x")),
+            Ok(())
+        );
+        let err = check_session_pin("https://evil.example", Some("https://app.lippa.ai"))
+            .expect_err("mismatch must refuse");
+        assert!(
+            err.contains("evil.example") && err.contains("app.lippa.ai"),
+            "both hosts must be named: {err}"
+        );
+        assert!(err.contains(SESSION_PIN_ENV));
+        // A pin that is not a URL is an error, never silently ignored.
+        let err = check_session_pin("https://app.lippa.ai", Some("app.lippa.ai")).unwrap_err();
+        assert!(err.contains(SESSION_PIN_ENV), "{err}");
     }
 }
