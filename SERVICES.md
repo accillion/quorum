@@ -100,6 +100,8 @@ Two bounded sources of unchanged context, both reported, both off when
   config files (`.ts/.tsx/.js/.jsx/.mjs/.cjs` → eslint + tsconfig +
   package.json; `.rs` → Cargo.toml; `.py` → pyproject.toml + setup.cfg;
   `.go` → go.mod). These enter at `Config` rank even though unchanged.
+  An allowlist hit must be **tracked at HEAD**: an untracked or
+  gitignored `package.json` beside the repo root is never offered.
 - **One-hop neighbours.** First-party relative specifiers in each changed
   file, resolved textually and conservatively: JS/TS `./` and `../`
   specifiers against a fixed extension-candidate order, and Rust `mod x;`,
@@ -137,6 +139,31 @@ related discovery runs and can never be offered again.
   `<<<QUORUM_REPO_CONTENT_BEGIN>>> … <<<QUORUM_REPO_CONTENT_END>>>` so
   Lippa-side handlers can treat the payload as untrusted data, never
   instructions.
+
+### 2.4 Working-tree reads never follow a link out of the repo (SEC-1)
+
+git stores a symlink as a blob, so a committed `tsconfig.json ->
+~/.aws/credentials` is a **tracked** path. The changed-file section is safe
+by construction: it reads index blobs, and a link's blob is only its target
+string. Every **working-tree** read (related files: allowlist, one-hop,
+`include`) goes through one gate, `resolve_working_tree_file`:
+
+1. `symlink_metadata` on the path itself. Anything that is neither a
+   regular file nor a symlink (directory, FIFO, socket, device) is refused.
+2. `canonicalize`, which resolves links in every component. The result
+   must `starts_with` the canonicalized repository root.
+3. The resolved target must be a regular file.
+4. If the path resolves anywhere other than itself, the **target's**
+   repo-relative path must also pass the deny-list and be tracked. Those
+   checks ran on the name, and the link chose the name.
+5. The read uses the canonical path, so it never re-resolves a link.
+
+A link to a tracked, non-denied file inside the repository is normal and
+is followed. A refused path is never silent: it is recorded as
+`FileExclusionReason::UnsafePath(<why>)` and printed as `excluded: <path>
+(<why>)`. A path missing from the working tree is skipped silently, since
+nothing was read. If the repository root cannot be canonicalized, related
+discovery is off.
 
 ## 3. Lippa-Client Surface
 

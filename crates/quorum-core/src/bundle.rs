@@ -43,6 +43,10 @@ pub enum FileExclusionReason {
     Binary,
     TooLarge,
     Deleted,
+    /// SEC-1 — a working-tree read was refused. The path is not a regular
+    /// file, or a link resolves outside the repository or onto an
+    /// untracked or deny-listed file. The string says which.
+    UnsafePath(&'static str),
 }
 
 #[derive(Debug, Clone)]
@@ -1340,6 +1344,60 @@ fn wildcard_match(pat: &str, s: &str) -> bool {
     pi == p.len()
 }
 
+/// SEC-1 — the only gate between a repo-relative path and a working-tree
+/// read. Returns the canonical path to read, `Ok(None)` if nothing exists
+/// at `rel`, or `Err(reason)` for a path that must not be read.
+///
+/// `symlink_metadata` inspects the leaf without following it: a directory,
+/// FIFO, socket or device is refused outright. `canonicalize` then resolves
+/// every link in every component, and the result must stay under the
+/// canonical repository root. A path that resolves anywhere other than
+/// itself (a linked leaf, or a linked directory above it) must also land on
+/// a tracked, non-denied file, because the caller's deny-list and tracked
+/// checks were applied to the *name*, which the link chose.
+///
+/// The returned path is canonical, so the read does not re-resolve the
+/// links checked here.
+fn resolve_working_tree_file(
+    repo_root: &std::path::Path,
+    canon_root: &std::path::Path,
+    rel: &str,
+    tracked: &std::collections::HashSet<String>,
+) -> Result<Option<std::path::PathBuf>, &'static str> {
+    // Join onto the caller's root, not `canon_root`: on Windows the
+    // canonical form is a `\\?\` verbatim path, in which `/` in `rel` is
+    // not a separator.
+    let abs = repo_root.join(rel);
+    let leaf = match std::fs::symlink_metadata(&abs) {
+        Ok(m) => m.file_type(),
+        Err(_) => return Ok(None),
+    };
+    if !leaf.is_file() && !leaf.is_symlink() {
+        return Err("not a regular file");
+    }
+    let canon = std::fs::canonicalize(&abs).map_err(|_| "symlink target does not resolve")?;
+    let inside = canon
+        .strip_prefix(canon_root)
+        .map_err(|_| "resolves outside the repository")?;
+    if !std::fs::metadata(&canon).is_ok_and(|m| m.is_file()) {
+        return Err("not a regular file");
+    }
+    let target_rel = inside
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+    if target_rel != rel {
+        if deny_list::is_denied(&target_rel) {
+            return Err("symlink target is deny-listed");
+        }
+        if !tracked.contains(&target_rel) {
+            return Err("symlink target is not tracked");
+        }
+    }
+    Ok(Some(canon))
+}
+
 /// Outcome of related-file discovery, including what the cap turned away.
 struct RelatedResult {
     candidates: Vec<Candidate>,
@@ -1364,6 +1422,13 @@ fn collect_related(
     let repo_root = match ctx.repo_root {
         Some(r) => r,
         None => return out,
+    };
+    // SEC-1 — the boundary every working-tree read is checked against. If
+    // the root itself cannot be resolved, no read can be shown to stay
+    // inside it, so discovery is off.
+    let canon_root = match std::fs::canonicalize(repo_root) {
+        Ok(p) => p,
+        Err(_) => return out,
     };
     let empty = std::collections::HashSet::new();
     let tracked = ctx.tracked.unwrap_or(&empty);
@@ -1398,8 +1463,12 @@ fn collect_related(
         for lang in langs {
             if let Some((_, configs)) = LANG_CONFIGS.iter().find(|(e, _)| *e == lang) {
                 for c in *configs {
-                    // Repo-root only, and only if it actually exists.
-                    if repo_root.join(c).is_file() {
+                    // Repo-root only, and only if tracked at HEAD: README.md
+                    // promises untracked files are never sent, and a
+                    // gitignored local `package.json` is exactly that. No
+                    // filesystem probe here: whether the path is safe to
+                    // read is decided once, in the materialize loop.
+                    if tracked.contains(*c) {
                         want(
                             (*c).to_string(),
                             RelatedKind::ConfigAllowlist,
@@ -1466,7 +1535,17 @@ fn collect_related(
             exclusions.push((path.clone(), FileExclusionReason::DenyList(reason)));
             continue;
         }
-        let abs = repo_root.join(&path);
+        // SEC-1 — never follow a link out of the repository, nor onto an
+        // untracked or deny-listed file inside it.
+        let abs = match resolve_working_tree_file(repo_root, &canon_root, &path, tracked) {
+            Ok(Some(p)) => p,
+            // Gone from the working tree: nothing read, nothing to report.
+            Ok(None) => continue,
+            Err(why) => {
+                exclusions.push((path.clone(), FileExclusionReason::UnsafePath(why)));
+                continue;
+            }
+        };
         let meta = match std::fs::metadata(&abs) {
             Ok(m) => m,
             Err(_) => continue,

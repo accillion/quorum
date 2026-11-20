@@ -240,8 +240,15 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
             return Err(CliError::BundleTooLarge(n / 1024));
         }
     };
-    for (path, _reason) in &bundle.exclusions {
-        eprintln!("excluded: {path}");
+    for (path, reason) in &bundle.exclusions {
+        match reason {
+            // SEC-1 — a refused working-tree read says why, so a user who
+            // sees `tsconfig.json` skipped knows it was a link, not a bug.
+            quorum_core::bundle::FileExclusionReason::UnsafePath(why) => {
+                eprintln!("excluded: {path} ({why})");
+            }
+            _ => eprintln!("excluded: {path}"),
+        }
     }
     if bundle.diff_truncated {
         eprintln!("note: diff truncated to fit budget");

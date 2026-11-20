@@ -1176,6 +1176,251 @@ fn ac189_related_discovery_never_leaves_the_repo() {
     std::fs::remove_file(&outside).ok();
 }
 
+// ============ SEC-1 — related-file reads never follow a link out of the repo ============
+//
+// git stores a symlink as a blob whose content is the target string, so a
+// committed `tsconfig.json -> ~/.aws/credentials` is a *tracked* path. The
+// changed-file section is safe by construction (it reads index blobs, and
+// a link's blob is just that string); only the working-tree read path for
+// related files can follow it. In the tests below the link is added to
+// `tracked` by hand for exactly that reason.
+
+/// Create file symlink `link` -> `target`. Windows needs Developer Mode or
+/// admin for this; without the privilege it returns `false` and the caller
+/// skips, loudly. These tests are authoritative on Unix.
+fn symlink_file(target: &std::path::Path, link: &std::path::Path) -> bool {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, link).expect("symlink");
+        true
+    }
+    #[cfg(windows)]
+    {
+        match std::os::windows::fs::symlink_file(target, link) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!(
+                    "SKIPPED: cannot create a symlink here ({e}); this test is authoritative on Unix"
+                );
+                false
+            }
+        }
+    }
+}
+
+/// Link directory `link` -> `target`: a symlink on Unix, a junction on
+/// Windows (which needs no privilege and which both the OS and
+/// `std::fs::canonicalize` resolve like a directory symlink).
+fn link_dir(target: &std::path::Path, link: &std::path::Path) {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, link).expect("dir symlink");
+    #[cfg(windows)]
+    {
+        let status = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .expect("run mklink /J");
+        assert!(status.success(), "mklink /J failed");
+    }
+}
+
+/// The `UnsafePath` reason recorded for `path`, if any.
+fn unsafe_reason(res: &quorum_core::bundle::BundleResult, path: &str) -> Option<&'static str> {
+    res.exclusions.iter().find_map(|(p, r)| match r {
+        FileExclusionReason::UnsafePath(why) if p == path => Some(*why),
+        _ => None,
+    })
+}
+
+/// SEC-1 — `tsconfig.json -> <outside>/credentials`, reached through the
+/// config allowlist by staging any `.ts` change, is excluded and reported.
+#[test]
+fn sec1_allowlist_symlink_out_of_repo_is_excluded_and_reported() {
+    let outside = tempfile::tempdir().unwrap();
+    let creds = outside.path().join("credentials");
+    std::fs::write(
+        &creds,
+        "[default]\naws_secret_access_key = OUTSIDE-CANARY-1\n",
+    )
+    .unwrap();
+    let mut tree = Tree::new(&[("src/app.ts", "export const a = 1;\n")]);
+    if !symlink_file(&creds, &tree.dir.path().join("tsconfig.json")) {
+        return;
+    }
+    tree.tracked.insert("tsconfig.json".into());
+    let res = assemble_with(
+        vec![file("src/app.ts", b"export const a = 2;\n", false)],
+        tree.ctx(BundleConfig::default()),
+    );
+    assert!(
+        !res.prompt.contains("OUTSIDE-CANARY-1"),
+        "credentials behind a symlink were sent:\n{}",
+        res.prompt
+    );
+    assert!(!included_paths(&res).contains(&"tsconfig.json".to_string()));
+    assert_eq!(
+        unsafe_reason(&res, "tsconfig.json"),
+        Some("resolves outside the repository"),
+        "the skip must be reported; exclusions = {:?}",
+        res.exclusions
+    );
+}
+
+/// SEC-1 — `src/foo.rs -> <outside>/id_rsa` behind a `mod foo;` is the same
+/// hole reached through one-hop import resolution.
+#[test]
+fn sec1_one_hop_symlink_out_of_repo_is_excluded_and_reported() {
+    let outside = tempfile::tempdir().unwrap();
+    let key = outside.path().join("id_rsa");
+    std::fs::write(
+        &key,
+        "-----BEGIN OPENSSH PRIVATE KEY-----\nOUTSIDE-CANARY-2\n",
+    )
+    .unwrap();
+    let mut tree = Tree::new(&[("src/lib.rs", "mod foo;\n")]);
+    if !symlink_file(&key, &tree.dir.path().join("src/foo.rs")) {
+        return;
+    }
+    tree.tracked.insert("src/foo.rs".into());
+    let res = assemble_with(
+        vec![file("src/lib.rs", b"mod foo;\npub fn a() {}\n", false)],
+        tree.ctx(BundleConfig::default()),
+    );
+    assert!(!res.prompt.contains("OUTSIDE-CANARY-2"), "{}", res.prompt);
+    assert_eq!(
+        unsafe_reason(&res, "src/foo.rs"),
+        Some("resolves outside the repository"),
+        "exclusions = {:?}",
+        res.exclusions
+    );
+}
+
+/// SEC-1 — do not over-block: a symlink to a tracked file *inside* the
+/// repository is normal and is still read and sent.
+#[test]
+fn sec1_in_repo_symlink_is_still_allowed() {
+    let mut tree = Tree::new(&[
+        (
+            "configs/tsconfig.base.json",
+            "{\"compilerOptions\":{\"strict\":true}}\n",
+        ),
+        ("src/app.ts", "export const a = 1;\n"),
+    ]);
+    let link = tree.dir.path().join("tsconfig.json");
+    if !symlink_file(std::path::Path::new("configs/tsconfig.base.json"), &link) {
+        return;
+    }
+    tree.tracked.insert("tsconfig.json".into());
+    let res = assemble_with(
+        vec![file("src/app.ts", b"export const a = 2;\n", false)],
+        tree.ctx(BundleConfig::default()),
+    );
+    assert!(
+        included_paths(&res).contains(&"tsconfig.json".to_string()),
+        "an in-repo symlink must still be followed; exclusions = {:?}",
+        res.exclusions
+    );
+    assert!(res
+        .prompt
+        .contains("### tsconfig.json (unchanged, context)"));
+    assert!(res.prompt.contains("\"strict\":true"));
+    assert_eq!(unsafe_reason(&res, "tsconfig.json"), None);
+}
+
+/// SEC-1 — the deny-list and the tracked check were applied to the *name*,
+/// which the link chooses. An in-repo link onto `.env`, or onto an
+/// untracked file, must be judged by where it lands.
+#[test]
+fn sec1_in_repo_symlink_to_denied_or_untracked_target_is_excluded() {
+    let mut tree = Tree::new(&[("src/app.ts", "export const a = 1;\n")]);
+    tree.untracked(".env", "API_KEY=IN-REPO-CANARY-3\n");
+    tree.untracked("local.json", "{\"token\":\"UNTRACKED-CANARY-4\"}\n");
+    let root = tree.dir.path().to_path_buf();
+    if !symlink_file(std::path::Path::new(".env"), &root.join("tsconfig.json"))
+        || !symlink_file(
+            std::path::Path::new("local.json"),
+            &root.join("package.json"),
+        )
+    {
+        return;
+    }
+    tree.tracked.insert("tsconfig.json".into());
+    tree.tracked.insert("package.json".into());
+    let res = assemble_with(
+        vec![file("src/app.ts", b"export const a = 2;\n", false)],
+        tree.ctx(BundleConfig::default()),
+    );
+    assert!(!res.prompt.contains("IN-REPO-CANARY-3"), "{}", res.prompt);
+    assert!(!res.prompt.contains("UNTRACKED-CANARY-4"), "{}", res.prompt);
+    assert_eq!(
+        unsafe_reason(&res, "tsconfig.json"),
+        Some("symlink target is deny-listed")
+    );
+    assert_eq!(
+        unsafe_reason(&res, "package.json"),
+        Some("symlink target is not tracked")
+    );
+}
+
+/// SEC-1 — README.md: "untracked files are NEVER sent". The config
+/// allowlist used to probe only `is_file()`, so an untracked or gitignored
+/// `package.json` / `.eslintrc.js` at the repo root was read and sent.
+#[test]
+fn sec1_untracked_allowlist_config_is_not_sent() {
+    let tree = Tree::new(&[
+        ("src/app.ts", "export const a = 1;\n"),
+        ("tsconfig.json", "{\"compilerOptions\":{}}\n"),
+    ]);
+    tree.untracked("package.json", "{\"name\":\"UNTRACKED-CANARY-5\"}\n");
+    tree.untracked(
+        ".eslintrc.js",
+        "module.exports = { c: 'UNTRACKED-CANARY-6' };\n",
+    );
+    let res = assemble_with(
+        vec![file("src/app.ts", b"export const a = 2;\n", false)],
+        tree.ctx(BundleConfig::default()),
+    );
+    let inc = included_paths(&res);
+    assert!(!res.prompt.contains("UNTRACKED-CANARY-5"), "got {inc:?}");
+    assert!(!res.prompt.contains("UNTRACKED-CANARY-6"), "got {inc:?}");
+    // Positive control: the tracked allowlist config is still offered.
+    assert!(inc.contains(&"tsconfig.json".to_string()), "got {inc:?}");
+}
+
+/// SEC-1 — a link in a *directory* component, not just the leaf. A path
+/// that `tracked` lists under `vendor/` must not be read when `vendor` is a
+/// link out of the repository. Runs on Windows too, via a junction.
+#[test]
+fn sec1_directory_link_out_of_repo_is_excluded_and_reported() {
+    let outside = tempfile::tempdir().unwrap();
+    std::fs::write(
+        outside.path().join("creds.ts"),
+        "export const leaked = 'OUTSIDE-CANARY-7';\n",
+    )
+    .unwrap();
+    let mut tree = Tree::new(&[("src/app.ts", "export const a = 1;\n")]);
+    link_dir(outside.path(), &tree.dir.path().join("vendor"));
+    tree.tracked.insert("vendor/creds.ts".into());
+    let cfg = BundleConfig {
+        include: vec!["vendor/*.ts".into()],
+        ..BundleConfig::default()
+    };
+    let res = assemble_with(
+        vec![file("src/app.ts", b"export const a = 2;\n", false)],
+        tree.ctx(cfg),
+    );
+    assert!(!res.prompt.contains("OUTSIDE-CANARY-7"), "{}", res.prompt);
+    assert_eq!(
+        unsafe_reason(&res, "vendor/creds.ts"),
+        Some("resolves outside the repository"),
+        "exclusions = {:?}",
+        res.exclusions
+    );
+}
+
 /// AC 190 — `related_files = false` restores exactly the v0.3.3 candidate
 /// set: the changed files and nothing else.
 #[test]
