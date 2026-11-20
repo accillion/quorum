@@ -7,6 +7,8 @@ pre-existing live blocker surfaced — see §12)
 Predecessor: Phase 1C v1.1 (highest AC in force: 175)
 AC range claimed by this milestone: **176–241**
 Companion analysis: `specs/Quorum-v0_4-CI-Feedback-Remediation.md`
+Amended 2026-09-15 after the Stage 1 close, adjudicating the Stage 1 CC report.
+Amendments are marked **[S1-ADJ]** and are binding on Stages 2–4.
 
 ---
 
@@ -53,6 +55,16 @@ In scope:
 - **No Lippa calls added or changed.** `SessionCreateRequest` keeps its four
   fields. The `model_roles` selector request is filed upstream, not built here.
 - **No cloud sync.** Phase 1D remains deferred.
+- **[S2-RECON] Quorum never sends `context_text`.** Recon established that the
+  field reaches the models verbatim and uncapped, *and* that supplying it
+  suppresses Lippa's project-memory seeding pack: both generation guards
+  (`consensus.py:494`, `consensus_service.py:214`) are `not seeding_context`,
+  so a client-supplied value means `_generate_seeding_context` never runs and
+  the confirmed/pinned `MemoryItem` rows are silently dropped for that session.
+  Spending that field on a static policy file would trade Quorum's entire
+  memory wedge for a placement Quorum already controls. This is a standing
+  constraint, not a Stage 2 detail — a future session reaching for
+  `context_text` innocently is the failure mode this line exists to prevent.
 
 ---
 
@@ -91,22 +103,43 @@ is structurally unreachable.
 Replace `eligible.sort_by_key(|f| Reverse(f.size_bytes))` with a deterministic
 priority score. Lower score sorts first.
 
-Score = `(class_rank * 1000) - min(hunk_count, 99) * 10 + size_tiebreak`
+**[S1-ADJ]** Ordering is **lexicographic over a tuple**, terms
+most-significant first — not an integer sum. The v0.1 additive form
+(`class_rank * 1000 - min(hunk_count,99) * 10 + size_tiebreak`) was defective:
+`size_bytes` is unbounded, so a 60 KB file contributes 61440 and swamps the
+1000-wide class bands, reintroducing the exact largest-first eviction WI-1
+exists to remove. CC caught this and implemented the tuple. The tuple is
+authoritative:
 
-where `class_rank` is derived from the path:
+```
+(class_rank, is_related, Reverse(min(hunk_count, 99)), size_bytes, path)
+```
+
+`is_related` (0 = changed, 1 = unchanged context) sits directly after
+`class_rank` to satisfy AC 185 — see that criterion. Within any
+(class, origin) group the tuple and the old formula agree, because the hunk
+term never crosses a class band.
+
+`class_rank` is derived from the path:
 
 | Rank | Class | Match |
 |---|---|---|
 | 0 | Source under review | any file that appears in the diff and is not matched below |
-| 1 | Config | `eslint.config.*`, `.eslintrc.*`, `tsconfig*.json`, `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `.editorconfig`, `*.toml` at repo root |
+| 1 | Config | `eslint.config.*`, `.eslintrc.*` (and bare `.eslintrc`), `tsconfig*.json`, `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `.editorconfig`, `*.toml` at repo root, **[S1-ADJ]** `*.yml` / `*.yaml` |
 | 2 | Test | path contains `/tests/`, `/test/`, `__tests__`, or basename matches `*.test.*`, `*.spec.*`, `test_*.py`, `*_test.go` |
 | 3 | Docs / data | `*.md`, `*.mdx`, `*.rst`, `*.txt`, `*.json` not matched above, `*.lock`, `*.snap` |
 
-`size_tiebreak` is `size_bytes` **ascending** (smaller first), so that when
-class and hunk count tie, the budget admits more files rather than fewer.
+`size_bytes` is **ascending** (smaller first), so that when class, origin and
+hunk count tie, the budget admits more files rather than fewer.
 
-**AC 176.** Eligible files are ordered by the score above; ties broken by
-`path` lexicographically so ordering is fully deterministic.
+**[S1-ADJ]** `.sql` and `.sh` deliberately fall through to Source (rank 0):
+they are executable logic, and when changed they are the subject of review.
+`.yml`/`.yaml` are promoted to Config because a changed CI workflow
+outranking the changed tests — which the Stage 1 probe surfaced — is wrong.
+
+**AC 176.** Eligible files are ordered by the tuple above; `path` is the final
+term, so ordering is total and fully deterministic. **[S1-ADJ]** Satisfied at
+Stage 1 close by `Candidate::sort_key`.
 **AC 177.** `class_rank` classification is a pure function of the path string,
 unit-tested against a table of at least 20 paths covering all four ranks.
 **AC 178.** A bundle whose changed set is `{a.md (60KB), b.md (30KB),
@@ -156,9 +189,14 @@ to a tracked file is skipped silently.
 not the index, and are labelled `(unchanged, context)` in their section header
 so a model cannot mistake them for part of the diff.
 **AC 184.** One-hop resolution is **one hop only** — neighbours of neighbours
-are never added.
+are never added. **[S1-ADJ]** The Rust specifier set includes `mod x;`
+declarations alongside `crate::` / `super::`; without it one-hop finds almost
+nothing in a Rust repo, which is the repo Quorum is dogfooded on.
 **AC 185.** Related files never displace a changed file: the scorer places all
 changed files ahead of all unchanged context files of the same class.
+**[S1-ADJ]** This requires an explicit changed/context term — a changed file
+with `hunk_count == 0` would otherwise tie with an unchanged one. It is the
+`is_related` term in the AC 176 tuple, not an emergent property of the score.
 **AC 186.** Related-file discovery adds at most `related_file_max` files
 (default 12, range 0..=64); when the cap binds, the omission is reported on
 stderr and in the inclusion-order block.
@@ -168,7 +206,10 @@ file matching a deny-list pattern is excluded with the same marker.
 **AC 189.** Related-file discovery never leaves the repository root; a
 specifier resolving outside it is skipped.
 **AC 190.** Setting `related_files = false` in config restores exactly the
-v0.3.3 candidate set (changed files only), byte-for-byte.
+v0.3.3 candidate set (changed files only), byte-for-byte, **[S1-ADJ] when
+`include` is empty**. `related_files` disables automatic *discovery*; an
+explicit `include` glob is a direct user instruction and is honoured
+regardless. CC's reading is confirmed.
 
 ### 4.4 WI-3 — `[bundle]` config section
 
@@ -186,14 +227,17 @@ the documented defaults with no warning, matching the `[memory]` precedent.
 they are never clamped.
 **AC 193.** `include` globs are matched against repo-relative paths; matched
 files enter as candidates at the class their path implies, not at a privileged
-rank.
+rank. **[S1-ADJ]** `include` is evaluated independently of `related_files`
+(see AC 190).
 **AC 194.** Raising `total_budget_kb` scales every section budget by the same
 ratio, rounded down, with the 2 KB envelope overhead held constant.
 **AC 194a.** Because Lippa applies no maximum prompt size (recon-v04-1), an
 oversized bundle is not rejected — it reserves credits, runs, and comes back
-`failed`. So when `total_budget_kb` is set above 200, `quorum review` emits a
-one-line stderr warning naming the risk and the fact that a failed session
-still spends credits. The warning is suppressed under `--hook-mode=*`.
+`failed`. So when `total_budget_kb` is set above 200, a one-line stderr warning
+names the risk and the fact that a failed session still spends credits. The
+warning is suppressed under `--hook-mode=*`. **[S1-ADJ]** It fires at
+config-read time rather than bundle-assembly time — it is a statement about
+configuration, and it is testable there without a mock Lippa.
 
 > **Note for review.** The v0.3.3 section budgets sum to 210 KB against a
 > 200 KB total cap — they are maxima, not reservations, and `assemble()`
@@ -227,15 +271,53 @@ that was cut.
 **AC 198.** `Discovery.ignored` remains populated for files that exist but did
 not fit, so the stderr note keeps working, with its wording changed from
 "ignored" to "not included (budget)".
+**AC 198a. [S2-RECON]** The stderr line `quorum: using repo memory: {chosen}`
+(`review.rs:172-173`) names **every** file rendered into the memory section,
+not just the precedence winner. Left as-is it compiles and the gate still
+fires, but it reports "using repo memory: CLAUDE.md" while the bundle also
+carries `AGENTS.md` — a silent user-visible regression introduced by WI-4
+itself, and the exact confusion item 3 exists to remove.
+**AC 198b. [S2-RECON]** The `## Memory context\n[not loaded: {chosen}]`
+fallback (`bundle.rs:388-391`) represents partial failure. With N discovered
+files it is currently all-or-nothing on element 0, so "two read, one failed"
+renders as though nothing failed. Each discovered file that exists but could
+not be read is named individually; `review.rs:185` must stop swallowing the
+read error into `None` without recording which file it was.
 **AC 199.** A repo with only `AGENTS.md` behaves exactly as v0.3.3 did.
 **AC 200.** The auto-derived local-conventions subsection is unaffected —
 it still follows the repo-memory block and shares the same budget.
+**AC 200a. [S2-RECON]** `Discovery` gains `#[non_exhaustive]`. It is a public
+`quorum-core` struct with no `Default` and no `#[non_exhaustive]`, so adding
+`chosen_all` is a breaking change for any external constructor — the test
+fixture `bundle_assembly.rs:15-20` builds one by bare struct literal today,
+which means external construction is currently sanctioned. Mark it in the
+same commit that adds the field, and note the break in `HISTORY.md`.
+**AC 200b. [S2-RECON]** Both stderr lines get end-to-end coverage. Nothing in
+`crates/quorum-cli/tests/` currently matches `using repo memory` or
+`ignored:`, so AC 198's wording change and AC 198a's regression would both
+ship uncaught. Also mark `Quorum-Phase1A-Spec-v1_0.md` AC 25 (line 718) and
+§507 as superseded: they document the multi-candidate `ignored:` stderr as
+required behaviour, and WI-4 makes that false.
 
 ### 5.2 WI-5 — First-class review policy
 
 A review policy is *user input*, not a promoted convention. It must not have
 to pass the `.quorum/conventions.md` committed-and-clean trust gate, and it
 must not compete with a 10 KB memory budget.
+
+**[S2-RECON] CC-Recon-v04-6 resolved: §5.2 stands, the policy stays in
+`prompt`.** The recon HALT trigger was drafted as a binary — verbatim delivery
+means move the policy, an 8000-char pack cap means keep it — and neither is
+what Lippa does. `context_text` *is* verbatim and uncapped (no route check, no
+truncation, `Text` column, `body_cap.py` not wired to this route), so the
+letter of the trigger was met; but it is the same field as the memory pack and
+setting it turns the pack off. Beyond that it buys nothing §5.2 needs:
+`context_text` arrives unlabelled and bare-prefixed ahead of `Question:`
+(`consensus_service.py:580-582`, repeated per round at `730-732`), so AC 202's
+delimiters and attribution would have to be embedded in it anyway; AC 201's
+ordering is a `format!` argument order, not an API capability; and both fields
+are concatenated into one user message, so no budget is gained. Decision:
+keep the policy in `prompt`; do not redesign.
 
 ```toml
 [review]                          # v0.4
@@ -282,13 +364,32 @@ Default section budgets at `total_budget_kb = 200`:
 | **Total cap** | **200 KB** | **200 KB** |
 
 **AC 209.** Section constants are derived from `total_budget_kb` at runtime,
-not hard-coded, so AC 194's proportional scaling is structural.
+not hard-coded, so AC 194's proportional scaling is structural. **[S1-ADJ]**
+Stage 1 shipped the derivation *mechanism* with v0.3.3 proportions preserved;
+the rebalance table above (80/72/16/24/6) is a Stage 2 behaviour change and
+lands with the policy section, not before it. CC was right to refuse to ship
+it under a Stage 1 commit.
 **AC 210.** `assemble()` still returns `BundleError::BundleTooLarge` when the
 assembled prompt exceeds the total, and the error names the section that
 overflowed.
 **AC 211.** A repo with no policy file yields a bundle at least as large as
 v0.3.3 would have produced for the same diff — the policy budget is not
 reserved when unused.
+**AC 211a. [S1-ADJ] — promoted from BACKLOG, do not defer again.**
+`bundle.rs::truncate_with_marker` slices `text[..budget_for_text]` on a byte
+index and panics when that index lands mid-codepoint. Route it through
+`truncate_at_codepoint_boundary`, which is already imported into `bundle.rs`
+and already used at the local-conventions cap. Reproduced, not assumed: on a
+diff of accented source comments the shipped function panics for 292 of 4000
+budget values sampled in 4000..8000, and 600 of 4000 with an emoji in a
+comment. For pure-ASCII input the fixed version is byte-identical to the old
+one, so the "it shifts marker byte counts several tests pin" concern does not
+apply to ASCII fixtures — add one non-ASCII test rather than deferring.
+Severity: `quorum review` panics rather than failing open, which under a
+pre-push hook is the one failure mode `Fail-open at hooks` exists to prevent.
+Stage 1's line-number gutter (AC 182a) adds ~9 bytes per line and therefore
+pushes more bundles into truncation, so the probability of hitting this went
+**up** at Stage 1 close.
 
 ---
 
@@ -521,11 +622,32 @@ can see what v0.4 is *not* solving:
    every stored dismissal key. A real selector would let a review pin its
    roster, be reproduced, and bound its own context budget. Bears directly on
    the open Consensus non-determinism blocker.
-4. **Bearer auth — and a correction to how this milestone has been describing
-   it.** `M-ExternalAuth-Phase1-Spec-v0_2.md` exists (Lippa-side, spec home
-   `packages/shared_specs/`; `Quorum-Phase1B-Spec-v1_0.md` cites a `-v1` that
-   does not appear to exist — v0.2 is a draft, and whether it has shipped is
-   unconfirmed). Reading it changes the plan:
+4. **[S2-RECON] A base64 sibling field on the Consensus create route**, so a
+   diff that trips the Cloud Armor OWASP packs can be submitted without being
+   mistaken for the attack it describes. Lippa has applied exactly this remedy
+   on three prior routes. Until it exists, Quorum cannot review security fixes
+   reliably — see §12.1.
+
+5. **[S2-RECON] `document` upload failures are swallowed silently.**
+   `consensus.py:545-562` wraps the whole upload in
+   `except Exception … logger.warning`: a bad extension, an empty extraction or
+   an R2 failure produces no client error, and the session is created, charged
+   and run with no document. A `document_critique` session then critiques
+   nothing, at full credit cost. Not Quorum's surface — Quorum sends no
+   `document` — but it is a paying-user-visible defect found while reading, and
+   filing it is free.
+
+6. **Bearer auth — and a correction to how this milestone has been describing
+   it.** the milestone exists but stalled, and reading it
+   changes the plan. The full chain is now accounted for: **v0.1** (draft) →
+   **v0.1 adjudication** (3 peer reviews; 2× NEEDS REWORK, 1× ACCEPT WITH
+   CHANGES; five Critical findings, chiefly that v0.1 mutated
+   `request.session` on Bearer success) → **v0.2** (the rework, draft, spec
+   home `packages/shared_specs/`). The adjudication's own next step was "one
+   re-review by Lippa Doc Reviewer, then finalize as **v1.0**" — and that v1.0
+   is what `Quorum-Phase1B-Spec-v1_0.md` cites. **It was never produced.** The
+   milestone is parked at a reworked draft awaiting a single review pass, and
+   nothing suggests it has been implemented. Reading v0.2:
 
    **Phase 1 does not deliver a scoped token.** Its own §2 non-goals are
    explicit: no new token format, no revocation list, no scope-restricted
@@ -561,7 +683,13 @@ can see what v0.4 is *not* solving:
      receives 401 after rotation, prompts user to update token via `quorum auth
      login`."* Whatever milestone does the Bearer swap must implement that.
 
-   Not copied into `specs/` — it is a Lippa-side document and the hard
+   **Unblocking it is cheap.** v0.2 needs one Lippa Doc Reviewer pass and a
+   promotion to v1.0 — the adjudication estimated 2–3 days wall-clock to
+   CC-ready, and CC work at 2–3 days. That is a small, well-specified piece of
+   upstream work standing between Quorum and the end of manual cookie
+   rotation. Worth scheduling regardless of v0.4.
+
+   Not copied into `specs/` — these are Lippa-side documents and the hard
    constraint routes Lippa specs to the Lippa repo. Referenced by path only.
 
 ---
@@ -583,3 +711,37 @@ it should be re-probed before v0.4 ships, because v0.4's whole premise is that
 the local pre-push gate is the position Quorum holds today. Recommend a
 standalone probe (create one session with `project_id`, one without, same
 prompt) and, if D8 persists, a Lippa issue plus a README caveat on `link`.
+
+**[S2-RECON] Nothing in Lippa's source can produce a `project_id`-correlated
+403.** The two route-level 403s are `CONSENSUS_ENABLED` off and `assert_tier`,
+both field-blind; a bad or cross-tenant `project_id` returns 404 by an
+explicitly documented tenant-non-leakage rule. `CsrfOriginMiddleware` is
+field-blind and postdates D8. That leaves Cloud Armor, whose policy lives in
+`lippa-infra` and not in either repo. **Cheap discriminator when re-probing:**
+an edge 403 is `Content-Type: text/html` with no `server: Google Frontend`
+header; an app 403 is JSON. HTML means Cloud Armor and a Lippa-side fix. JSON
+means the handler did something the source says it cannot, which is worth
+escalating.
+
+### 12.1 [S2-RECON] Two hazards found while looking for D8
+
+**`assert_tier` gates every Consensus create, and it is newer than the
+preflight.** It landed on this route on 2026-07-09, after the Phase 1B
+preflight was written, and returns 403 `plan_not_eligible` for a workspace
+that is not on standard/max/team. Two consequences: any live verification in
+Stages 2–4 fails on a Free-plan account for reasons unrelated to the change
+under test, so confirm the test account's tier first; and Quorum now has a
+server-enforced paid-tier dependency that neither `README.md` nor
+`SERVICES.md` states. Worth documenting for users before v0.4 ships.
+
+**The OWASP packs sit in front of the diff Quorum submits.** `api.lippa.ai` is
+grey-clouded past Cloudflare with Cloud Armor as the real WAF, and only
+`POST ^/mcp$` and `/mcp/messages` are bypassed —
+`/api/v1/consensus/sessions` is inside the packs. A diff containing
+`<script`, `onerror=` or `../../etc/passwd` is the documented trip pattern.
+This is a structural problem for a *code reviewer*: the changes most worth
+reviewing are the ones most likely to look like an attack. Today's diffs get
+through, which is evidence of tolerance, not a guarantee. It applies equally
+to `prompt` and `context_text`, so it is not an argument either way for §5.2.
+Lippa's own remedy for three prior occurrences was a per-route base64 sibling
+field — a Lippa-side change, filed upstream in §11, not buildable here.
