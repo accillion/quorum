@@ -173,6 +173,19 @@ discovery is off.
 - `POST /api/v1/auth/login` body: JSON `{email, password}`. JSON
   confirmed by preflight Blocker 1 (Lippa returns 200 with
   `Set-Cookie: session=<value>; Max-Age=1209600; HttpOnly; SameSite=lax; Secure`).
+- **A refused login is classified, never a cookie source.** Only a 403
+  body is read, at most 16 KiB within 10 s. It maps as follows:
+  - `{"detail":{"error":"mfa_required"}}` → `AuthError::MfaRequired`;
+  - `email_not_verified` → `EmailNotVerified`;
+  - a string `detail` starting "Your account has been suspended."
+    (Lippa sends no code for it) → `AccountSuspended`;
+  - any other code under `detail.error`, `detail.code` or a top-level
+    `error` → `LoginRejectedWithCode`, but only when the code is plain
+    snake_case, since the CLI prints it.
+  Everything else, any non-403 status included, is
+  `LoginRejected(status)` as before, and nothing on that path reads
+  `Set-Cookie`. The CLI's one `login_error` mapping gives each its own
+  message, exit 3, on both login paths.
 - `POST /api/v1/consensus/sessions` body: `multipart/form-data` (NOT
   JSON). Fields: `prompt` (≥20 chars), `debate_mode` (default
   `"standard"`), `project_id?`, `idempotency_key?`. Phase 1A does NOT
@@ -202,7 +215,8 @@ discovery is off.
 **Crates:** `quorum-lippa-client::client` + `quorum-lippa-client::keyring`.
 
 - **Capture (login):** `extract_session_cookie` parses
-  `Set-Cookie: session=<value>` from the login response. Empty values
+  `Set-Cookie: session=<value>` from a 2xx login response, or from the
+  verify response of a two-factor login (§4.2). Empty values
   return `CookieParseError`; absent header returns `NoSessionCookie`.
   The value is wrapped in `Secret` at this site, never afterward.
 - **Use (jar-driven):** `LippaClient::new` seeds a `reqwest::cookie::Jar`
@@ -274,6 +288,60 @@ cloned repository chooses where the session and the bundle are sent.
     Under a hook, exit 2 follows the template's policy: fail-open by
     default, so the push proceeds unreviewed and the error line still
     prints.
+
+### 4.2 Two-factor login
+
+**Crates:** `quorum-lippa-client::sign_in` (protocol) and
+`quorum-cli::commands::second_factor` (prompting). The Lippa contract is
+`routes/api_v1/mfa.py:217-261` and `services/mfa_service.py:293-335` on
+Lippa `origin/main` `514b4f5`. Two-factor is per-user opt-in there.
+
+- **Step 1.** A correct password for an enrolled account gets
+  `403 {"detail":{"error":"mfa_required"}}` and a *pending* session
+  cookie. That cookie has no `user_id`, so it reads as signed out, and
+  Lippa expires it after 10 minutes. The client returns
+  `AuthError::MfaRequired`.
+- **Step 2.** `POST /api/v1/auth/mfa/verify` with JSON `{"code"}` or
+  `{"recovery_code"}`, carrying the pending cookie. Answers:
+  - `200 {"ok","method","recovery_codes_remaining"}` with the real
+    `Set-Cookie: session=`;
+  - `401 invalid_code`, which counts toward the same lockout as a wrong
+    password;
+  - `401 mfa_session_expired`;
+  - `429`.
+- **One client, one jar.** `SignIn` owns one reqwest client (fresh
+  `cookie::Jar`, 30 s timeout, no redirects) for both steps. Step 1 is
+  `login_on(&client, req)`, the same code `login_with_cookie` runs, so
+  its refusals are the ones in §3. The jar is the only carrier of the
+  pending cookie. No request sets `Cookie:` by hand, because the edge
+  rejects that (§4, "Use").
+- **The pending cookie is never stored.** It is never returned,
+  printed, or written to the keyring, a file or an env var, and the jar
+  is dropped with the `SignIn`. The session is taken from the verify
+  response's `Set-Cookie` through `extract_session_cookie`. A 200
+  without one is `NoSessionCookie`, never a fallback to the jar.
+- **Prompt.** `Authentication code (or a recovery code): `, hidden,
+  through `rpassword`. Six digits once whitespace is removed are sent as
+  `code`; anything else is sent trimmed as `recovery_code`. An empty
+  answer sends nothing and stops.
+- **Three attempts.** At most `MAX_CODE_ATTEMPTS` = 3 codes in total.
+  The first `invalid_code` says that wrong codes count toward the same
+  lockout as wrong passwords. After the third the login stops.
+- **Expiry, rate limit, other refusals.** On `mfa_session_expired` the
+  CLI names the 10-minute window and says to run `quorum auth login`
+  again; the password is never re-sent on its own. On `429` it reports
+  and exits; `Retry-After` is not read, so nothing sleeps. Any other
+  status stops with that status. Every two-factor failure exits 3.
+- **Success.** The verified session is stored exactly as a
+  password-only login stores its session (keyring, or the
+  `--no-keyring` file). With 3 or fewer `recovery_codes_remaining` a
+  note is printed.
+- **No terminal, or `--non-interactive`.** The code is asked for only
+  when stdin is a terminal. The dispatcher already refuses a non-TTY
+  interactive login before any request. Otherwise both cases print
+  "This account has two-factor authentication enabled. Use
+  QUORUM_LIPPA_SESSION together with QUORUM_LIPPA_BASE_URL.": the
+  session-plus-pin pair (§4.1) is the CI path for such an account.
 
 ## 5. Deny-list
 
