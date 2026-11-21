@@ -523,6 +523,8 @@ pending Lippa `M-ExternalAuth`. The docs must **not** promise that Bearer
 solves the leak problem: per §11.4, the Phase 1 Bearer token is the same
 plaintext credential as the user's MCP and extension token, so a leak is worse,
 not better. Say that plainly rather than deferring to a future milestone.
+The refusal message names `QUORUM_LIPPA_SESSION` and `QUORUM_LIPPA_BASE_URL`
+as the pair CI must set, since neither works without the other after SEC-1.
 **AC 241.** No other code path prints, logs, or writes a cookie value. A test
 asserts that the only `expose()` call reaching stdout is the one in
 `--show-session`.
