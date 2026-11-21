@@ -135,9 +135,9 @@ fn enable_wal(conn: &Connection) -> rusqlite::Result<String> {
 /// because schema_version is already > CURRENT_VERSION and the runner
 /// bailed out — still hits the schema_version branch below.
 fn check_forward_compat(conn: &Connection) -> Result<(), MemoryError> {
-    let schema_version: i64 = conn
-        .query_row("SELECT version FROM schema_version", [], |r| r.get(0))
-        .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+    let schema_version: i64 = schema::read_schema_version(conn)?.ok_or_else(|| {
+        MemoryError::Migration("schema_version is empty after migration".to_string())
+    })?;
     let forward_compat_min: i64 = conn
         .query_row(
             "SELECT CAST(value AS INTEGER) FROM schema_meta WHERE key = ?1",
