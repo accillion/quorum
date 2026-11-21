@@ -194,24 +194,31 @@ Behavioural rules live in `SERVICES.md` §2.1–2.3. The §5.3 budget
 Stage 2's, not Stage 1's — Stage 1 ships the derivation mechanism while
 preserving v0.3.3 proportions.
 
-**SEC-1 (bug fix, no spec gate) is in review, not closed:** branch
-`fix/sec-1-egress`, PR #2, unmerged. Mark it closed here only once that
-PR merges. It targets three paths by which a credential left the
+**SEC-1 (bug fix, no spec gate) is closed:** PR #2 merged into `main`
+(`95c1f62`). It closed three paths by which a credential left the
 machine, as three separately revertable commits:
 
-1. the deny list drops whole per-file diff sections, not just their
-   header lines (SERVICES.md §5.1);
-2. related-file working-tree reads never follow a link out of the repo,
-   and allowlist hits must be tracked (§2.4);
-3. `base_url` must be https, and `QUORUM_LIPPA_SESSION` is sent only when
-   the required `QUORUM_LIPPA_BASE_URL` names the same host (§4.1).
+1. `894bd3c`: the deny list drops whole per-file diff sections, not
+   just their header lines (SERVICES.md §5.1);
+2. `8cc144b`: related-file working-tree reads never follow a link out of
+   the repo, and allowlist hits must be tracked (§2.4);
+3. `029d3d8`: `base_url` must be https, and `QUORUM_LIPPA_SESSION` is
+   sent only when the required `QUORUM_LIPPA_BASE_URL` names the same
+   host (§4.1).
 
 The deny-list pattern gaps it surfaced are open in `BACKLOG.md`.
 
-Repo state on the branch: 425 tests pass, 1 ignored, on Linux (397
-before SEC-1); clippy `-D warnings` + fmt `--check` clean; `../lippa`
-untouched. Stage 1 deferrals are in `BACKLOG.md`. Prior milestone
-detail: `HISTORY.md` v0.3.3 entry.
+**crates.io Trusted Publishing is merged but unproven.** PR #1
+(`8f335bb`) moved `publish-crates.yml` from a stored token to OIDC, and
+PR #3 (`f443ef5`) narrowed the job to `id-token: write`. No release has
+run it yet: every `release.yml` run so far was a pull-request plan.
+Count it as working only once the next tagged release's
+`custom-publish-crates` job has published all three crates.
+
+Repo state on `main` (`f443ef5`): 425 tests pass, 1 ignored, on Linux
+(397 before SEC-1); clippy `-D warnings` + fmt `--check` clean;
+`../lippa` untouched. Stage 1 deferrals are in `BACKLOG.md`. Prior
+milestone detail: `HISTORY.md` v0.3.3 entry.
 
 ---
 
