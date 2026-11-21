@@ -75,6 +75,18 @@ Keychain / Linux Secret Service). On headless boxes pass `--no-keyring`
 to fall back to a per-host file at `~/.config/quorum/sessions/<host>.session`
 (mode 0600 on Unix); a stderr warning is emitted at login.
 
+**Two-factor accounts.** If your Lippa account has two-factor
+authentication on, `quorum auth login` asks for
+`Authentication code (or a recovery code):` after the password. Enter
+the six-digit code from your authenticator app, or one of your recovery
+codes. You get three tries, and wrong codes count toward the same
+lockout as wrong passwords. Enter the code within 10 minutes of the
+password. A login that can't show a prompt, such as `--non-interactive`
+in CI, can't answer it; use the `QUORUM_LIPPA_SESSION` +
+`QUORUM_LIPPA_BASE_URL` pair described under "Non-interactive auth".
+A login refused for an unverified email address or a suspended account
+says so.
+
 ## Running a review
 
 ```bash
@@ -320,7 +332,9 @@ preference:
 2. **`QUORUM_LIPPA_EMAIL` + `QUORUM_LIPPA_PASSWORD` (fallback).** For
    environments without session-injection tooling. Consumed by
    `quorum auth login --non-interactive`; the cookie persists per
-   the usual keyring / `--no-keyring` policy.
+   the usual keyring / `--no-keyring` policy. Not usable for an
+   account with two-factor authentication on: CI has no one to type the
+   code, so use option 1 with a session captured by an interactive login.
 
    ```bash
    export QUORUM_LIPPA_EMAIL=you@example.com
@@ -328,7 +342,9 @@ preference:
    quorum auth login --non-interactive
    ```
 
-3. **Interactive TTY login (default, Phase 1A behavior).** Unchanged.
+3. **Interactive TTY login (default).** The Phase 1A login, which now
+   also asks for the code when the account has two-factor
+   authentication on (see "First-time setup").
 
 ## Security threat model
 

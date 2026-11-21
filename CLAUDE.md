@@ -221,11 +221,10 @@ safely under concurrency (`11128e6`..`856618c`, five separately
 revertable commits). The full suite no longer needs a `--skip`. Rules:
 `DATABASE.md` and SERVICES.md §6/§6.1.
 
-**DL Part 2 (bug fix, no spec gate) is in review** on
-`fix/dl-2-conventions-file`, off `main` `ad428e1`. Promote and demote
-no longer lose user text in `.quorum/conventions.md`. The work is five
-separately revertable commits; rules are in SERVICES.md §6/§6.1 and
-DATABASE.md:
+**DL Part 2 (bug fix, no spec gate) is closed:** PR #7 merged into
+`main` (`1816867`). Promote and demote no longer lose user text in
+`.quorum/conventions.md`. The work is five separately revertable
+commits; rules are in SERVICES.md §6/§6.1 and DATABASE.md:
 
 1. `78fcbf1`: one block-set builder for CLI and TUI promote/demote;
    blocks a write does not own are re-emitted verbatim;
@@ -238,12 +237,21 @@ DATABASE.md:
 5. `e32a0e9`: `quorum convention` finds `.quorum/` at the repo root,
    not the cwd.
 
-Branch state: 464 pass, 1 ignored, on Linux; 463 on Windows.
+**MFA login fix (bug fix, no spec gate) is in review** as PR #6 on
+`fix/mfa-login`, off `main` `1816867`; accounts with Lippa two-factor
+on could not log in. `1448387`: a refused login says why (two-factor,
+unverified email, suspended), not "403 Forbidden" (SERVICES.md §3).
+`f4deab4`, which depends on it by design (revert it alone, or it then
+`1448387`): interactive login completes the two-factor step on one
+cookie jar, at most three codes, pending cookie never stored (§4.2).
+Rolf's live test on `app.lippa.ai` passed 21 Nov 2026: login with the
+code, `auth status`, `auth logout`.
 
-Repo state on `main` (`ad428e1`): 435 tests pass, 1 ignored, on Linux,
-and 434 on Windows; clippy `-D warnings` + fmt `--check` clean;
-`../lippa` untouched. Stage 1 deferrals are in `BACKLOG.md`. Prior
-milestone detail: `HISTORY.md` v0.3.3 entry.
+Repo state on `main` (`1816867`): 464 tests pass, 1 ignored, on Linux,
+and 463 on Windows; `fix/mfa-login` has 492 / 1 and 491. clippy
+`-D warnings` + fmt `--check` clean; `../lippa` untouched. Stage 1
+deferrals, the staging cookie name and the upstream PAT ask are in
+`BACKLOG.md`. Prior milestone detail: `HISTORY.md` v0.3.3 entry.
 
 ---
 
