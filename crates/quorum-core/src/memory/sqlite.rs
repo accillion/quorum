@@ -33,7 +33,7 @@ impl LocalSqliteMemoryStore {
     ///   - Runs the v1 migration (idempotent).
     ///   - Applies pragmas: `journal_mode=WAL` (falls back to `DELETE`
     ///     with stderr note if WAL isn't supported by the filesystem;
-    ///     P37), `synchronous=NORMAL`, `foreign_keys=ON`,
+    ///     P37), `synchronous=FULL`, `foreign_keys=ON`,
     ///     `busy_timeout=5000`.
     ///   - Writes `.quorum/dismissals.sqlite*` to `.gitignore` if not
     ///     already covered.
@@ -64,7 +64,11 @@ impl LocalSqliteMemoryStore {
                  Concurrent invocations may serialize more aggressively."
             );
         }
-        conn.pragma_update(None, "synchronous", "NORMAL")
+        // FULL, not NORMAL: in WAL mode NORMAL does not fsync the WAL at
+        // commit, so a commit survives a process crash but not power
+        // loss. This store runs a handful of tiny transactions per
+        // invocation, so the cost is irrelevant. DATABASE.md "Durability".
+        conn.pragma_update(None, "synchronous", "FULL")
             .map_err(|e| MemoryError::Backend(Box::new(e)))?;
         conn.pragma_update(None, "foreign_keys", "ON")
             .map_err(|e| MemoryError::Backend(Box::new(e)))?;
@@ -861,6 +865,24 @@ mod tests {
         let _ = git2::Repository::init(td.path()).unwrap();
         let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
         (td, store)
+    }
+
+    /// In WAL mode `synchronous = NORMAL` does not fsync the WAL at
+    /// commit, so a committed dismissal or promotion survives a process
+    /// crash but not power loss. The store runs a handful of tiny
+    /// transactions per invocation, so it pays for FULL (2).
+    #[test]
+    fn store_connection_is_synchronous_full() {
+        let (_td, store) = setup();
+        let conn = store.conn.lock().unwrap();
+        let mode: String = conn
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
+        let sync: i64 = conn
+            .query_row("PRAGMA synchronous", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, "wal");
+        assert_eq!(sync, 2, "synchronous must be FULL (2), got {sync}");
     }
 
     #[test]

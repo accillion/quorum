@@ -719,6 +719,13 @@ fn emit_block(out: &mut Vec<u8>, block: &BlockToWrite<'_>, le: &[u8]) {
 /// The temp file lives in `path.parent()` so the rename stays on the same
 /// filesystem (POSIX) / volume (Windows `MoveFileExW`). On rename failure
 /// the temp file is removed (best-effort) and the IO error returned.
+///
+/// Durability: the temp file is fsynced before the rename and, on Unix,
+/// the parent directory after it, so a returned `Ok` means the new bytes
+/// *and* the rename survive power loss. Without the directory fsync the
+/// rename itself may not be durable on ext4. Windows has no equivalent
+/// operation, so there the rename's durability rests on NTFS; the
+/// residual behaviour is recorded in DATABASE.md "Durability".
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::time::{SystemTime, UNIX_EPOCH};
     let parent = path.parent().ok_or_else(|| {
@@ -744,20 +751,60 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let temp_name = format!(".{file_name}.tmp.{pid}.{nanos}");
     let temp_path = parent.join(temp_name);
 
-    // Write bytes to the temp file, fsync, then rename.
-    {
+    // Write bytes to the temp file, fsync, then rename. The fsync must
+    // succeed before the rename makes the bytes visible: POSIX-on-ext4
+    // can otherwise leave a zero-length file if power loss races the
+    // rename. A failure here removes the temp file and changes nothing.
+    let written = (|| {
         use std::io::Write;
         let mut f = std::fs::File::create(&temp_path)?;
         f.write_all(bytes)?;
-        // Best-effort fsync to ensure the bytes hit disk before the rename
-        // is visible — Windows tolerates a missing fsync, but POSIX-on-EXT4
-        // can leave a zero-length file if power-loss races the rename.
-        let _ = f.sync_all();
+        f.sync_all()
+    })();
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(e);
     }
     if let Err(e) = std::fs::rename(&temp_path, path) {
         let _ = std::fs::remove_file(&temp_path);
         return Err(e);
     }
+    sync_parent_dir(parent)
+}
+
+/// Make a rename in `dir` durable: fsync the directory itself.
+///
+/// An error is returned rather than swallowed. The caller then skips its
+/// SQLite commit, which leaves the file ahead of SQLite, the drift the
+/// promote/demote recovery already handles. The one exception is a
+/// filesystem that cannot sync a directory at all (`EINVAL`/`ENOTSUP`,
+/// some network and FUSE mounts), where there is nothing to wait for;
+/// SQLite treats directory syncs the same way.
+#[cfg(unix)]
+fn sync_parent_dir(dir: &Path) -> std::io::Result<()> {
+    // `parent()` of a bare file name is `""`, meaning the current dir.
+    let dir = if dir.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        dir
+    };
+    match std::fs::File::open(dir).and_then(|d| d.sync_all()) {
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::InvalidInput | std::io::ErrorKind::Unsupported
+            ) =>
+        {
+            Ok(())
+        }
+        other => other,
+    }
+}
+
+/// Windows has no way to fsync a directory entry, and this does not
+/// pretend to have one. See DATABASE.md "Durability" for what that leaves.
+#[cfg(not(unix))]
+fn sync_parent_dir(_dir: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
