@@ -44,13 +44,7 @@ pub async fn login_non_interactive(base_url: &str, storage: &Storage) -> Result<
             println!("Logged in to {base_url} as {email}");
             Ok(())
         }
-        Err(AuthError::LoginRejected(s)) => Err(CliError::LoginRejected(s.to_string())),
-        Err(AuthError::NoSessionCookie) => Err(CliError::LoginRejected(
-            "server returned 200 but no session cookie".into(),
-        )),
-        Err(AuthError::CookieParseError(m)) => Err(CliError::LoginRejected(m)),
-        Err(AuthError::Transport(m)) => Err(CliError::Network(m)),
-        Err(other) => Err(CliError::LoginRejected(format!("{other}"))),
+        Err(e) => Err(login_error(e)),
     }
 }
 
@@ -118,6 +112,26 @@ fn require_env(name: &str) -> Result<String, CliError> {
     }
 }
 
+/// What a failed login means, in words. One mapping for both login paths,
+/// so a refusal reads the same interactively and with `--non-interactive`.
+fn login_error(e: AuthError) -> CliError {
+    match e {
+        AuthError::MfaRequired => CliError::MfaRequired,
+        AuthError::EmailNotVerified => CliError::EmailNotVerified,
+        AuthError::AccountSuspended => CliError::AccountSuspended,
+        AuthError::LoginRejectedWithCode { status, code } => {
+            CliError::LoginRejected(format!("{status} ({code})"))
+        }
+        AuthError::LoginRejected(s) => CliError::LoginRejected(s.to_string()),
+        AuthError::NoSessionCookie => {
+            CliError::LoginRejected("server returned 200 but no session cookie".into())
+        }
+        AuthError::CookieParseError(m) => CliError::LoginRejected(m),
+        AuthError::Transport(m) => CliError::Network(m),
+        other => CliError::LoginRejected(format!("{other}")),
+    }
+}
+
 pub async fn login(base_url: &str, storage: &Storage, interactive: bool) -> Result<(), CliError> {
     if !interactive {
         return Err(CliError::NoTtyForInteractive);
@@ -154,13 +168,7 @@ pub async fn login(base_url: &str, storage: &Storage, interactive: bool) -> Resu
             println!("Logged in to {base_url} as {email}");
             Ok(())
         }
-        Err(AuthError::LoginRejected(s)) => Err(CliError::LoginRejected(s.to_string())),
-        Err(AuthError::NoSessionCookie) => Err(CliError::LoginRejected(
-            "server returned 200 but no session cookie".into(),
-        )),
-        Err(AuthError::CookieParseError(m)) => Err(CliError::LoginRejected(m)),
-        Err(AuthError::Transport(m)) => Err(CliError::Network(m)),
-        Err(other) => Err(CliError::LoginRejected(format!("{other}"))),
+        Err(e) => Err(login_error(e)),
     }
 }
 

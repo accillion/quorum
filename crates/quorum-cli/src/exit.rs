@@ -45,6 +45,21 @@ pub enum CliError {
     CreateUnauthorized,
     #[error("Login rejected: {0}")]
     LoginRejected(String),
+    #[error(
+        "This account has two-factor authentication enabled. \
+         Use QUORUM_LIPPA_SESSION together with QUORUM_LIPPA_BASE_URL."
+    )]
+    MfaRequired,
+    #[error(
+        "This account's email address is not verified. \
+         Open the verification link Lippa emailed you, then log in again."
+    )]
+    EmailNotVerified,
+    #[error(
+        "This Lippa account is suspended. \
+         Contact Lippa support if you believe this is an error."
+    )]
+    AccountSuspended,
     #[error("Consensus session {state}: {detail}")]
     ConsensusTerminal { state: String, detail: String },
     #[error("Consensus session timed out — last status: {0}")]
@@ -80,6 +95,7 @@ impl CliError {
             NotAuthenticated | CreateUnauthorized | PollUnauthorized | LoginRejected(_) => {
                 Exit::AuthRequired
             }
+            MfaRequired | EmailNotVerified | AccountSuspended => Exit::AuthRequired,
             _ => Exit::ToolingError,
         }
     }
