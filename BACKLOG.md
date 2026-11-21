@@ -5,8 +5,17 @@ Group by next-target version. Most-recent first.
 
 ---
 
-## Surfaced by the 0.4.0 release prep (21 Nov 2026)
+## Surfaced by the 0.4.0 release and its prep (21 Nov 2026)
 
+- **For Rolf: delete the `CARGO_REGISTRY_TOKEN` repository secret.**
+  Nothing uses it now. The three `CARGO_REGISTRY_TOKEN` env lines in
+  `publish-crates.yml` read the auth step's output
+  (`steps.auth.outputs.token`), and Trusted Publishing published all of
+  0.4.0 without it (run 44931991241). The secret still exists
+  (`gh secret list`: last updated 2026-08-09) and holds the
+  `quorum-ci-0.3.x` token, which expired 2026-11-07. Delete it in
+  Settings → Secrets and variables → Actions, or with
+  `gh secret delete CARGO_REGISTRY_TOKEN`.
 - **`Cargo.lock` is gitignored** (`.gitignore:4`). Release builds and
   `cargo publish` therefore resolve every dependency fresh at tag time,
   and the lockfile packaged into `quorum-cli` (the one
@@ -167,7 +176,7 @@ Group by next-target version. Most-recent first.
 
 ## Next-target: v0.4 (or later)
 
-- **Trusted Publishing is unproven live (20 Nov 2026).** `publish-crates.yml` now authenticates via `rust-lang/crates-io-auth-action@v1` instead of `secrets.CARGO_REGISTRY_TOKEN` (the `quorum-ci-0.3.x` token expired 2026-11-07 and was not replaced). No dry-run can exercise the OIDC exchange; the next tag push is the first real proof. Preconditions: the change is merged to `main`, and all three crates have a crates.io trusted-publisher entry naming `release.yml`. A failure at `crates-io-auth-action` leaves nothing published, because it runs before the first `cargo publish`. Once a release is green, Rolf deletes the dead `CARGO_REGISTRY_TOKEN` repository secret. Rollback: mint a fresh crates.io token, set it as the secret, and restore the `env: CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}` reference.
+- ~~**Trusted Publishing is unproven live (20 Nov 2026).**~~ **CLOSED by the v0.4.0 release.** In run [`44931991241`](https://github.com/accillion/quorum/actions/runs/44931991241), `custom-publish-crates / publish-crates` exchanged its OIDC token through `rust-lang/crates-io-auth-action@v1`, then published `quorum-core`, `quorum-lippa-client` and `quorum-cli` 0.4.0. Every step succeeded, including the token-revoking post step. The now-unused `CARGO_REGISTRY_TOKEN` secret is its own item at the top of this file. Rollback, if OIDC ever breaks: mint a fresh crates.io token, set it as the secret, and point the three `env: CARGO_REGISTRY_TOKEN:` lines at `${{ secrets.CARGO_REGISTRY_TOKEN }}`.
 
 - **CI: explicit system-dependency declaration.** Both `release.yml` and `publish-crates.yml` currently rely on a manual `Install libdbus on Linux` apt step because cargo-dist 0.31 ignores `[dist.dependencies.apt]` in `dist-workspace.toml`. The duplication caused the v0.3.1 → v0.3.2 → v0.3.3 cascade (v0.3.1 added the manual step in only `release.yml`; v0.3.2 needed `allow-dirty = ["ci"]` to silence cargo-dist's self-check on that file; v0.3.3 added the same manual step to `publish-crates.yml` after `cargo publish --verify` re-compiled `libdbus-sys`). A future cargo-dist upgrade (or a `dependencies` config syntax change) should reduce this to a single declarative config entry. Until then, any new workflow file that runs `cargo build` / `cargo publish --verify` on Linux needs its own libdbus apt step. Tracking item — revisit at next cargo-dist bump.
 
