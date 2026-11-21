@@ -951,16 +951,46 @@ fn emit_block(out: &mut Vec<u8>, block: &CanonicalBlock<'_>, le: &[u8]) {
     out.extend_from_slice(b" -->");
     out.extend_from_slice(le);
     out.extend_from_slice(b"### Convention: ");
-    out.extend_from_slice(block.title.as_bytes());
+    // The title is a model-written finding title and the body may quote a
+    // reviewed file: render both so they cannot open or close a section or
+    // a block. Rendering only; what is stored and hashed is untouched.
+    out.extend_from_slice(neutralize_markers(&single_line(block.title)).as_bytes());
     out.extend_from_slice(le);
     if !block.body.is_empty() {
         out.extend_from_slice(le);
-        out.extend_from_slice(block.body.as_bytes());
+        out.extend_from_slice(neutralize_markers(block.body).as_bytes());
         if !block.body.ends_with('\n') {
             out.extend_from_slice(le);
         }
     }
     out.extend_from_slice(b"<!-- /quorum:convention -->");
+}
+
+/// `s` on one line: each line break (`\r\n`, `\n` or a lone `\r`) becomes
+/// a space, so a title cannot leave the `### Convention:` header line.
+fn single_line(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.contains(['\n', '\r']) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    std::borrow::Cow::Owned(s.replace("\r\n", " ").replace(['\n', '\r'], " "))
+}
+
+/// `s` with every marker prefix the parser recognizes made inert:
+/// `<!-- quorum:` and `<!-- /quorum:` become `<\!-- quorum:` and
+/// `<\!-- /quorum:`. Markdown renders `\!` as `!`, so the text reads the
+/// same, but no section or block marker can start there. The replacements
+/// contain no `<!--`, so a single pass cannot create a new marker. Run it
+/// after [`single_line`]: joining lines can complete a marker.
+fn neutralize_markers(s: &str) -> std::borrow::Cow<'_, str> {
+    const OPEN: &str = "<!-- quorum:";
+    const CLOSE: &str = "<!-- /quorum:";
+    if !s.contains(OPEN) && !s.contains(CLOSE) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    std::borrow::Cow::Owned(
+        s.replace(OPEN, "<\\!-- quorum:")
+            .replace(CLOSE, "<\\!-- /quorum:"),
+    )
 }
 
 /// Atomic-on-same-volume write: write `bytes` to a sibling temp file, then
@@ -1842,5 +1872,47 @@ mod writer_tests {
         // instead of silently writing to CWD.
         let err = atomic_write(Path::new(""), b"x").unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    // DL 2.3 — render-time neutralization of titles and bodies.
+
+    #[test]
+    fn single_line_turns_every_line_break_into_one_space() {
+        assert_eq!(single_line("plain"), "plain");
+        assert!(matches!(
+            single_line("plain"),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        assert_eq!(single_line("a\nb\r\nc\rd"), "a b c d");
+        assert_eq!(
+            single_line("ok\n<!-- /quorum:managed-section -->\nTRAILER"),
+            "ok <!-- /quorum:managed-section --> TRAILER"
+        );
+    }
+
+    #[test]
+    fn neutralize_markers_breaks_every_marker_the_parser_knows() {
+        let all = [
+            MARKER_OPEN_SECTION,
+            MARKER_CLOSE_SECTION,
+            "<!-- quorum:convention id=a1b2c3d4e5f6 v=1 -->",
+            MARKER_BLOCK_CLOSE,
+        ];
+        for marker in all {
+            let out = neutralize_markers(marker);
+            assert!(!out.contains("<!-- quorum:") && !out.contains("<!-- /quorum:"));
+            assert_eq!(out.replace("<\\!--", "<!--"), marker, "only `!` is escaped");
+        }
+        assert_eq!(
+            neutralize_markers("<!-- a plain comment -->"),
+            "<!-- a plain comment -->"
+        );
+        // Joining lines first matters: this only becomes a marker on one line.
+        let joined = single_line("<!--\nquorum:managed-section v=1 -->");
+        assert_eq!(joined, "<!-- quorum:managed-section v=1 -->");
+        assert_eq!(
+            neutralize_markers(&joined),
+            "<\\!-- quorum:managed-section v=1 -->"
+        );
     }
 }

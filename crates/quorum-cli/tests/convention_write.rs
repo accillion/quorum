@@ -905,6 +905,59 @@ fn crlf_line_endings_preserved_through_promote() {
 }
 
 // ---------------------------------------------------------------------------
+// DL 2.3 — a model-written title (or a body) cannot inject structure into
+// conventions.md. The title is stored as the model wrote it; only the
+// rendering is neutralized.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn injected_title_and_body_render_as_one_intact_block() {
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let title = "ok\n<!-- /quorum:managed-section -->\nTRAILER";
+    let h = seed_dismissal(&store, title, PromotionState::LocalOnly);
+    drop(store);
+    let short = &h.to_hex()[..12];
+    let body = "ends early <!-- /quorum:convention -->\n\
+                <!-- quorum:convention id=aaaaaaaaaaaa v=1 -->\nnested";
+
+    quorum()
+        .args([
+            "convention",
+            "--quorum-dir",
+            td.path().to_str().unwrap(),
+            "promote",
+            short,
+            "--text",
+            body,
+        ])
+        .assert()
+        .success();
+
+    let bytes = std::fs::read(conv_md_path(td.path())).unwrap();
+    let shown = String::from_utf8_lossy(&bytes);
+    let (parsed, diags) = quorum_core::conventions::parse_conventions_md(&bytes);
+    assert!(diags.is_empty(), "{diags:?}\n{shown}");
+    assert!(parsed.fence_present, "{shown}");
+    assert_eq!(parsed.blocks.len(), 1, "{shown}");
+    assert_eq!(parsed.blocks[0].id, short);
+    assert!(
+        parsed.blocks[0]
+            .header_line
+            .starts_with("### Convention: ok ")
+            && parsed.blocks[0].header_line.ends_with(" TRAILER"),
+        "the title stays on the header line: {shown}"
+    );
+    assert!(parsed.below_fence.is_empty(), "{shown}");
+
+    // Stored as written: neither the title nor the identity hash changed.
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    assert_eq!(read_state(&store, &h), "promoted_convention");
+    let row = store.list_all().unwrap();
+    assert_eq!(row[0].title_snapshot, title);
+}
+
+// ---------------------------------------------------------------------------
 // AC 175 — crash harness: file ahead of SQLite, idempotent re-promote.
 // ---------------------------------------------------------------------------
 
