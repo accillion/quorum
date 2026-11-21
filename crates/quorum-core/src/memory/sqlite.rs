@@ -72,18 +72,9 @@ impl LocalSqliteMemoryStore {
         schema::migrate(&mut conn)?;
         check_forward_compat(&conn)?;
 
-        // .gitignore discipline (warnings only; do not fail open).
-        let _ = gitignore::ensure_ignored(repo_root).map(|wrote| {
-            if wrote {
-                eprintln!("wrote .gitignore: .quorum/dismissals.sqlite*");
-            }
-        });
-        if gitignore::is_tracked(repo_root) {
-            eprintln!(
-                "warning: .quorum/dismissals.sqlite is tracked by git; this file contains \
-                 free-text dismissal notes and should be gitignored. \
-                 Run `git rm --cached .quorum/dismissals.sqlite` and gitignore the file."
-            );
+        // .gitignore discipline (warnings only; never fails the open).
+        for line in gitignore::open_messages(repo_root) {
+            eprintln!("{line}");
         }
 
         Ok(Self {
