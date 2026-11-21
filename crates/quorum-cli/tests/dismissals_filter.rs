@@ -16,8 +16,71 @@ use quorum_core::memory::{
 };
 use quorum_core::review::{Finding, FindingSource, Severity};
 use rusqlite::Connection;
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
+
+/// A rendezvous that fails instead of hanging.
+///
+/// `std::sync::Barrier` blocks forever when a peer dies before reaching
+/// it, which is how `concurrent_record_seen_at_threshold_fires_exactly_once`
+/// used to wedge `cargo test --workspace`: one thread's store open
+/// panicked, and its peer waited on the barrier with no way out. Here a
+/// thread that cannot arrive calls [`DeadlineBarrier::abandon`], which
+/// fails every waiter at once, and every wait is also bounded by a
+/// deadline in case a peer dies without abandoning.
+struct DeadlineBarrier {
+    /// `(arrived, abandoned)`.
+    state: Mutex<(usize, bool)>,
+    cv: Condvar,
+    parties: usize,
+}
+
+impl DeadlineBarrier {
+    fn new(parties: usize) -> Self {
+        Self {
+            state: Mutex::new((0, false)),
+            cv: Condvar::new(),
+            parties,
+        }
+    }
+
+    fn abandon(&self) {
+        let mut s = self.state.lock().unwrap();
+        s.1 = true;
+        self.cv.notify_all();
+    }
+
+    fn wait(&self, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        let mut s = self.state.lock().unwrap();
+        s.0 += 1;
+        self.cv.notify_all();
+        while s.0 < self.parties && !s.1 {
+            let now = Instant::now();
+            if now >= deadline {
+                panic!(
+                    "barrier timed out after {timeout:?}: {} of {} threads arrived",
+                    s.0, self.parties
+                );
+            }
+            s = self.cv.wait_timeout(s, deadline - now).unwrap().0;
+        }
+        if s.1 {
+            panic!("barrier abandoned: a peer thread failed before reaching it");
+        }
+    }
+}
+
+fn panic_message(p: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = p.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = p.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "<non-string panic payload>".to_string()
+    }
+}
 
 fn init_repo() -> TempDir {
     let td = TempDir::new().unwrap();
@@ -345,8 +408,8 @@ fn record_seen_promotes_at_threshold_and_emits_one_event() {
 
 /// AC 136 + AC 144: two concurrent `record_seen` calls on the same hash
 /// past the threshold produce exactly ONE state transition and exactly
-/// ONE audit row. Uses `std::thread::spawn` (spec §C6) and
-/// `std::sync::Barrier` to widen the timing spread past 1 ms. The
+/// ONE audit row. Uses `std::thread::spawn` (spec §C6) and a
+/// [`DeadlineBarrier`] to widen the timing spread past 1 ms. The
 /// `rows_affected > 0` gate inside `record_seen` is the primary
 /// protection; the SQL UNIQUE is secondary.
 #[test]
@@ -383,15 +446,21 @@ fn concurrent_record_seen_at_threshold_fires_exactly_once() {
     let f_clone = f("contended", FindingSource::Divergence, &["m"]);
     let hash = finding_identity_hash(&f_clone);
 
-    let barrier = Arc::new(Barrier::new(2));
+    let barrier = Arc::new(DeadlineBarrier::new(2));
     let mut handles = Vec::new();
     for tid in 0..2 {
         let bar = Arc::clone(&barrier);
         let root = repo_root.clone();
         let h = hash;
         handles.push(std::thread::spawn(move || {
-            let store = LocalSqliteMemoryStore::new(&root).unwrap();
-            bar.wait();
+            let store = match LocalSqliteMemoryStore::new(&root) {
+                Ok(s) => s,
+                Err(e) => {
+                    bar.abandon();
+                    panic!("LocalSqliteMemoryStore::new failed: {e}");
+                }
+            };
+            bar.wait(Duration::from_secs(30));
             // Add a small per-thread offset to widen timestamp spread
             // past 1 ms; AC 144 explicitly requires the gate to hold
             // even when the two writes don't collide on the same
@@ -408,10 +477,21 @@ fn concurrent_record_seen_at_threshold_fires_exactly_once() {
         }));
     }
 
+    // Join every thread before asserting, so a failure reports each
+    // worker's own panic message rather than whichever join ran first.
     let mut total_events = 0usize;
-    for h in handles {
-        total_events += h.join().unwrap().len();
+    let mut failures = Vec::new();
+    for (tid, h) in handles.into_iter().enumerate() {
+        match h.join() {
+            Ok(events) => total_events += events.len(),
+            Err(p) => failures.push(format!("thread {tid}: {}", panic_message(&*p))),
+        }
     }
+    assert!(
+        failures.is_empty(),
+        "worker threads failed:\n{}",
+        failures.join("\n")
+    );
     assert_eq!(
         total_events, 1,
         "exactly one TransitionEvent across both threads"

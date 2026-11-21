@@ -44,6 +44,16 @@ impl LocalSqliteMemoryStore {
         let db_path = quorum_dir.join("dismissals.sqlite");
         let mut conn = Connection::open(&db_path).map_err(|e| MemoryError::Backend(Box::new(e)))?;
 
+        // The busy handler goes first, before any statement that can take
+        // a lock. rusqlite 0.32 already installs a 5000 ms handler inside
+        // `Connection::open`, so this restates that default rather than
+        // changing behaviour; it is explicit so the store does not depend
+        // on a dependency's default. A busy handler does not cover every
+        // wait: SQLite skips it when a connection that already holds a
+        // read transaction upgrades to a write.
+        conn.pragma_update(None, "busy_timeout", 5000)
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
         // WAL with fallback. `journal_mode = WAL` returns the new mode as
         // a single-column row; we read it and fall back to DELETE if not 'wal'.
         let mode: String = conn
@@ -59,8 +69,6 @@ impl LocalSqliteMemoryStore {
         conn.pragma_update(None, "synchronous", "NORMAL")
             .map_err(|e| MemoryError::Backend(Box::new(e)))?;
         conn.pragma_update(None, "foreign_keys", "ON")
-            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-        conn.pragma_update(None, "busy_timeout", 5000)
             .map_err(|e| MemoryError::Backend(Box::new(e)))?;
 
         schema::migrate(&mut conn)?;
