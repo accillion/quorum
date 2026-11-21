@@ -309,9 +309,10 @@ fn promote_rejects_empty_text() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn promote_preflight_emits_parser_diagnostic_warning() {
-    // Existing conventions.md with a malformed block surfaces a stderr
-    // warning during promote pre-flight; the operation still proceeds.
+fn promote_preflight_refuses_on_a_parser_diagnostic() {
+    // Existing conventions.md with a malformed block surfaces the
+    // diagnostic on stderr during promote pre-flight. Since DL 2.2 it is a
+    // refusal, not a warning: the write would delete the block's text.
     let td = init_repo();
     let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
     let h = seed_dismissal(&store, "preflight target", PromotionState::LocalOnly);
@@ -335,8 +336,12 @@ fn promote_preflight_emits_parser_diagnostic_warning() {
             "ok",
         ])
         .assert()
-        .success()
-        .stderr(predicate::str::contains("warning:"));
+        .failure()
+        .stderr(predicate::str::contains("deadbeef0001 has no"));
+    assert_eq!(
+        std::fs::read_to_string(conv_dir.join("conventions.md")).unwrap(),
+        bad
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1049,4 +1054,194 @@ fn round_trip_promote_demote_through_bundle_render_paths() {
         "post-demote: row back as local_only"
     );
     assert_eq!(read_state(&store, &h), "local_only");
+}
+
+// ---------------------------------------------------------------------------
+// DL 2.2 — promote and demote refuse a conventions.md whose structure is
+// broken, and leave it byte-identical. `list --orphans` only warns.
+// ---------------------------------------------------------------------------
+
+const FENCE_OPEN: &str = "<!-- quorum:managed-section v=1 -->";
+const FENCE_CLOSE: &str = "<!-- /quorum:managed-section -->";
+
+/// A block in the writer's layout, for the structure tests below.
+fn well_formed(id: &str) -> String {
+    format!(
+        "<!-- quorum:convention id={id} v=1 -->\n### Convention: well formed\n\nKept.\n\
+         <!-- /quorum:convention -->"
+    )
+}
+
+/// Run `quorum convention <args>` against `td` and assert a refusal: a
+/// failing exit, a message naming the file and `line`, the file unchanged.
+fn assert_refused(td: &Path, args: &[&str], line: usize) {
+    let conv = conv_md_path(td);
+    let before = std::fs::read(&conv).unwrap();
+    let mut full = vec!["convention", "--quorum-dir", td.to_str().unwrap()];
+    full.extend_from_slice(args);
+    let out = quorum().args(&full).assert().failure().get_output().clone();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("refusing to rewrite") && stderr.contains("conventions.md"),
+        "refusal must name the file: {stderr}"
+    );
+    assert!(
+        stderr.contains(&format!("line {line}:")),
+        "refusal must name line {line}: {stderr}"
+    );
+    assert_eq!(
+        std::fs::read(&conv).unwrap(),
+        before,
+        "a refused write must leave the file byte-identical"
+    );
+}
+
+#[test]
+fn promote_refuses_a_managed_section_with_no_close_marker() {
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let c = seed_dismissal(&store, "would be promoted", PromotionState::LocalOnly);
+    drop(store);
+    let file = format!(
+        "# Conventions\n\nProse.\n\n{FENCE_OPEN}\n\n{}\n\n\
+         Prose after the block, which a second write would delete.\n",
+        well_formed("aaaaaaaaaaaa")
+    );
+    std::fs::write(conv_md_path(td.path()), &file).unwrap();
+
+    assert_refused(
+        td.path(),
+        &["promote", &c.to_hex()[..12], "--text", "body"],
+        5,
+    );
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    assert_eq!(read_state(&store, &c), "local_only");
+}
+
+#[test]
+fn promote_and_demote_refuse_malformed_block_markers() {
+    // Each malformed block makes the parser skip it, so a write would
+    // delete its text. Line 4 is the malformed block's open marker.
+    let malformed = [
+        "<!-- quorum:convention id=NOT-A-HASH v=1 -->\n### Convention: bad id\n\nText.\n\
+         <!-- /quorum:convention -->",
+        "<!-- quorum:convention id=bbbbbbbbbbbb v=one -->\n### Convention: bad version\n\nText.\n\
+         <!-- /quorum:convention -->",
+        "<!-- quorum:convention id=bbbbbbbbbbbb v=1 -->\n### Convention: no close\n\nText.\n",
+    ];
+    for bad in malformed {
+        let td = init_repo();
+        let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+        let p = seed_dismissal(&store, "promoted", PromotionState::PromotedConvention);
+        let c = seed_dismissal(&store, "local", PromotionState::LocalOnly);
+        drop(store);
+        let (p_short, c_short) = (&p.to_hex()[..12], &c.to_hex()[..12]);
+        let file = format!(
+            "intro\n{FENCE_OPEN}\n\n{bad}\n\n{}\n{FENCE_CLOSE}\n",
+            well_formed(p_short)
+        );
+        std::fs::write(conv_md_path(td.path()), &file).unwrap();
+
+        assert_refused(td.path(), &["promote", c_short, "--text", "body"], 4);
+        assert_refused(td.path(), &["demote", p_short], 4);
+        let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+        assert_eq!(read_state(&store, &c), "local_only");
+        assert_eq!(read_state(&store, &p), "promoted_convention");
+    }
+}
+
+#[test]
+fn promote_refuses_a_second_section_marker_in_a_code_example() {
+    // A file documenting the mechanism, with the marker at column 0 inside
+    // a fenced code block, has two managed sections: refused, not guessed.
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let c = seed_dismissal(&store, "would be promoted", PromotionState::LocalOnly);
+    drop(store);
+    let file = format!(
+        "# Conventions\n\nQuorum fences its section like this:\n\n```html\n{FENCE_OPEN}\n```\n\n\
+         {FENCE_OPEN}\n\n{}\n{FENCE_CLOSE}\n",
+        well_formed("aaaaaaaaaaaa")
+    );
+    std::fs::write(conv_md_path(td.path()), &file).unwrap();
+
+    assert_refused(
+        td.path(),
+        &["promote", &c.to_hex()[..12], "--text", "body"],
+        9,
+    );
+}
+
+#[test]
+fn a_section_marker_mentioned_mid_line_is_not_a_fence() {
+    // Only a marker on a line of its own opens the section, so prose that
+    // quotes it inline is kept and the write lands in the real section.
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let c = seed_dismissal(
+        &store,
+        "lands in the real section",
+        PromotionState::LocalOnly,
+    );
+    drop(store);
+    let c = &c.to_hex()[..12];
+    let prose = format!("Quorum writes between `{FENCE_OPEN}` and `{FENCE_CLOSE}`; leave them.\n");
+    let file = format!(
+        "# Conventions\n\n{prose}\n{FENCE_OPEN}\n\n{}\n{FENCE_CLOSE}\n",
+        well_formed("aaaaaaaaaaaa")
+    );
+    std::fs::write(conv_md_path(td.path()), &file).unwrap();
+
+    quorum()
+        .args([
+            "convention",
+            "--quorum-dir",
+            td.path().to_str().unwrap(),
+            "promote",
+            c,
+            "--text",
+            "body",
+        ])
+        .assert()
+        .success();
+
+    let after = std::fs::read_to_string(conv_md_path(td.path())).unwrap();
+    assert!(
+        after.starts_with(&format!("# Conventions\n\n{prose}\n{FENCE_OPEN}\n")),
+        "prose must be untouched:\n{after}"
+    );
+    assert!(after.contains(&well_formed("aaaaaaaaaaaa")));
+    assert!(after.contains(&format!("id={c}")));
+    assert_eq!(
+        after.matches(FENCE_OPEN).count(),
+        2,
+        "one inline, one fence"
+    );
+}
+
+#[test]
+fn list_orphans_warns_on_a_missing_close_marker_and_succeeds() {
+    let td = init_repo();
+    let file = format!(
+        "# Conventions\n\n{FENCE_OPEN}\n\n{}\n",
+        well_formed("aaaaaaaaaaaa")
+    );
+    std::fs::create_dir_all(td.path().join(".quorum")).unwrap();
+    std::fs::write(conv_md_path(td.path()), &file).unwrap();
+
+    quorum()
+        .args([
+            "convention",
+            "--quorum-dir",
+            td.path().to_str().unwrap(),
+            "list",
+            "--orphans",
+        ])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("no closing marker"));
+    assert_eq!(
+        std::fs::read_to_string(conv_md_path(td.path())).unwrap(),
+        file
+    );
 }

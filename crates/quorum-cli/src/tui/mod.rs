@@ -247,8 +247,10 @@ fn db_path_label(_store: &dyn MemoryStore) -> String {
 /// orchestration directly using public `quorum_core::conventions`
 /// helpers rather than calling `commands::convention::promote`. This
 /// avoids stderr emission inside the alt-screen buffer; the CLI
-/// orchestrator's pre-flight diagnostics (AC 168) are skipped here as
-/// non-AC TUI surface (documented in the Stage 5 close report).
+/// orchestrator's pre-flight orphan warnings (AC 168) are skipped here as
+/// non-AC TUI surface (documented in the Stage 5 close report). A broken
+/// file structure is not skipped: it refuses the write, as in the CLI, and
+/// the refusal comes back as the error for the status bar.
 ///
 /// Returns the row's title on success (for status-bar feedback) or a
 /// short error message on failure.
@@ -274,14 +276,16 @@ fn tui_promote(
     let block_id: String = hex[..12].to_string();
     let title_for_block = &dismissal.title_snapshot;
 
-    // 2. Read + parse conventions.md (diagnostics silently dropped —
-    //    AC 168 stderr is a CLI surface, not a TUI surface).
+    // 2. Read + parse conventions.md. A broken structure refuses the
+    //    write before anything changes, as in the CLI.
     let conv_path = repo_root.join(".quorum").join("conventions.md");
     let existing_bytes = match std::fs::read(&conv_path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => return Err(format!("read {conv_path:?}: {e}")),
     };
+    quorum_core::conventions::check_writable(Path::new(CONVENTIONS_MD), &existing_bytes)
+        .map_err(|r| r.to_string())?;
     let le = LineEnding::detect(&existing_bytes);
     let (parsed, _diagnostics) = parse_conventions_md(&existing_bytes);
 
@@ -331,6 +335,10 @@ fn tui_promote(
     }
 }
 
+/// conventions.md as a refusal names it in the status bar: relative to the
+/// repo root, which is short and unambiguous inside a review session.
+const CONVENTIONS_MD: &str = ".quorum/conventions.md";
+
 /// Phase 1C Stage 5 — TUI-side T3 demote orchestrator (spec §3.2 T3,
 /// AC 159).
 fn tui_demote(
@@ -356,6 +364,8 @@ fn tui_demote(
     // write, DB still advances).
     match std::fs::read(&conv_path) {
         Ok(existing_bytes) => {
+            quorum_core::conventions::check_writable(Path::new(CONVENTIONS_MD), &existing_bytes)
+                .map_err(|r| r.to_string())?;
             let le = LineEnding::detect(&existing_bytes);
             let (parsed, _diagnostics) = parse_conventions_md(&existing_bytes);
             let to_write = build_block_set(&parsed, BlockSetChange::Demote { id: &block_id });
@@ -788,5 +798,62 @@ mod tests {
         );
 
         std::panic::set_hook(original);
+    }
+
+    // DL 2.2 — the TUI refuses a broken structure the same way the CLI
+    // does, and returns the refusal for the status bar.
+
+    /// Line 4 holds a block marker whose id is not a hash.
+    const BAD_ID_FILE: &str = "intro\n<!-- quorum:managed-section v=1 -->\n\n\
+        <!-- quorum:convention id=NOT-A-HASH v=1 -->\n### Convention: t\n\nText.\n\
+        <!-- /quorum:convention -->\n<!-- /quorum:managed-section -->\n";
+
+    /// Line 3 opens a managed section that never closes.
+    const UNCLOSED_FILE: &str = "intro\n\n<!-- quorum:managed-section v=1 -->\n\nprose\n";
+
+    fn assert_tui_refusal(err: &str, line: usize) {
+        assert!(
+            err.contains("refusing to rewrite") && err.contains("conventions.md"),
+            "refusal must name the file: {err}"
+        );
+        assert!(err.contains(&format!("line {line}:")), "line {line}: {err}");
+    }
+
+    #[test]
+    fn tui_promote_refuses_a_malformed_block_and_reports_it() {
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(&store, "would be promoted", PromotionState::LocalOnly);
+        let conv = td.path().join(".quorum").join("conventions.md");
+        std::fs::write(&conv, BAD_ID_FILE).unwrap();
+
+        let err = tui_promote(&store, td.path(), &hash, "body").expect_err("must refuse");
+        assert_tui_refusal(&err, 4);
+        assert_eq!(std::fs::read_to_string(&conv).unwrap(), BAD_ID_FILE);
+        match store.find_by_short_hash(&hash.to_hex()).unwrap() {
+            ShortHashResolution::Exact(d) => {
+                assert_eq!(d.promotion_state, PromotionState::LocalOnly)
+            }
+            other => panic!("expected Exact, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tui_demote_refuses_an_unclosed_section_and_reports_it() {
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(&store, "stays promoted", PromotionState::PromotedConvention);
+        let conv = td.path().join(".quorum").join("conventions.md");
+        std::fs::write(&conv, UNCLOSED_FILE).unwrap();
+
+        let err = tui_demote(&store, td.path(), &hash).expect_err("must refuse");
+        assert_tui_refusal(&err, 3);
+        assert_eq!(std::fs::read_to_string(&conv).unwrap(), UNCLOSED_FILE);
+        match store.find_by_short_hash(&hash.to_hex()).unwrap() {
+            ShortHashResolution::Exact(d) => {
+                assert_eq!(d.promotion_state, PromotionState::PromotedConvention)
+            }
+            other => panic!("expected Exact, got {other:?}"),
+        }
     }
 }

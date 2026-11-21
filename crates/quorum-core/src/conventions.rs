@@ -86,8 +86,11 @@ pub struct ParsedConventionsMd<'a> {
 }
 
 /// Parser diagnostic — surfaced via the AC 168 stderr warning path when
-/// `quorum convention list --orphans` runs (Stage 3) and when Stage 4
-/// promote/demote run.
+/// `quorum convention list --orphans` runs (Stage 3). Every variant is
+/// structural: it means the parse lost track of text in or around the
+/// managed section, so promote and demote refuse the file
+/// ([`check_writable`]). A future variant that is not structural must be
+/// exempted there explicitly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConventionParseError {
     /// Open marker found but no matching `<!-- /quorum:convention -->`
@@ -102,6 +105,15 @@ pub enum ConventionParseError {
     /// diagnostic. (Spec is silent on multi-section files; lean per the
     /// dispatch prompt §2 calibration: treat as malformed, parse first only.)
     DuplicateManagedSection { start_byte: usize },
+    /// A `<!-- quorum:managed-section v=1 -->` line with no
+    /// `<!-- /quorum:managed-section -->` line after it. The fence is not
+    /// recognized; `start_byte` is the open marker.
+    UnclosedManagedSection { start_byte: usize },
+    /// A `<!-- /quorum:managed-section -->` line with no open-marker line
+    /// anywhere in the file: the open marker was deleted, or does not sit
+    /// on a line of its own. The fence is not recognized; `start_byte` is
+    /// the close marker.
+    UnopenedManagedSection { start_byte: usize },
 }
 
 const MARKER_OPEN_SECTION: &str = "<!-- quorum:managed-section v=1 -->";
@@ -118,13 +130,20 @@ pub fn parse_conventions_md(input: &[u8]) -> (ParsedConventionsMd<'_>, Vec<Conve
     let mut diags: Vec<ConventionParseError> = Vec::new();
     let first_line_marker_present = file_starts_with_marker(input);
 
-    // Locate the managed-section open marker. Treat any byte sequence
-    // matching the literal as the marker — we don't insist on it sitting on
-    // its own line. Lippa-side Phase 1A users have authored these files by
-    // hand and the spec §4.4 example places the marker on its own line, but
-    // adversarial content inside a code fence would mislead a line-only
-    // search. The byte search is robust and matches the writer (Stage 4).
-    let Some(open_idx) = find_subslice(input, MARKER_OPEN_SECTION.as_bytes()) else {
+    // Locate the managed-section open marker. Only a marker on a line of
+    // its own counts: at column 0 and followed by a line break or the end
+    // of the file, the rule `file_starts_with_marker` applies to the
+    // first-line marker. A file explaining the mechanism can then quote the
+    // marker mid-line without redirecting the write. A marker at column 0
+    // inside a fenced code example still counts; it surfaces as
+    // `DuplicateManagedSection`, and promote/demote refuse the file.
+    let Some(open_idx) = find_marker_line(input, 0, MARKER_OPEN_SECTION) else {
+        // A close-marker line with no open-marker line is a broken fence,
+        // not an absent one: writing a fresh fence would leave the old
+        // section's blocks stranded in prose.
+        if let Some(close) = find_marker_line(input, 0, MARKER_CLOSE_SECTION) {
+            diags.push(ConventionParseError::UnopenedManagedSection { start_byte: close });
+        }
         return (
             ParsedConventionsMd {
                 above_fence: input,
@@ -138,22 +157,21 @@ pub fn parse_conventions_md(input: &[u8]) -> (ParsedConventionsMd<'_>, Vec<Conve
     };
     // Multi-section diagnostic (lean per dispatch prompt §2: parse first only).
     let after_first_open = open_idx + MARKER_OPEN_SECTION.len();
-    if let Some(dup) = find_subslice(&input[after_first_open..], MARKER_OPEN_SECTION.as_bytes()) {
-        diags.push(ConventionParseError::DuplicateManagedSection {
-            start_byte: after_first_open + dup,
-        });
+    if let Some(dup) = find_marker_line(input, after_first_open, MARKER_OPEN_SECTION) {
+        diags.push(ConventionParseError::DuplicateManagedSection { start_byte: dup });
     }
 
     // Locate the close marker AFTER the open marker. If absent, treat the
     // fence as malformed and return everything-below as empty.
-    let close_search_start = after_first_open;
-    let Some(rel_close_idx) = find_subslice(
-        &input[close_search_start..],
-        MARKER_CLOSE_SECTION.as_bytes(),
-    ) else {
-        // Open marker without close — treat as malformed; surface a
-        // diagnostic and refuse to recognize the fence. The Stage 4 writer
-        // will rewrite a clean fence on the next promote.
+    let Some(close_idx) = find_marker_line(input, after_first_open, MARKER_CLOSE_SECTION) else {
+        // Open marker without close: the fence is not recognized, and the
+        // diagnostic makes promote/demote refuse the file. Writing anyway
+        // would append a second fence, and the write after that would read
+        // the stale open marker and the new close marker as one section,
+        // deleting the prose between them.
+        diags.push(ConventionParseError::UnclosedManagedSection {
+            start_byte: open_idx,
+        });
         return (
             ParsedConventionsMd {
                 above_fence: input,
@@ -165,7 +183,6 @@ pub fn parse_conventions_md(input: &[u8]) -> (ParsedConventionsMd<'_>, Vec<Conve
             diags,
         );
     };
-    let close_idx = close_search_start + rel_close_idx;
     let close_end = close_idx + MARKER_CLOSE_SECTION.len();
 
     let above_fence = &input[..open_idx];
@@ -197,6 +214,27 @@ fn file_starts_with_marker(input: &[u8]) -> bool {
     }
     // Must be followed by EOF or a line terminator.
     matches!(input.get(marker.len()), None | Some(b'\n') | Some(b'\r'))
+}
+
+/// Find `marker` on a line of its own, at or after byte `from`: at column 0
+/// (the start of the input, or just after a `\n`) and followed by a line
+/// break or the end of the input.
+fn find_marker_line(input: &[u8], from: usize, marker: &str) -> Option<usize> {
+    let marker = marker.as_bytes();
+    let mut at = from;
+    while let Some(rel) = find_subslice(&input[at..], marker) {
+        let start = at + rel;
+        let starts_line = start == 0 || input[start - 1] == b'\n';
+        let ends_line = matches!(
+            input.get(start + marker.len()),
+            None | Some(b'\n') | Some(b'\r')
+        );
+        if starts_line && ends_line {
+            return Some(start);
+        }
+        at = start + 1;
+    }
+    None
 }
 
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -501,6 +539,136 @@ pub fn detect_orphans(conventions_md_path: &Path, db_rows: &[ConventionRow]) -> 
 }
 
 // ---------------------------------------------------------------------------
+// Write refusal (DL 2.2).
+//
+// Promote and demote rewrite the managed section from the blocks the parser
+// found. Any parser diagnostic means the parse lost track of text in or
+// around that section: a block it skipped, a fence it could not close.
+// Rewriting would delete that text, so both refuse until the user repairs
+// the file. There is deliberately no flag to write anyway. `list --orphans`
+// never writes and only warns.
+
+/// A promote or demote refused because conventions.md's structure is broken.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteRefusal {
+    /// The file, as the caller named it.
+    pub path: std::path::PathBuf,
+    /// One entry per parser diagnostic, in the order the parser raised them.
+    pub problems: Vec<StructuralProblem>,
+}
+
+/// One broken spot in conventions.md: where it is and how to repair it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructuralProblem {
+    /// 1-based line of the marker the diagnostic points at.
+    pub line: usize,
+    /// What is wrong, and what to change.
+    pub repair: String,
+}
+
+impl std::fmt::Display for WriteRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "refusing to rewrite {}: ", self.path.display())?;
+        for (i, p) in self.problems.iter().enumerate() {
+            if i > 0 {
+                f.write_str("; ")?;
+            }
+            write!(f, "line {}: {}", p.line, p.repair)?;
+        }
+        f.write_str(". Nothing was written; repair the file and re-run")
+    }
+}
+
+impl std::error::Error for WriteRefusal {}
+
+/// Refuse to rewrite `input`, the current contents of the conventions.md at
+/// `path`, when its structure is broken. Every promote and demote calls
+/// this before it renders; `path` is used only in the message.
+pub fn check_writable(path: &Path, input: &[u8]) -> Result<(), WriteRefusal> {
+    let (_, diagnostics) = parse_conventions_md(input);
+    if diagnostics.is_empty() {
+        return Ok(());
+    }
+    let problems = diagnostics
+        .iter()
+        .map(|d| StructuralProblem {
+            line: line_of(input, d.start_byte()),
+            repair: d.repair(),
+        })
+        .collect();
+    Err(WriteRefusal {
+        path: path.to_path_buf(),
+        problems,
+    })
+}
+
+fn line_of(input: &[u8], byte: usize) -> usize {
+    1 + input[..byte.min(input.len())]
+        .iter()
+        .filter(|&&b| b == b'\n')
+        .count()
+}
+
+impl ConventionParseError {
+    /// Byte offset of the marker the diagnostic points at.
+    pub fn start_byte(&self) -> usize {
+        use ConventionParseError::*;
+        match self {
+            UnclosedBlock { start_byte, .. }
+            | BadBlockId { start_byte, .. }
+            | BadBlockVersion { start_byte, .. }
+            | DuplicateManagedSection { start_byte }
+            | UnclosedManagedSection { start_byte }
+            | UnopenedManagedSection { start_byte } => *start_byte,
+        }
+    }
+
+    /// What is wrong, and how to repair it, for a [`WriteRefusal`].
+    fn repair(&self) -> String {
+        use ConventionParseError::*;
+        match self {
+            // `parse_blocks` uses these placeholders for markers it could not read.
+            UnclosedBlock { id, .. } if id == "<unterminated open marker>" => {
+                "a `<!-- quorum:convention` marker never ends in `-->`; complete it or delete it"
+                    .to_string()
+            }
+            BadBlockId { raw, .. }
+                if raw == "<non-utf8 attrs>" || raw.ends_with("(non-utf8 body)") =>
+            {
+                "a block is not valid UTF-8; re-save the file as UTF-8".to_string()
+            }
+            UnclosedBlock { id, .. } => format!(
+                "block id={id} has no `<!-- /quorum:convention -->` line; add one after the \
+                 block's text"
+            ),
+            BadBlockId { raw, .. } => format!(
+                "block marker id {raw:?} is not 12 lowercase hex characters; restore the id \
+                 `quorum convention list` shows, or delete the block"
+            ),
+            BadBlockVersion { raw, .. } => {
+                format!("block marker version {raw:?} is not a number; write v=1")
+            }
+            DuplicateManagedSection { .. } => {
+                "a second `<!-- quorum:managed-section v=1 -->` line; keep one managed section, \
+                 and indent the marker wherever the file only shows it as an example"
+                    .to_string()
+            }
+            UnclosedManagedSection { .. } => {
+                "the managed section opened here has no `<!-- /quorum:managed-section -->` line \
+                 after it; add that line where the section ends"
+                    .to_string()
+            }
+            UnopenedManagedSection { .. } => {
+                "`<!-- /quorum:managed-section -->` has no `<!-- quorum:managed-section v=1 -->` \
+                 line before it; put the open marker on a line of its own where the section \
+                 starts"
+                    .to_string()
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Phase 1C Stage 4 — writer + atomic file write helper (AC 137/148/149/150).
 //
 // The writer is the inverse of `parse_conventions_md`: it emits a canonical
@@ -721,6 +889,11 @@ pub fn render_conventions_md(
         out.extend_from_slice(lebytes);
     } else {
         out.extend_from_slice(parsed.above_fence);
+        // The parser only recognizes an open marker at column 0, so a file
+        // that does not end in a line break gets one before the new fence.
+        if !parsed.above_fence.is_empty() && !parsed.above_fence.ends_with(b"\n") {
+            out.extend_from_slice(lebytes);
+        }
     }
 
     // Managed-section open marker + DO NOT EDIT comments + blank line.
@@ -1181,6 +1354,128 @@ body
         std::fs::write(&path, raw).unwrap();
         let report = detect_orphans(&path, &[]);
         assert!(!report.parser_diagnostics.is_empty());
+    }
+
+    // DL 2.2 — the fence is a whole line, and a broken structure refuses
+    // promote and demote.
+
+    #[test]
+    fn missing_close_marker_raises_a_diagnostic_at_the_open_marker() {
+        let raw = "prose\n<!-- quorum:managed-section v=1 -->\n\nmore prose\n";
+        let (parsed, diags) = parse_conventions_md(raw.as_bytes());
+        assert!(!parsed.fence_present);
+        assert_eq!(
+            diags,
+            [ConventionParseError::UnclosedManagedSection { start_byte: 6 }]
+        );
+    }
+
+    #[test]
+    fn section_markers_count_only_on_a_line_of_their_own() {
+        // Quoted mid-line, indented, or followed by text: none is a fence.
+        for raw in [
+            "see `<!-- quorum:managed-section v=1 -->` and `<!-- /quorum:managed-section -->`\n",
+            "    <!-- quorum:managed-section v=1 -->\n    <!-- /quorum:managed-section -->\n",
+            "<!-- quorum:managed-section v=1 --> trailing\n<!-- /quorum:managed-section --> x\n",
+        ] {
+            let (parsed, diags) = parse_conventions_md(raw.as_bytes());
+            assert!(!parsed.fence_present, "{raw:?}");
+            assert!(diags.is_empty(), "{raw:?}: {diags:?}");
+            assert_eq!(parsed.above_fence, raw.as_bytes());
+        }
+        // CRLF line ends and the end of the file both end a marker line.
+        let raw = "<!-- quorum:managed-section v=1 -->\r\n<!-- /quorum:managed-section -->";
+        let (parsed, diags) = parse_conventions_md(raw.as_bytes());
+        assert!(parsed.fence_present && diags.is_empty());
+    }
+
+    #[test]
+    fn close_marker_line_without_an_open_marker_line_is_a_diagnostic() {
+        // What an older writer produced on a file with no trailing newline:
+        // the open marker glued to the last line of prose.
+        let raw =
+            "last line<!-- quorum:managed-section v=1 -->\n\n<!-- /quorum:managed-section -->\n";
+        let (parsed, diags) = parse_conventions_md(raw.as_bytes());
+        assert!(!parsed.fence_present);
+        assert_eq!(
+            diags,
+            [ConventionParseError::UnopenedManagedSection { start_byte: 46 }]
+        );
+    }
+
+    #[test]
+    fn writer_starts_the_fence_on_its_own_line() {
+        // A file whose last line has no line break gets one before the
+        // fence, so the parser finds the fence again.
+        let (parsed, _) = parse_conventions_md(b"# Conventions\n\nno trailing newline");
+        let out = render_conventions_md(&parsed, &[], LineEnding::Lf);
+        assert!(
+            out.starts_with(b"# Conventions\n\nno trailing newline\n<!-- quorum:managed-section")
+        );
+        let (again, diags) = parse_conventions_md(&out);
+        assert!(again.fence_present && diags.is_empty(), "{diags:?}");
+    }
+
+    #[test]
+    fn check_writable_accepts_clean_files_and_absent_fences() {
+        let p = Path::new(".quorum/conventions.md");
+        assert!(check_writable(p, b"").is_ok());
+        assert!(check_writable(p, b"# just prose\n").is_ok());
+        let clean = wrap_managed(&format!("\n{SAMPLE_BLOCK}\n"), "above\n", "\nbelow\n");
+        assert!(check_writable(p, clean.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn check_writable_names_the_file_line_and_repair_for_every_diagnostic() {
+        let p = Path::new(".quorum/conventions.md");
+        // (file, line, words the repair must contain)
+        let cases = [
+            (
+                "a\n<!-- quorum:managed-section v=1 -->\n".to_string(),
+                2,
+                "/quorum:managed-section -->` line after it",
+            ),
+            (
+                "a\nb<!-- quorum:managed-section v=1 -->\n<!-- /quorum:managed-section -->\n"
+                    .to_string(),
+                3,
+                "on a line of its own",
+            ),
+            (
+                wrap_managed("\n<!-- quorum:convention id=XYZ v=1 -->\nt\n<!-- /quorum:convention -->\n", "", ""),
+                3,
+                "not 12 lowercase hex",
+            ),
+            (
+                wrap_managed("\n<!-- quorum:convention id=a1b2c3d4e5f6 v=x -->\nt\n<!-- /quorum:convention -->\n", "", ""),
+                3,
+                "write v=1",
+            ),
+            (
+                wrap_managed("\n<!-- quorum:convention id=a1b2c3d4e5f6 v=1 -->\nno close\n", "", ""),
+                3,
+                "id=a1b2c3d4e5f6 has no",
+            ),
+            (
+                format!(
+                    "{}\n<!-- quorum:managed-section v=1 -->\n",
+                    wrap_managed("", "", "")
+                ),
+                4,
+                "keep one managed section",
+            ),
+        ];
+        for (file, line, repair) in cases {
+            let refusal = check_writable(p, file.as_bytes()).expect_err(&file);
+            let msg = refusal.to_string();
+            assert!(
+                msg.starts_with("refusing to rewrite .quorum/conventions.md: "),
+                "{msg}"
+            );
+            assert!(msg.contains(&format!("line {line}: ")), "{file:?}: {msg}");
+            assert!(msg.contains(repair), "{file:?}: {msg}");
+            assert!(msg.ends_with("Nothing was written; repair the file and re-run"));
+        }
     }
 }
 

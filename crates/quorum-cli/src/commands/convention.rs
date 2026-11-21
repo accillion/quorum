@@ -188,6 +188,14 @@ pub fn format_diagnostic(d: &quorum_core::conventions::ConventionParseError) -> 
             ".quorum/conventions.md: duplicate managed-section marker at byte {start_byte}; \
              only the first section is parsed"
         ),
+        UnclosedManagedSection { start_byte } => format!(
+            ".quorum/conventions.md: managed-section marker at byte {start_byte} has no closing \
+             marker; the section is ignored"
+        ),
+        UnopenedManagedSection { start_byte } => format!(
+            ".quorum/conventions.md: managed-section closing marker at byte {start_byte} has no \
+             opening marker line; the section is ignored"
+        ),
     }
 }
 
@@ -562,8 +570,10 @@ pub fn promote(
     // 2. Body resolution (--text / --from-editor / title-only).
     let body = resolve_body(&body_source, &row.title_snapshot, &root)?;
 
-    // 3. Pre-flight on conventions.md: parse, run orphan detection, surface
-    //    diagnostics via stderr (AC 168 promote-side closure).
+    // 3. Pre-flight on conventions.md: refuse a broken structure before
+    //    anything is written (a rewrite would delete the text the parser
+    //    lost track of, and there is deliberately no override), then
+    //    surface orphan drift via stderr (AC 168 promote-side closure).
     let conv_path = root.join(".quorum").join("conventions.md");
     let existing_bytes = match std::fs::read(&conv_path) {
         Ok(b) => b,
@@ -571,10 +581,9 @@ pub fn promote(
         Err(e) => return Err(CliError::Io(format!("read {conv_path:?}: {e}"))),
     };
     let le = LineEnding::detect(&existing_bytes);
-    let (parsed, diagnostics) = parse_conventions_md(&existing_bytes);
-    for d in &diagnostics {
-        eprintln!("warning: {}", format_diagnostic(d));
-    }
+    quorum_core::conventions::check_writable(&conv_path, &existing_bytes)
+        .map_err(|r| CliError::Config(r.to_string()))?;
+    let (parsed, _) = parse_conventions_md(&existing_bytes);
     preflight_dirty_warning(&store, &parsed)?;
 
     // 4. Build the new block set. Idempotent re-promote: if a block for
@@ -670,12 +679,12 @@ pub fn demote(quorum_dir: Option<&PathBuf>, hash_prefix: &str) -> Result<Exit, C
     let block_id: String = hex[..12].to_string();
 
     if let Some(existing_bytes) = existing_bytes_opt {
-        // File present — parse, remove the matching block, atomic-write.
+        // File present — refuse a broken structure, as promote does; then
+        // parse, remove the matching block, atomic-write.
         let le = LineEnding::detect(&existing_bytes);
-        let (parsed, diagnostics) = parse_conventions_md(&existing_bytes);
-        for d in &diagnostics {
-            eprintln!("warning: {}", format_diagnostic(d));
-        }
+        quorum_core::conventions::check_writable(&conv_path, &existing_bytes)
+            .map_err(|r| CliError::Config(r.to_string()))?;
+        let (parsed, _) = parse_conventions_md(&existing_bytes);
         preflight_dirty_warning(&store, &parsed)?;
 
         let to_write = build_block_set(&parsed, BlockSetChange::Demote { id: &block_id });
