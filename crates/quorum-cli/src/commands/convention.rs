@@ -20,13 +20,20 @@ use crate::exit::{CliError, Exit};
 
 /// Resolve the directory under which `.quorum/` lives. Honors the
 /// `--quorum-dir` flag (spec §5.1: "all `convention` subcommands honor
-/// `--quorum-dir <path>` for tests") and falls back to the current
-/// working directory.
+/// `--quorum-dir <path>` for tests"). Otherwise it is the working tree of
+/// the repository holding the current directory, found as `quorum review`
+/// finds it (`Repository::discover`, then `workdir`), so a subdirectory
+/// reaches the same store and conventions.md. Outside a repository, or in
+/// a bare one, it falls back to the current directory, as before.
 fn resolve_quorum_root(quorum_dir: Option<&PathBuf>) -> Result<PathBuf, CliError> {
     if let Some(p) = quorum_dir {
         return Ok(p.clone());
     }
-    std::env::current_dir().map_err(|e| CliError::Io(e.to_string()))
+    let cwd = std::env::current_dir().map_err(|e| CliError::Io(e.to_string()))?;
+    Ok(git2::Repository::discover(&cwd)
+        .ok()
+        .and_then(|repo| repo.workdir().map(Path::to_path_buf))
+        .unwrap_or(cwd))
 }
 
 fn open_store(root: &std::path::Path) -> Result<LocalSqliteMemoryStore, CliError> {
