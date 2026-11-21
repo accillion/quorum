@@ -736,7 +736,7 @@ fn truncate_with_marker(text: &str, budget: usize, label: &str) -> (String, bool
         budget / 1024
     );
     let budget_for_text = budget.saturating_sub(marker.len());
-    let mut s = text[..budget_for_text].to_string();
+    let mut s = truncate_at_codepoint_boundary(text, budget_for_text).to_string();
     s.push_str(&marker);
     (s, true)
 }
@@ -1611,6 +1611,31 @@ mod tests {
         assert!(truncated);
         assert!(out.len() <= 200);
         assert!(out.contains("[x truncated"));
+    }
+
+    /// AC 211a: a cut that lands inside a multi-byte character backs off to
+    /// the previous codepoint boundary instead of panicking. The budget
+    /// sweep puts the cut at every offset inside a 2-byte (`é`) and a
+    /// 4-byte (`🦀`) character.
+    #[test]
+    fn ac211a_truncate_never_splits_a_codepoint() {
+        for unit in ["é", "🦀"] {
+            let text = unit.repeat(200);
+            for budget in 100..=140 {
+                let (out, truncated) = truncate_with_marker(&text, budget, "x");
+                assert!(truncated);
+                assert!(std::str::from_utf8(out.as_bytes()).is_ok());
+                assert!(out.len() <= budget, "{} > {budget}", out.len());
+                assert!(out.ends_with("; review only top portion]\n"));
+                let marker_start = out.rfind("\n[x truncated: ").expect("marker");
+                let kept = &out[..marker_start];
+                assert!(text.starts_with(kept));
+                assert_eq!(kept.len() % unit.len(), 0, "split a codepoint");
+                // Backs off by less than one character, never more.
+                let budget_for_text = budget - (out.len() - marker_start);
+                assert!(budget_for_text - kept.len() < unit.len());
+            }
+        }
     }
 
     // ===================== v0.4 Stage 1 unit tests =====================

@@ -168,90 +168,51 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **v0.4 Stage 1 (Bundle composition) complete — halted at the
-stage boundary for approval. Stages 2–4 not started.**
+**Active:** **0.4.0 release. Part A (release prep) is in review as
+PR #8 on `release/v0.4.0`, off `main` `e294692`. Part B waits for
+Rolf's "tag it":** tag the merge commit `v0.4.0`, watch the first live
+Trusted Publishing run, verify crates.io, the GitHub Release and
+`cargo install quorum-cli --version 0.4.0 --locked`, then fill in the
+`TBD`s in HISTORY.md's Phase 0.4.0 entry.
 
-Spec: `specs/Quorum-v0_4-Spec-v0_1.md` (AC range 176–241, four stages).
-Stage 1 covers ACs 176–194 and closes the external reviewers' items 4
-("file budget favours big docs over code") and 2 ("only diff + changed
-files are visible"):
+PR #8 is three commits. `6842955` is AC 211a: truncation cuts at a
+codepoint boundary, and so does `exit.rs`'s 16-byte HTML sniff. It
+reverts alone. `b9fcb6f` moves the workspace to 0.4.0 and moves
+`quorum-cli`'s path-dep pins, which still said `"0.3.0"`. Docs come
+last. `Cargo.lock` is gitignored, so the bump commits no lockfile
+(BACKLOG).
 
-- **WI-1.** Changed-file inclusion is priority-scored — class, then
-  changed-before-context, then hunk count descending, then size
-  *ascending* — replacing `sort_by_key(Reverse(size_bytes))`. Size is now
-  a tiebreak, never a primary key. `StagedFile::hunk_count` comes from
-  libgit2's `Diff::foreach` hunk callback for both `DiffSource` variants.
-- **WI-2.** Bounded unchanged-file context: a language-keyed repo-root
-  config allowlist plus conservative one-hop import resolution (JS/TS
-  relative specifiers; Rust `mod`/`crate::`/`super::`), capped by
-  `related_file_max` and reported. Every file body now carries a 1-based
-  `%6d | ` line-number gutter.
-- **WI-3.** A `[bundle]` config section; section budgets are derived from
-  `total_budget_kb` at runtime rather than hard-coded.
+0.4.0 ships v0.4 Stage 1 (ACs 176–194) plus AC 211a, SEC-1 (PR #2),
+DL Part 1 (PR #5), DL Part 2 (PR #7), two-factor login (PR #6) and
+Trusted Publishing. HISTORY.md's Phase 0.4.0 entry says what each did
+and lists every library breaking change. Behavioural rules live in:
+- SERVICES.md §2.1–2.4: bundle;
+- §3, §4.1, §4.2: auth and the session pin;
+- §5.1: deny list;
+- §6/§6.1 and DATABASE.md: the dismissals store and conventions writes.
 
-Behavioural rules live in `SERVICES.md` §2.1–2.3. The §5.3 budget
-*rebalance* (80/72/16/24/6 + the review-policy section) is deliberately
-Stage 2's, not Stage 1's — Stage 1 ships the derivation mechanism while
-preserving v0.3.3 proportions.
+**v0.4 Stages 2–4 are retargeted to 0.5.x and not started.** Spec:
+`specs/Quorum-v0_4-Spec-v0_1.md` (AC range 176–241). The §5.3 budget
+*rebalance* (80/72/16/24/6 plus the review-policy section) is Stage
+2's. Stage 1 shipped the derivation mechanism at v0.3.3 proportions.
+AC 211a is done. Of AC 240, only the session/base-URL pairing is done.
 
-**SEC-1 (bug fix, no spec gate) is closed:** PR #2 merged into `main`
-(`95c1f62`). It closed three paths by which a credential left the
-machine, as three separately revertable commits:
-
-1. `894bd3c`: the deny list drops whole per-file diff sections, not
-   just their header lines (SERVICES.md §5.1);
-2. `8cc144b`: related-file working-tree reads never follow a link out of
-   the repo, and allowlist hits must be tracked (§2.4);
-3. `029d3d8`: `base_url` must be https, and `QUORUM_LIPPA_SESSION` is
-   sent only when the required `QUORUM_LIPPA_BASE_URL` names the same
-   host (§4.1).
-
-The deny-list pattern gaps it surfaced are open in `BACKLOG.md`.
+**Two-factor login (bug fix, no spec gate) is closed:** PR #6 merged
+into `main` (`e294692`). `f4deab4` depends on `1448387` by design:
+revert it alone, or revert it and then `1448387`.
 
 **crates.io Trusted Publishing is merged but unproven.** PR #1
 (`8f335bb`) moved `publish-crates.yml` from a stored token to OIDC, and
-PR #3 (`f443ef5`) narrowed the job to `id-token: write`. No release has
-run it yet: every `release.yml` run so far was a pull-request plan.
-Count it as working only once the next tagged release's
+PR #3 (`f443ef5`) narrowed the job to `id-token: write`. No tagged
+release has run it yet. Count it as working only once the 0.4.0 run's
 `custom-publish-crates` job has published all three crates.
 
-**DL Part 1 (bug fix, no spec gate) is closed:** PR #5 merged into
-`main` (`ad428e1`). The dismissals store opens, migrates and reports
-safely under concurrency (`11128e6`..`856618c`, five separately
-revertable commits). The full suite no longer needs a `--skip`. Rules:
-`DATABASE.md` and SERVICES.md §6/§6.1.
-
-**DL Part 2 (bug fix, no spec gate) is closed:** PR #7 merged into
-`main` (`1816867`). Promote and demote no longer lose user text in
-`.quorum/conventions.md`. The work is five separately revertable
-commits; rules are in SERVICES.md §6/§6.1 and DATABASE.md:
-
-1. `78fcbf1`: one block-set builder for CLI and TUI promote/demote;
-   blocks a write does not own are re-emitted verbatim;
-2. `d0fb207`: a broken structure refuses the write, with no bypass; the
-   section markers count only on a line of their own;
-3. `03ee273`: titles and bodies are neutralized at render (stored title
-   and identity hash untouched);
-4. `a83b730`: promote/demote hold the store's write lock from the file
-   read to the commit;
-5. `e32a0e9`: `quorum convention` finds `.quorum/` at the repo root,
-   not the cwd.
-
-**MFA login fix (bug fix, no spec gate) is in review** as PR #6 on
-`fix/mfa-login`, off `main` `1816867`; accounts with Lippa two-factor
-on could not log in. `1448387`: a refused login says why (two-factor,
-unverified email, suspended), not "403 Forbidden" (SERVICES.md §3).
-`f4deab4`, which depends on it by design (revert it alone, or it then
-`1448387`): interactive login completes the two-factor step on one
-cookie jar, at most three codes, pending cookie never stored (§4.2).
-Rolf's live test on `app.lippa.ai` passed 21 Nov 2026: login with the
-code, `auth status`, `auth logout`.
-
-Repo state on `main` (`1816867`): 464 tests pass, 1 ignored, on Linux,
-and 463 on Windows; `fix/mfa-login` has 492 / 1 and 491. clippy
-`-D warnings` + fmt `--check` clean; `../lippa` untouched. Stage 1
-deferrals, the staging cookie name and the upstream PAT ask are in
-`BACKLOG.md`. Prior milestone detail: `HISTORY.md` v0.3.3 entry.
+Repo state on `main` (`e294692`): 492 tests pass, 1 ignored, on Linux,
+and 491 on Windows. `release/v0.4.0` has 494 / 1 and 493. clippy
+`-D warnings` and fmt `--check` are clean. `cargo publish --dry-run`
+passes for both libraries and with `--workspace`. `../lippa` is
+untouched. Open items, including the Stage 1 deferrals, are in
+`BACKLOG.md`.
 
 ---
 

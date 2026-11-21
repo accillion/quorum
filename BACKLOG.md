@@ -5,6 +5,29 @@ Group by next-target version. Most-recent first.
 
 ---
 
+## Surfaced by the 0.4.0 release prep (21 Nov 2026)
+
+- **`Cargo.lock` is gitignored** (`.gitignore:4`). Release builds and
+  `cargo publish` therefore resolve every dependency fresh at tag time,
+  and the lockfile packaged into `quorum-cli` (the one
+  `cargo install --locked` uses) is whatever CI resolved then. A
+  `cargo update -w` at release prep has nothing to commit. Committing the
+  lockfile is the usual choice for a workspace that ships a binary, and
+  it would make release builds reproducible. It is a decision for Rolf,
+  not a release-prep change.
+- **`tui/panels.rs::session_short` byte-slices a server string.**
+  `&id[id.len() - 8..]` panics the TUI if a Consensus session id has a
+  multi-byte character in its last 8 bytes. Lippa's ids are ASCII today,
+  so the risk is low. The fix takes the last 8 `char`s, not a head cut, so
+  it was not the AC 211a one-line swap and stayed out of that commit.
+- **No public library enum is `#[non_exhaustive]`.** Every new error
+  variant is a breaking change for `quorum-core` and
+  `quorum-lippa-client` users. In 0.4.0, five enums gained nine variants.
+  Marking the error enums `#[non_exhaustive]` (itself a one-time break)
+  would let later releases add variants in a patch. It is an API decision.
+
+---
+
 ## Surfaced by the MFA login fix (21 Nov 2026)
 
 - **Staging names its session cookie `session_stg`.** Lippa's
@@ -168,14 +191,11 @@ Group by next-target version. Most-recent first.
 
 ## Deferred from v0.4 Stage 1 (15 Sep 2026)
 
-- **`truncate_with_marker` can panic on multi-byte UTF-8.** Pre-existing
-  since Phase 1A: `bundle.rs::truncate_with_marker` slices with
-  `text[..budget_for_text]`, which panics if the cut lands inside a
-  codepoint. The per-entry local-convention path already uses
-  `truncate_at_codepoint_boundary`; the diff / memory / conventions
-  sections do not. Reachable with a large non-ASCII diff. Not touched in
-  Stage 1 because it is outside WI-1/WI-2/WI-3 and a fix changes marker
-  byte counts, which several tests pin.
+- ~~**`truncate_with_marker` can panic on multi-byte UTF-8.**~~ **CLOSED
+  by AC 211a in the 0.4.0 release prep (`6842955`).** The cut now goes
+  through `truncate_at_codepoint_boundary`. ASCII output is
+  byte-identical, so no pinned marker count moved. The same swap fixed
+  the 16-byte HTML sniff in `exit.rs::classify_http_status`.
 - **`.yml` / `.yaml` / `.sql` / `.sh` carry no class of their own.** They
   fall through `class_rank` to `Source` (rank 0), so a changed CI workflow
   outranks changed tests and docs. That is faithful to the spec's §4.2

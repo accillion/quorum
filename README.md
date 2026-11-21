@@ -7,14 +7,19 @@ Multi-model code reviewer for the developer's machine.
 Quorum reviews staged git diffs using consensus across frontier LLMs (via
 [Lippa](https://app.lippa.ai)) plus codebase memory accumulated from prior reviews.
 
-**Status:** Phase 1C **shipped at `v0.3.0`** — conventions-promotion
+**Status:** **`v0.4.0`**: review bundles rank changed files by kind
+and hunk count instead of size and add bounded related-file context,
+tuned by a `[bundle]` config section; three egress fixes keep
+credentials on the machine; dismissals and `.quorum/conventions.md`
+writes are safe under concurrency; and `auth login` works for accounts
+with two-factor authentication on. Phase 1C's conventions-promotion
 state machine (`candidate` → `local_only` → `promoted_convention`),
 `quorum convention` CLI subcommand group, TUI dismissal-history view
 with promote/demote modals, and `## Local conventions (auto-derived)`
-bundle subsection. Phase 1B's interactive dismiss TUI, hook installer,
-non-interactive CI auth, prebuilt binaries for 5 platforms, crates.io
-publish, and sigstore attestation (AC 132 LIVE since v0.2.1) all
-continue to ship. See [`HISTORY.md`](./HISTORY.md) for the milestone
+bundle subsection continue to ship, as do Phase 1B's interactive
+dismiss TUI, hook installer, non-interactive CI auth, prebuilt binaries
+for 5 platforms, crates.io publish, and sigstore attestation (AC 132
+LIVE since v0.2.1). See [`HISTORY.md`](./HISTORY.md) for the milestone
 log and [`SERVICES.md`](./SERVICES.md) for service-level behavioural
 rules. For per-version change details, see
 [GitHub Releases](https://github.com/accillion/quorum/releases).
@@ -171,13 +176,13 @@ rows. See `--help` on each subcommand for full flag detail.
 
 ## Install
 
-**v0.3.0** is the current release. Pick the path that fits.
+**v0.4.0** is the current release. Pick the path that fits.
 
 ### Cargo
 
 ```bash
 cargo install quorum-cli
-quorum --version    # quorum 0.3.0 (unknown)
+quorum --version    # quorum 0.4.0 (unknown)
 ```
 
 The `(unknown)` SHA is by design — crates.io tarballs ship without
@@ -196,7 +201,7 @@ SHA256 sidecar plus an aggregate `sha256.sum`:
 - `quorum-cli-x86_64-pc-windows-msvc.zip` + `.msi`
 
 Direct download from
-[the v0.3.0 release](https://github.com/accillion/quorum/releases/tag/v0.3.0),
+[the v0.4.0 release](https://github.com/accillion/quorum/releases/tag/v0.4.0),
 or one-line install via the cargo-dist installers also attached to
 the release:
 

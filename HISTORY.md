@@ -4,6 +4,90 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
+## Phase 0.4.0 — v0.4 Stage 1 plus SEC-1, DL Parts 1–2 and two-factor login ✦ 2026-11-21
+
+**Spec:** `specs/Quorum-v0_4-Spec-v0_1.md`, Stage 1 (ACs 176–194) plus AC 211a. SEC-1, DL Part 1, DL Part 2 and the two-factor login fix are bug fixes with no spec gate. Stages 2–4 are retargeted to 0.5.x.
+**Status:** **Release prep in review as PR #8 (`release/v0.4.0`).** It is a minor bump because the library crates' public API breaks (below). The tag, the first live Trusted Publishing run and the install check follow the merge. They fill in the `TBD`s.
+
+**Public release:**
+- crates.io: `quorum-core 0.4.0` (TBD), `quorum-lippa-client 0.4.0` (TBD), `quorum-cli 0.4.0` (TBD).
+- GitHub Release: `v0.4.0` (TBD).
+- CI run: TBD.
+
+### Commit graph
+
+Everything on `main` since `v0.3.3` (`83f59d8`), first parent:
+
+```
+TBD      Merge PR #8: release 0.4.0
+e294692  Merge PR #6: two-factor login
+1816867  Merge PR #7: DL Part 2
+ad428e1  Merge PR #5: DL Part 1
+4278ed7  Merge PR #4: v0.4 spec amendments
+f443ef5  Merge PR #3: Trusted Publishing, job narrowed to id-token: write
+8f335bb  Merge PR #1: Trusted Publishing
+95c1f62  Merge PR #2: SEC-1
+04dd8c2  test(bundle): close three AC coverage gaps found while writing the report
+6c8e1c1  doc: SERVICES/CLAUDE/BACKLOG for v0.4 Stage 1
+a31ded1  feat(bundle): v0.4 Stage 1 — priority scoring, related files, [bundle] config
+```
+
+PR #8 itself is three commits: `6842955` (AC 211a), `b9fcb6f` (version bump), then the docs commit carrying this entry.
+
+### What shipped
+
+- **v0.4 Stage 1, bundle composition (`a31ded1`, ACs 176–194).** Changed files are priority-scored by class, then changed-before-context, then hunk count descending, then size ascending, instead of largest-first. Bounded related-file context comes from a repo-root config allowlist plus one-hop JS/TS and Rust import resolution, capped by `related_file_max`. Every file body carries a line-number gutter. A `[bundle]` config section sets `total_budget_kb`, and section budgets derive from it. Rules: SERVICES.md §2.1–2.3.
+- **AC 211a: truncation never splits a UTF-8 character (`6842955`).** `truncate_with_marker` cut the diff, memory and conventions sections on a byte index and panicked mid-character, which under a pre-push hook skipped fail-open. It now cuts at a codepoint boundary. The same one-line swap fixes the 16-byte HTML sniff in `classify_http_status`, which a non-2xx Lippa or proxy body could panic.
+- **SEC-1 (PR #2, `95c1f62`).** Three egress fixes, each separately revertable. The deny list drops whole per-file diff sections (`894bd3c`, SERVICES.md §5.1). Related-file reads never follow a link out of the repo, and allowlist hits must be tracked (`8cc144b`, §2.4). `base_url` must be https, and `QUORUM_LIPPA_SESSION` is sent only when the now-mandatory `QUORUM_LIPPA_BASE_URL` names the same host (`029d3d8`, §4.1).
+- **DL Part 1 (PR #5, `ad428e1`).** The dismissals store opens, migrates and reports safely under concurrency. The real cause was the busy handler being skipped on a read-to-write lock upgrade. Rules: DATABASE.md, SERVICES.md §6/§6.1.
+- **DL Part 2 (PR #7, `1816867`).** Promote and demote no longer lose user text in `.quorum/conventions.md`. Blocks a write does not own are kept verbatim, a broken structure refuses the write, titles and bodies are neutralized at render, promote and demote hold the store's write lock from the file read to the commit, and `quorum convention` roots `.quorum/` at the repo.
+- **Two-factor login (PR #6, `e294692`).** A refused login says why: two-factor, unverified email, or suspended (SERVICES.md §3). Interactive `auth login` completes Lippa's two-factor step on one cookie jar, with at most three codes, and the pending cookie is never stored (§4.2). Rolf's live test on `app.lippa.ai` passed on 21 Nov 2026.
+- **crates.io Trusted Publishing (PR #1 `8f335bb`, PR #3 `f443ef5`).** `publish-crates.yml` exchanges the job's OIDC token through `rust-lang/crates-io-auth-action@v1` and holds no stored token. This release is its first live run.
+
+### Breaking changes
+
+**For library users.** None of the public enums is `#[non_exhaustive]`, so each new variant breaks an exhaustive `match`. Each new field on a struct whose fields are all public breaks a struct literal. Taken from `git diff v0.3.3` over both library crates' public items.
+
+`quorum-core`:
+- `conventions::BlockToWrite` is now an enum: `Canonical(CanonicalBlock)` or `Verbatim { id, raw }`. The old struct, with the same fields `id`, `version`, `title` and `body`, is now `conventions::CanonicalBlock` (`78fcbf1`, DL Part 2).
+- `conventions::ParsedBlock` has a new field, `raw: &[u8]`, the block's exact source bytes (`78fcbf1`).
+- `conventions::ConventionParseError` has new variants `UnclosedManagedSection { start_byte }` and `UnopenedManagedSection { start_byte }` (`d0fb207`).
+- `memory::MemoryStore` has a new required method, `begin_convention_write(&self) -> Result<Box<dyn ConventionWrite + '_>, MemoryError>`. It returns the new `memory::ConventionWrite` guard, whose `commit_promote` and `commit_demote` finish the write under the store lock (`a83b730`). An out-of-tree `MemoryStore` must implement it.
+- `memory::MemoryError` has a new variant, `SchemaVersionRows { path, rows }` (`07180ab`, DL Part 1).
+- `git::StagedFile` has a new field, `hunk_count: u32` (`a31ded1`, Stage 1).
+- `bundle::BundleInputs` has a new field, `context: RelatedContext`. `RelatedContext::default()` turns discovery off and reproduces v0.3.3 selection. `bundle::BundleResult` has new fields `inclusion_order` and `related_capped_out` (`a31ded1`).
+- `bundle::BundleError::BundleTooLarge(usize)` is now `BundleTooLarge(usize, usize)`. The second field is the cap in KB, which is no longer fixed at 200 (`a31ded1`).
+- `bundle::FileExclusionReason` has a new variant, `UnsafePath(&'static str)` (`8cc144b`, SEC-1).
+- `config::QuorumConfig` has a new field, `bundle: BundleConfig` (`a31ded1`). `config::ConfigError` has a new variant, `InsecureBaseUrl(String)` (`029d3d8`, SEC-1).
+
+`quorum-lippa-client`:
+- `auth::AuthError` has new variants `MfaRequired`, `EmailNotVerified`, `AccountSuspended` and `LoginRejectedWithCode { status, code }` (`1448387`).
+- Additive only: the new `sign_in` module (`SignIn`, `SecondFactor`, `Verified`, `VerifyError`) (`f4deab4`).
+
+**For CLI users.**
+- **`QUORUM_LIPPA_SESSION` now requires `QUORUM_LIPPA_BASE_URL`.** Without it, or when it names a different host from `base_url`, Quorum refuses to send the cookie. CI that sets only `QUORUM_LIPPA_SESSION` must add `QUORUM_LIPPA_BASE_URL` (`029d3d8`, SERVICES.md §4.1). This is the pairing that AC 240's last sentence names.
+- **`base_url` must be https.** Plain http is refused unless the host is `localhost`, `127.0.0.1` or `::1` (`029d3d8`).
+- **Promote and demote refuse a `.quorum/conventions.md` whose managed section is broken,** and say which line to repair. There is deliberately no bypass (`d0fb207`).
+
+### Live verification
+
+- **Two-factor login LIVE ✓** (before the tag): Rolf, on `app.lippa.ai`, 21 Nov 2026: login with the code, `auth status`, `auth logout`.
+- **Trusted Publishing, crates.io, GitHub Release, `cargo install --locked`:** TBD.
+
+### Process learnings (3)
+
+- **The break was wider than the two PRs that prompted the minor bump.** PRs #6 and #7 were the known breaks. A public-item diff against `v0.3.3` found Stage 1, SEC-1 and DL Part 1 breaks as well. Neither `cargo-semver-checks` nor `cargo-public-api` is installed here, so release prep compared item bodies and `pub fn` signatures by hand. Do that at every release cut.
+- **`cargo publish --workspace --dry-run` verifies `quorum-cli` before its dependencies are published.** Cargo 1.95 packages all three crates into a temporary local registry and builds `quorum-cli` against the unpublished 0.4.0 libraries. The "`quorum-cli` dry-run fails on the unpublished path dep, as expected" gap from 0.2.1 and 0.3.0 is closed.
+- **`Cargo.lock` is gitignored.** `cargo update -w` changed only the local copy, so release builds resolve dependencies fresh at tag time (BACKLOG).
+
+### Stats
+
+- Tests on `release/v0.4.0` at `b9fcb6f`: **494 passed, 1 ignored on Linux** (`rust:1.95-bookworm`; the ignored test is the Linux keyring cross-process test). **493 passed on Windows.** That is 2 more than `main` `e294692` (492 / 1 and 491).
+- `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check --all` are clean on both platforms.
+- `cargo publish --dry-run` passes for `-p quorum-core`, for `-p quorum-lippa-client`, and with `--workspace`, which includes `quorum-cli`.
+
+---
+
 ## Phase 0.3.3 — Patch release (recovery from v0.3.1 + v0.3.2 cascade) ✦ 2026-05-15
 
 **Spec:** none — release engineering recovery of the v0.3.1 patch payload.

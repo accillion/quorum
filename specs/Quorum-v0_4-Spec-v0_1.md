@@ -9,6 +9,12 @@ AC range claimed by this milestone: **176–241**
 Companion analysis: `specs/Quorum-v0_4-CI-Feedback-Remediation.md`
 Amended 2026-09-15 after the Stage 1 close, adjudicating the Stage 1 CC report.
 Amendments are marked **[S1-ADJ]** and are binding on Stages 2–4.
+Release note 2026-11-21: version 0.4.0 ships Stage 1 (ACs 176–194) plus
+AC 211a, together with the SEC-1, DL Part 1, DL Part 2 and two-factor login
+bug fixes and crates.io Trusted Publishing. SEC-1 also delivered the
+`QUORUM_LIPPA_SESSION` / `QUORUM_LIPPA_BASE_URL` pairing that AC 240's last
+sentence names; the rest of AC 240 stays with Stage 4. Stages 2–4 are
+retargeted to 0.5.x.
 
 ---
 
