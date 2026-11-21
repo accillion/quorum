@@ -35,3 +35,11 @@ allow-dirty = ["ci"]
 # manual step by hand.
 [dist.dependencies.apt]
 libdbus-1-dev = '*'
+
+# cargo-dist 0.31 builds aarch64-apple-darwin on `macos-14` by default.
+# GitHub retired that image: the first v0.4.0 tag run (44924050931) could
+# not schedule the job ("The configuration 'macos-14-arm64-us-default' is
+# not supported"). The build matrix comes from `dist plan` at run time, so
+# this table needs no release.yml change.
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"
