@@ -8,8 +8,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use quorum_core::conventions::{
-    atomic_write, detect_orphans, parse_conventions_md, render_conventions_md, BlockToWrite,
-    LineEnding, OrphanReport, ParsedConventionsMd,
+    atomic_write, build_block_set, detect_orphans, parse_conventions_md, render_conventions_md,
+    BlockSetChange, CanonicalBlock, LineEnding, OrphanReport, ParsedConventionsMd,
 };
 use quorum_core::memory::{
     DemoteOutcome, Dismissal, LocalSqliteMemoryStore, MemoryStore, PromoteOutcome, PromotionState,
@@ -579,52 +579,19 @@ pub fn promote(
 
     // 4. Build the new block set. Idempotent re-promote: if a block for
     //    this hash already exists in the file (file-ahead-of-SQLite
-    //    recovery), replace it; otherwise append.
+    //    recovery), it is replaced; otherwise the new block is appended.
+    //    Every other block is kept byte for byte, whatever its layout.
     let title_for_block = &row.title_snapshot;
     let block_id: String = hex[..12].to_string();
-    let mut to_write: Vec<BlockToWrite<'_>> = Vec::with_capacity(parsed.blocks.len() + 1);
-    let mut replaced = false;
-    for pb in &parsed.blocks {
-        if pb.id == block_id {
-            // Caller hash matches — replace with the fresh content.
-            to_write.push(BlockToWrite {
-                id: &block_id,
-                version: 1,
-                title: title_for_block,
-                body: &body,
-            });
-            replaced = true;
-        } else {
-            // Preserve untouched blocks. If the on-disk layout is non-
-            // canonical (user hand-edited), we fall back to title=header_line,
-            // body=parsed.body — keeps the byte layout reasonable but the
-            // exact-byte round-trip property only holds on canonical files.
-            match BlockToWrite::from_parsed_block(pb) {
-                Some(bt) => to_write.push(bt),
-                None => {
-                    eprintln!(
-                        "warning: .quorum/conventions.md: block id={} has a non-canonical layout; \
-                         re-rendering may reformat the block (untouched content otherwise preserved)",
-                        pb.id
-                    );
-                    to_write.push(BlockToWrite {
-                        id: pb.id,
-                        version: pb.version,
-                        title: pb.header_line.trim_start_matches("### Convention: "),
-                        body: "",
-                    });
-                }
-            }
-        }
-    }
-    if !replaced {
-        to_write.push(BlockToWrite {
+    let to_write = build_block_set(
+        &parsed,
+        BlockSetChange::Promote(CanonicalBlock {
             id: &block_id,
             version: 1,
             title: title_for_block,
             body: &body,
-        });
-    }
+        }),
+    );
 
     // 5. Render bytes + atomic_write. File-first-rename, then SQLite.
     let new_bytes = render_conventions_md(&parsed, &to_write, le);
@@ -711,12 +678,7 @@ pub fn demote(quorum_dir: Option<&PathBuf>, hash_prefix: &str) -> Result<Exit, C
         }
         preflight_dirty_warning(&store, &parsed)?;
 
-        let to_write: Vec<BlockToWrite<'_>> = parsed
-            .blocks
-            .iter()
-            .filter(|pb| pb.id != block_id)
-            .filter_map(BlockToWrite::from_parsed_block)
-            .collect();
+        let to_write = build_block_set(&parsed, BlockSetChange::Demote { id: &block_id });
         let new_bytes = render_conventions_md(&parsed, &to_write, le);
         atomic_write(&conv_path, &new_bytes).map_err(|e| CliError::Io(e.to_string()))?;
     } else {

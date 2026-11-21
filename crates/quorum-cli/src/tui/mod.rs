@@ -37,7 +37,8 @@ use std::sync::Mutex;
 
 use quorum_core::archive::SuppressionSummary;
 use quorum_core::conventions::{
-    atomic_write, parse_conventions_md, render_conventions_md, BlockToWrite, LineEnding,
+    atomic_write, build_block_set, parse_conventions_md, render_conventions_md, BlockSetChange,
+    CanonicalBlock, LineEnding,
 };
 use quorum_core::memory::{
     Dismissal, FindingIdentityHash, MemoryError, MemoryStore, PromoteOutcome, PromotionState,
@@ -285,33 +286,17 @@ fn tui_promote(
     let (parsed, _diagnostics) = parse_conventions_md(&existing_bytes);
 
     // 3. Build the new block set (idempotent re-promote: replace if
-    //    block_id already present, else append).
-    let mut to_write: Vec<BlockToWrite<'_>> = Vec::with_capacity(parsed.blocks.len() + 1);
-    let mut replaced = false;
-    for pb in &parsed.blocks {
-        if pb.id == block_id {
-            to_write.push(BlockToWrite {
-                id: &block_id,
-                version: 1,
-                title: title_for_block,
-                body,
-            });
-            replaced = true;
-        } else if let Some(bt) = BlockToWrite::from_parsed_block(pb) {
-            to_write.push(bt);
-        }
-        // Non-canonical blocks: skip silently (CLI logs a warning to
-        // stderr but the TUI status bar can't carry per-block notes
-        // cleanly. Mirrors AC 168 simplification.)
-    }
-    if !replaced {
-        to_write.push(BlockToWrite {
+    //    block_id already present, else append). The same builder as the
+    //    CLI, so every other block is kept byte for byte.
+    let to_write = build_block_set(
+        &parsed,
+        BlockSetChange::Promote(CanonicalBlock {
             id: &block_id,
             version: 1,
             title: title_for_block,
             body,
-        });
-    }
+        }),
+    );
 
     // 4. Render + atomic_write (file-first per spec §3.2 T2).
     let new_bytes = render_conventions_md(&parsed, &to_write, le);
@@ -373,12 +358,7 @@ fn tui_demote(
         Ok(existing_bytes) => {
             let le = LineEnding::detect(&existing_bytes);
             let (parsed, _diagnostics) = parse_conventions_md(&existing_bytes);
-            let to_write: Vec<BlockToWrite<'_>> = parsed
-                .blocks
-                .iter()
-                .filter(|pb| pb.id != block_id)
-                .filter_map(BlockToWrite::from_parsed_block)
-                .collect();
+            let to_write = build_block_set(&parsed, BlockSetChange::Demote { id: &block_id });
             let new_bytes = render_conventions_md(&parsed, &to_write, le);
             atomic_write(&conv_path, &new_bytes).map_err(|e| format!("atomic_write: {e}"))?;
         }
@@ -709,6 +689,69 @@ mod tests {
         let hash = seed(&store, "still local_only", PromotionState::LocalOnly);
         let err = tui_demote(&store, td.path(), &hash).expect_err("should reject");
         assert!(err.contains("local_only"), "unexpected error: {err}");
+    }
+
+    // DL 2.1 — the TUI keeps blocks it does not own byte for byte, the
+    // same as the CLI (`tests/convention_write.rs`).
+
+    /// No blank line under the header: a layout the writer never emits.
+    fn hand_edited_block(id: &str) -> String {
+        format!(
+            "<!-- quorum:convention id={id} v=1 -->\n\
+             ### Convention: hand-edited, no blank line\n\
+             Body text the user typed straight under the header.\n\
+             <!-- /quorum:convention -->"
+        )
+    }
+
+    fn managed_file(blocks: &[String]) -> String {
+        let mut s = String::from("Prose above.\n\n<!-- quorum:managed-section v=1 -->\n");
+        for b in blocks {
+            s.push('\n');
+            s.push_str(b);
+            s.push('\n');
+        }
+        s.push_str("<!-- /quorum:managed-section -->\n\nProse below.\n");
+        s
+    }
+
+    #[test]
+    fn tui_demote_keeps_non_canonical_block_byte_for_byte() {
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let kept = seed(&store, "hand-edited", PromotionState::PromotedConvention);
+        let gone = seed(&store, "demoted", PromotionState::PromotedConvention);
+        let kept_block = hand_edited_block(&kept.to_hex()[..12]);
+        let gone_id = &gone.to_hex()[..12];
+        let canonical = format!(
+            "<!-- quorum:convention id={gone_id} v=1 -->\n### Convention: demoted\n\n\
+             Goes away.\n<!-- /quorum:convention -->"
+        );
+        let conv = td.path().join(".quorum").join("conventions.md");
+        std::fs::write(&conv, managed_file(&[kept_block.clone(), canonical])).unwrap();
+
+        tui_demote(&store, td.path(), &gone).expect("demote succeeds");
+
+        let after = std::fs::read_to_string(&conv).unwrap();
+        assert!(after.contains(&kept_block), "block lost:\n{after}");
+        assert!(!after.contains(&format!("id={gone_id}")));
+    }
+
+    #[test]
+    fn tui_promote_keeps_non_canonical_block_byte_for_byte() {
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let kept = seed(&store, "hand-edited", PromotionState::PromotedConvention);
+        let new = seed(&store, "newly promoted", PromotionState::LocalOnly);
+        let kept_block = hand_edited_block(&kept.to_hex()[..12]);
+        let conv = td.path().join(".quorum").join("conventions.md");
+        std::fs::write(&conv, managed_file(std::slice::from_ref(&kept_block))).unwrap();
+
+        tui_promote(&store, td.path(), &new, "New body.").expect("promote succeeds");
+
+        let after = std::fs::read_to_string(&conv).unwrap();
+        assert!(after.contains(&kept_block), "block lost:\n{after}");
+        assert!(after.contains(&format!("id={}", &new.to_hex()[..12])));
     }
 
     #[test]

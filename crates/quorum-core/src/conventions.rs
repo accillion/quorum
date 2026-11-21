@@ -61,6 +61,10 @@ pub struct ParsedBlock<'a> {
     /// Byte range covered by the block, inclusive of open + close markers.
     /// Used by the Stage 4 writer for surgical replacement.
     pub byte_range_in_file: std::ops::Range<usize>,
+    /// The block's bytes exactly as they sit in the file: `byte_range_in_file`
+    /// sliced out of the input. A write that does not own this block
+    /// re-emits these bytes unchanged ([`BlockToWrite::Verbatim`]).
+    pub raw: &'a [u8],
 }
 
 /// Top-level view of a `.quorum/conventions.md` file.
@@ -327,6 +331,7 @@ fn parse_blocks<'a>(
             header_line,
             body: body_str,
             byte_range_in_file: (inside_offset + open_marker_start)..abs_block_end,
+            raw: &full_input[abs_block_start..abs_block_end],
         });
         cursor = close_end;
     }
@@ -549,21 +554,80 @@ impl LineEnding {
     }
 }
 
-/// One managed block, fully described for the writer. `id` is the 12-hex
+/// One managed block as the writer emits it.
+#[derive(Debug, Clone, Copy)]
+pub enum BlockToWrite<'a> {
+    /// A block this write owns, rendered in the canonical layout.
+    Canonical(CanonicalBlock<'a>),
+    /// A block this write does not own. `raw` is the block's original
+    /// bytes ([`ParsedBlock::raw`]), re-emitted unchanged, so a hand-edited
+    /// layout survives byte for byte. `id` is the block's id.
+    Verbatim { id: &'a str, raw: &'a [u8] },
+}
+
+/// A block rendered from its parts. `id` is the 12-hex
 /// prefix of `finding_identity_hash`; `version` is the on-disk format
 /// version (always 1 in Phase 1C). `title` becomes the `### Convention:
 /// <title>` header line; `body` is the user-supplied prose (may span
 /// multiple lines; may be empty for title-only promotes per §4.4).
-#[derive(Debug, Clone)]
-pub struct BlockToWrite<'a> {
+#[derive(Debug, Clone, Copy)]
+pub struct CanonicalBlock<'a> {
     pub id: &'a str,
     pub version: u32,
     pub title: &'a str,
     pub body: &'a str,
 }
 
-impl<'a> BlockToWrite<'a> {
-    /// Round-trip helper: reconstruct a `BlockToWrite` from a `ParsedBlock`
+/// What a promote or demote does to the managed section's blocks.
+#[derive(Debug, Clone, Copy)]
+pub enum BlockSetChange<'a> {
+    /// Write this block: in place of the file's block with the same id,
+    /// or appended when the file has none.
+    Promote(CanonicalBlock<'a>),
+    /// Remove the block with this id.
+    Demote { id: &'a str },
+}
+
+/// The block set a promote or demote writes. Every promote and demote
+/// call site (CLI and TUI) builds its blocks here, so there is one policy
+/// for blocks the write does not own: each one is carried through as
+/// [`BlockToWrite::Verbatim`] whatever its layout, in its original order.
+///
+/// The write owns every block whose id is the change's id. A promote
+/// puts its new block where the first of them stood (or appends it); a
+/// demote drops them. Either way, further copies of that id are dropped
+/// too: they are the same convention, and only one block may carry it.
+pub fn build_block_set<'a>(
+    parsed: &ParsedConventionsMd<'a>,
+    change: BlockSetChange<'a>,
+) -> Vec<BlockToWrite<'a>> {
+    let owned_id = match change {
+        BlockSetChange::Promote(block) => block.id,
+        BlockSetChange::Demote { id } => id,
+    };
+    let mut new_block = match change {
+        BlockSetChange::Promote(block) => Some(block),
+        BlockSetChange::Demote { .. } => None,
+    };
+    let mut out = Vec::with_capacity(parsed.blocks.len() + 1);
+    for pb in &parsed.blocks {
+        if pb.id != owned_id {
+            out.push(BlockToWrite::Verbatim {
+                id: pb.id,
+                raw: pb.raw,
+            });
+        } else if let Some(block) = new_block.take() {
+            out.push(BlockToWrite::Canonical(block));
+        }
+    }
+    if let Some(block) = new_block {
+        out.push(BlockToWrite::Canonical(block));
+    }
+    out
+}
+
+impl<'a> CanonicalBlock<'a> {
+    /// Round-trip helper: reconstruct a `CanonicalBlock` from a `ParsedBlock`
     /// produced by `parse_conventions_md` on this writer's own output.
     ///
     /// The canonical body layout this writer emits is:
@@ -590,7 +654,7 @@ impl<'a> BlockToWrite<'a> {
         let title = header.strip_prefix("### Convention: ")?;
         if rest.is_empty() {
             // No body.
-            return Some(BlockToWrite {
+            return Some(CanonicalBlock {
                 id: pb.id,
                 version: pb.version,
                 title,
@@ -607,7 +671,7 @@ impl<'a> BlockToWrite<'a> {
             .strip_suffix("\r\n")
             .or_else(|| after_blank.strip_suffix('\n'))
             .unwrap_or(after_blank);
-        Some(BlockToWrite {
+        Some(CanonicalBlock {
             id: pb.id,
             version: pb.version,
             title,
@@ -628,17 +692,19 @@ impl<'a> BlockToWrite<'a> {
 ///   only on fresh files (`parsed.above_fence` empty AND fence absent).
 ///   Preserved by `parsed.above_fence` byte-passthrough when already present.
 /// - Line endings: every inserted line uses `le.as_str()` (AC 150).
-/// - Duplicate-id `blocks_to_write` is a caller bug. In debug builds we
+/// - A `Canonical` block whose id appears on any other entry is a caller
+///   bug ([`build_block_set`] never produces one). In debug builds we
 ///   panic via `debug_assert!`; in release the writer emits all entries
-///   (last-wins behavior on re-parse).
+///   (last-wins behavior on re-parse). `Verbatim` blocks may share an id
+///   with each other: they are the file's own bytes, passed through.
 pub fn render_conventions_md(
     parsed: &ParsedConventionsMd<'_>,
     blocks_to_write: &[BlockToWrite<'_>],
     le: LineEnding,
 ) -> Vec<u8> {
     debug_assert!(
-        unique_ids(blocks_to_write),
-        "render_conventions_md called with duplicate-id blocks; caller must dedupe"
+        canonical_ids_unique(blocks_to_write),
+        "render_conventions_md called with a duplicated canonical block id; caller must dedupe"
     );
 
     let mut out: Vec<u8> = Vec::with_capacity(
@@ -670,7 +736,10 @@ pub fn render_conventions_md(
     //   [<LE><body><LE>] <!-- /quorum:convention --><LE>
     for block in blocks_to_write {
         out.extend_from_slice(lebytes); // blank line before each block
-        emit_block(&mut out, block, lebytes);
+        match block {
+            BlockToWrite::Canonical(block) => emit_block(&mut out, block, lebytes),
+            BlockToWrite::Verbatim { raw, .. } => out.extend_from_slice(raw),
+        }
         out.extend_from_slice(lebytes);
     }
 
@@ -686,12 +755,22 @@ pub fn render_conventions_md(
     out
 }
 
-fn unique_ids(blocks: &[BlockToWrite<'_>]) -> bool {
-    let mut seen = std::collections::HashSet::with_capacity(blocks.len());
-    blocks.iter().all(|b| seen.insert(b.id))
+fn canonical_ids_unique(blocks: &[BlockToWrite<'_>]) -> bool {
+    let mut canonical = std::collections::HashSet::new();
+    for b in blocks {
+        if let BlockToWrite::Canonical(c) = b {
+            if !canonical.insert(c.id) {
+                return false;
+            }
+        }
+    }
+    blocks.iter().all(|b| match b {
+        BlockToWrite::Verbatim { id, .. } => !canonical.contains(id),
+        BlockToWrite::Canonical(_) => true,
+    })
 }
 
-fn emit_block(out: &mut Vec<u8>, block: &BlockToWrite<'_>, le: &[u8]) {
+fn emit_block(out: &mut Vec<u8>, block: &CanonicalBlock<'_>, le: &[u8]) {
     out.extend_from_slice(b"<!-- quorum:convention id=");
     out.extend_from_slice(block.id.as_bytes());
     out.extend_from_slice(b" v=");
@@ -1119,18 +1198,20 @@ mod writer_tests {
             .blocks
             .iter()
             .map(|pb| {
-                BlockToWrite::from_parsed_block(pb).unwrap_or_else(|| {
-                    panic!(
-                        "from_parsed_block failed on canonical fixture block id={}",
-                        pb.id
-                    )
-                })
+                BlockToWrite::Canonical(CanonicalBlock::from_parsed_block(pb).unwrap_or_else(
+                    || {
+                        panic!(
+                            "from_parsed_block failed on canonical fixture block id={}",
+                            pb.id
+                        )
+                    },
+                ))
             })
             .collect();
         render_conventions_md(&parsed, &blocks, le)
     }
 
-    fn write_then_round_trip(blocks: &[BlockToWrite<'_>], le: LineEnding) -> Vec<u8> {
+    fn write_then_round_trip(blocks: &[CanonicalBlock<'_>], le: LineEnding) -> Vec<u8> {
         // Fresh-file render → first-line marker + fence + blocks.
         let empty = ParsedConventionsMd {
             above_fence: b"",
@@ -1139,7 +1220,12 @@ mod writer_tests {
             first_line_marker_present: false,
             blocks: Vec::new(),
         };
-        render_conventions_md(&empty, blocks, le)
+        let blocks: Vec<BlockToWrite<'_>> = blocks
+            .iter()
+            .copied()
+            .map(BlockToWrite::Canonical)
+            .collect();
+        render_conventions_md(&empty, &blocks, le)
     }
 
     #[test]
@@ -1155,7 +1241,7 @@ mod writer_tests {
 
     #[test]
     fn fresh_file_emits_first_line_marker_and_fence() {
-        let blocks: Vec<BlockToWrite<'_>> = Vec::new();
+        let blocks: Vec<CanonicalBlock<'_>> = Vec::new();
         let bytes = write_then_round_trip(&blocks, LineEnding::Lf);
         let s = std::str::from_utf8(&bytes).unwrap();
         assert!(
@@ -1184,13 +1270,14 @@ mod writer_tests {
             first_line_marker_present: false,
             blocks: Vec::new(),
         };
-        let block = BlockToWrite {
+        let block = CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "test",
             body: "",
         };
-        let bytes = render_conventions_md(&parsed, &[block], LineEnding::Lf);
+        let bytes =
+            render_conventions_md(&parsed, &[BlockToWrite::Canonical(block)], LineEnding::Lf);
         let s = std::str::from_utf8(&bytes).unwrap();
         assert!(
             !s.starts_with("<!-- quorum-managed-conventions-md"),
@@ -1202,7 +1289,7 @@ mod writer_tests {
 
     #[test]
     fn empty_body_block_canonical_layout() {
-        let block = BlockToWrite {
+        let block = CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "title-only",
@@ -1217,7 +1304,7 @@ mod writer_tests {
 
     #[test]
     fn non_empty_body_block_canonical_layout() {
-        let block = BlockToWrite {
+        let block = CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "with body",
@@ -1234,7 +1321,7 @@ mod writer_tests {
     fn round_trip_lf_single_block() {
         // AC 149 round-trip: writer-produced bytes round-trip through the
         // parser and back.
-        let blocks = [BlockToWrite {
+        let blocks = [CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "the title",
@@ -1247,7 +1334,7 @@ mod writer_tests {
 
     #[test]
     fn round_trip_crlf_single_block() {
-        let blocks = [BlockToWrite {
+        let blocks = [CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "crlf-title",
@@ -1263,13 +1350,13 @@ mod writer_tests {
     #[test]
     fn round_trip_two_blocks() {
         let blocks = [
-            BlockToWrite {
+            CanonicalBlock {
                 id: "a1b2c3d4e5f6",
                 version: 1,
                 title: "first",
                 body: "body A",
             },
-            BlockToWrite {
+            CanonicalBlock {
                 id: "9876fedcba01",
                 version: 1,
                 title: "second",
@@ -1292,13 +1379,14 @@ mod writer_tests {
             first_line_marker_present: false,
             blocks: Vec::new(),
         };
-        let block = BlockToWrite {
+        let block = CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "t",
             body: "b",
         };
-        let bytes = render_conventions_md(&parsed, &[block], LineEnding::Lf);
+        let bytes =
+            render_conventions_md(&parsed, &[BlockToWrite::Canonical(block)], LineEnding::Lf);
         assert!(bytes.starts_with(above));
         assert!(bytes.ends_with(b"\n\nfooter line\n"));
     }
@@ -1307,7 +1395,7 @@ mod writer_tests {
     fn from_parsed_block_recovers_canonical_layout() {
         // Round-trip a hand-built canonical file through parse → from_parsed
         // → render and verify byte equality.
-        let blocks = [BlockToWrite {
+        let blocks = [CanonicalBlock {
             id: "abcdef012345",
             version: 1,
             title: "round-trip me",
@@ -1317,7 +1405,7 @@ mod writer_tests {
         let (parsed, diags) = parse_conventions_md(&original);
         assert!(diags.is_empty());
         assert_eq!(parsed.blocks.len(), 1);
-        let recovered = BlockToWrite::from_parsed_block(&parsed.blocks[0]).unwrap();
+        let recovered = CanonicalBlock::from_parsed_block(&parsed.blocks[0]).unwrap();
         assert_eq!(recovered.title, "round-trip me");
         assert_eq!(recovered.body, "some\nbody\nlines");
     }
@@ -1332,7 +1420,100 @@ mod writer_tests {
         // Header_line is non-empty (parser picks first non-blank line) but
         // doesn't start with `### Convention: `, so from_parsed_block
         // refuses.
-        assert!(BlockToWrite::from_parsed_block(&parsed.blocks[0]).is_none());
+        assert!(CanonicalBlock::from_parsed_block(&parsed.blocks[0]).is_none());
+    }
+
+    // DL 2.1 — `build_block_set`, the one policy for blocks a write does
+    // not own.
+
+    /// Canonical block `aaaaaaaaaaaa` between two non-canonical ones, in a
+    /// CRLF file, with prose and stray spacing around the fence.
+    const MIXED: &str = "intro\r\n<!-- quorum:managed-section v=1 -->\r\n\r\n\
+        <!-- quorum:convention id=111111111111 v=1 -->\r\n### Convention: no blank line\r\nbody one\r\n<!-- /quorum:convention -->\r\n\r\n\r\n\
+        <!-- quorum:convention id=aaaaaaaaaaaa v=1 -->\r\n### Convention: canonical\r\n\r\nowned body\r\n<!-- /quorum:convention -->\r\n\r\n\
+        <!-- quorum:convention id=222222222222 v=1 -->\r\nno header at all\r\n<!-- /quorum:convention -->\r\n\
+        <!-- /quorum:managed-section -->\r\noutro\r\n";
+
+    fn block_bytes<'a>(input: &'a [u8], id: &str) -> &'a [u8] {
+        let (parsed, _) = parse_conventions_md(input);
+        parsed.blocks.iter().find(|b| b.id == id).unwrap().raw
+    }
+
+    fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+        haystack.windows(needle.len()).any(|w| w == needle)
+    }
+
+    #[test]
+    fn demote_set_keeps_every_other_block_verbatim() {
+        let input = MIXED.as_bytes();
+        let (parsed, diags) = parse_conventions_md(input);
+        assert!(diags.is_empty(), "{diags:?}");
+        let set = build_block_set(&parsed, BlockSetChange::Demote { id: "aaaaaaaaaaaa" });
+        let out = render_conventions_md(&parsed, &set, LineEnding::Crlf);
+        for id in ["111111111111", "222222222222"] {
+            assert!(contains(&out, block_bytes(input, id)), "{id} not kept");
+        }
+        assert!(!contains(&out, b"id=aaaaaaaaaaaa"));
+        assert!(out.starts_with(b"intro\r\n") && out.ends_with(b"\r\noutro\r\n"));
+    }
+
+    #[test]
+    fn promote_set_replaces_in_place_and_keeps_the_rest_verbatim() {
+        let input = MIXED.as_bytes();
+        let (parsed, _) = parse_conventions_md(input);
+        let new = CanonicalBlock {
+            id: "aaaaaaaaaaaa",
+            version: 1,
+            title: "canonical",
+            body: "replaced body",
+        };
+        let set = build_block_set(&parsed, BlockSetChange::Promote(new));
+        let ids: Vec<&str> = set
+            .iter()
+            .map(|b| match b {
+                BlockToWrite::Canonical(c) => c.id,
+                BlockToWrite::Verbatim { id, .. } => id,
+            })
+            .collect();
+        assert_eq!(ids, ["111111111111", "aaaaaaaaaaaa", "222222222222"]);
+        assert!(matches!(set[1], BlockToWrite::Canonical(_)));
+        let out = render_conventions_md(&parsed, &set, LineEnding::Crlf);
+        for id in ["111111111111", "222222222222"] {
+            assert!(contains(&out, block_bytes(input, id)), "{id} not kept");
+        }
+        assert!(contains(&out, b"replaced body") && !contains(&out, b"owned body"));
+    }
+
+    #[test]
+    fn promote_set_appends_a_new_block_and_drops_extra_copies_of_its_id() {
+        let input = "<!-- quorum:managed-section v=1 -->\n\
+            <!-- quorum:convention id=bbbbbbbbbbbb v=1 -->\nkept\n<!-- /quorum:convention -->\n\
+            <!-- quorum:convention id=bbbbbbbbbbbb v=1 -->\nkept twice\n<!-- /quorum:convention -->\n\
+            <!-- /quorum:managed-section -->\n";
+        let (parsed, _) = parse_conventions_md(input.as_bytes());
+        let new = CanonicalBlock {
+            id: "cccccccccccc",
+            version: 1,
+            title: "new",
+            body: "",
+        };
+        let set = build_block_set(&parsed, BlockSetChange::Promote(new));
+        assert_eq!(
+            set.len(),
+            3,
+            "two verbatim copies of another id, then the new block"
+        );
+        assert!(matches!(set[2], BlockToWrite::Canonical(c) if c.id == "cccccccccccc"));
+
+        // Copies of the owned id are the same convention: one survives.
+        let again = CanonicalBlock {
+            id: "bbbbbbbbbbbb",
+            ..new
+        };
+        let set = build_block_set(&parsed, BlockSetChange::Promote(again));
+        assert_eq!(set.len(), 1);
+        let gone = build_block_set(&parsed, BlockSetChange::Demote { id: "bbbbbbbbbbbb" });
+        assert!(gone.is_empty());
     }
 
     #[test]

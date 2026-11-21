@@ -449,6 +449,145 @@ fn demote_rejects_non_promoted_state() {
 }
 
 // ---------------------------------------------------------------------------
+// DL 2.1 — a block that promote or demote does not own survives byte for
+// byte, whatever its layout.
+// ---------------------------------------------------------------------------
+
+/// A block the writer would never emit: no blank line under the header.
+fn hand_edited_block(id: &str) -> String {
+    format!(
+        "<!-- quorum:convention id={id} v=1 -->\n\
+         ### Convention: hand-edited, no blank line\n\
+         Body text the user typed straight under the header.\n\
+         A second line, kept exactly as typed.  \n\
+         <!-- /quorum:convention -->"
+    )
+}
+
+/// Another the writer would never emit: the header's colon became a dash.
+fn retitled_block(id: &str) -> String {
+    format!(
+        "<!-- quorum:convention id={id} v=1 -->\n\
+         ### Convention - the colon became a dash\n\
+         \n\
+         Body under a header outside the canonical layout.\n\
+         <!-- /quorum:convention -->"
+    )
+}
+
+/// A block in exactly the layout the writer emits.
+fn canonical_block(id: &str, title: &str, body: &str) -> String {
+    format!(
+        "<!-- quorum:convention id={id} v=1 -->\n### Convention: {title}\n\n{body}\n\
+         <!-- /quorum:convention -->"
+    )
+}
+
+/// A conventions.md with user prose around a managed section holding `blocks`.
+fn managed_file(blocks: &[String]) -> String {
+    let mut s = String::from(
+        "# Team conventions\n\nProse the user wrote above the fence.\n\n\
+         <!-- quorum:managed-section v=1 -->\n",
+    );
+    for b in blocks {
+        s.push('\n');
+        s.push_str(b);
+        s.push('\n');
+    }
+    s.push_str("<!-- /quorum:managed-section -->\n\nProse below the fence.\n");
+    s
+}
+
+/// A `promoted_convention` dismissal with its `conventions` row, so its
+/// block in the file is not an orphan.
+fn seed_promoted(store: &LocalSqliteMemoryStore, title: &str) -> FindingIdentityHash {
+    let h = seed_dismissal(store, title, PromotionState::PromotedConvention);
+    let conn = rusqlite::Connection::open(store.path()).unwrap();
+    conn.execute(
+        "INSERT INTO conventions (finding_identity_hash, convention_text, promoted_at, conventions_md_block_id)
+         VALUES (?1, 'text', 1000, ?2)",
+        rusqlite::params![h.to_hex(), &h.to_hex()[..12]],
+    )
+    .unwrap();
+    h
+}
+
+#[test]
+fn demote_keeps_non_canonical_blocks_byte_for_byte() {
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let a1 = seed_promoted(&store, "hand-edited one");
+    let a2 = seed_promoted(&store, "retitled one");
+    let b = seed_promoted(&store, "canonical one");
+    drop(store);
+    let (a1, a2, b) = (&a1.to_hex()[..12], &a2.to_hex()[..12], &b.to_hex()[..12]);
+
+    let kept_1 = hand_edited_block(a1);
+    let kept_2 = retitled_block(a2);
+    let file = managed_file(&[
+        kept_1.clone(),
+        canonical_block(b, "canonical one", "Goes away."),
+        kept_2.clone(),
+    ]);
+    std::fs::write(conv_md_path(td.path()), &file).unwrap();
+
+    quorum()
+        .args([
+            "convention",
+            "--quorum-dir",
+            td.path().to_str().unwrap(),
+            "demote",
+            b,
+        ])
+        .assert()
+        .success();
+
+    let after = std::fs::read_to_string(conv_md_path(td.path())).unwrap();
+    assert!(after.contains(&kept_1), "hand-edited block lost:\n{after}");
+    assert!(after.contains(&kept_2), "retitled block lost:\n{after}");
+    assert!(!after.contains(&format!("id={b}")), "demoted block kept");
+    assert!(after.contains("Prose the user wrote above the fence."));
+    assert!(after.contains("Prose below the fence."));
+}
+
+#[test]
+fn promote_keeps_non_canonical_blocks_byte_for_byte() {
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let a1 = seed_promoted(&store, "hand-edited one");
+    let a2 = seed_promoted(&store, "retitled one");
+    let c = seed_dismissal(&store, "newly promoted", PromotionState::LocalOnly);
+    drop(store);
+    let (a1, a2, c) = (&a1.to_hex()[..12], &a2.to_hex()[..12], &c.to_hex()[..12]);
+
+    let kept_1 = hand_edited_block(a1);
+    let kept_2 = retitled_block(a2);
+    let file = managed_file(&[kept_1.clone(), kept_2.clone()]);
+    std::fs::write(conv_md_path(td.path()), &file).unwrap();
+
+    quorum()
+        .args([
+            "convention",
+            "--quorum-dir",
+            td.path().to_str().unwrap(),
+            "promote",
+            c,
+            "--text",
+            "New body.",
+        ])
+        .assert()
+        .success();
+
+    let after = std::fs::read_to_string(conv_md_path(td.path())).unwrap();
+    assert!(after.contains(&kept_1), "hand-edited block lost:\n{after}");
+    assert!(after.contains(&kept_2), "retitled block lost:\n{after}");
+    assert!(
+        after.contains(&canonical_block(c, "newly promoted", "New body.")),
+        "promoted block missing:\n{after}"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // `prune` — dry-run + default + disabled (AC 141, 142, candidate_expire_days=0).
 // ---------------------------------------------------------------------------
 
