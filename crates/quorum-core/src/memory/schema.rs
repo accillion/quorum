@@ -122,10 +122,24 @@ const SQL_CREATE_SCHEMA_META: &str = "
 ///
 /// The whole migration runs in one transaction so a failure leaves the DB
 /// in its pre-migration state.
+///
+/// That transaction begins IMMEDIATE, and the version probe runs inside
+/// it, because two processes can open a fresh store at once (a pre-push
+/// hook and a manual review in a new clone). With the probe outside a
+/// DEFERRED transaction, both saw no version row, both migrated, and the
+/// loser failed on `schema_version`'s primary key. A DEFERRED transaction
+/// also starts as a read here (the `IF NOT EXISTS` DDL only reads when
+/// the tables exist), and SQLite returns `SQLITE_BUSY` for the later
+/// upgrade to a write without consulting the busy handler. IMMEDIATE
+/// takes the write lock at `BEGIN`, where the busy handler does apply, so
+/// a concurrent opener waits its turn and then finds the work done.
 pub fn migrate(conn: &mut Connection) -> Result<(), MemoryError> {
-    // The `schema_version` table itself is created outside the migration
-    // transaction so we can probe the current version. This is consistent
-    // with the Phase 1B pattern.
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| MemoryError::Migration(format!("begin migration tx: {e}")))?;
+    // From here on `conn` is the transaction: the table creation and the
+    // version probe below both run under its write lock.
+    let conn: &Connection = &tx;
     conn.execute(SQL_CREATE_SCHEMA_VERSION, [])
         .map_err(|e| MemoryError::Migration(format!("schema_version DDL: {e}")))?;
 
@@ -134,10 +148,6 @@ pub fn migrate(conn: &mut Connection) -> Result<(), MemoryError> {
         .optional()
         .map_err(|e| MemoryError::Migration(format!("schema_version probe: {e}")))?;
 
-    let tx = conn
-        .transaction()
-        .map_err(|e| MemoryError::Migration(format!("begin migration tx: {e}")))?;
-
     let now_rfc3339 = time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
         .map_err(|e| MemoryError::Migration(format!("now() format: {e}")))?;
@@ -145,11 +155,14 @@ pub fn migrate(conn: &mut Connection) -> Result<(), MemoryError> {
     match current {
         None => {
             // Fresh install: apply v1 DDL + v2 DDL, then INSERT the
-            // version row at CURRENT_VERSION directly.
+            // version row at CURRENT_VERSION directly. The probe ran
+            // under the write lock, so no other opener can have written
+            // the row since; OR IGNORE keeps the insert harmless if one
+            // somehow did.
             apply_v1_ddl(&tx)?;
             apply_v2_ddl(&tx)?;
             tx.execute(
-                "INSERT INTO schema_version (version, applied_at) VALUES (?1, ?2)",
+                "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?1, ?2)",
                 rusqlite::params![CURRENT_VERSION, now_rfc3339],
             )
             .map_err(|e| MemoryError::Migration(format!("schema_version insert: {e}")))?;

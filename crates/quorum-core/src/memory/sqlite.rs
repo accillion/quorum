@@ -56,9 +56,7 @@ impl LocalSqliteMemoryStore {
 
         // WAL with fallback. `journal_mode = WAL` returns the new mode as
         // a single-column row; we read it and fall back to DELETE if not 'wal'.
-        let mode: String = conn
-            .query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))
-            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+        let mode = enable_wal(&conn).map_err(|e| MemoryError::Backend(Box::new(e)))?;
         if !mode.eq_ignore_ascii_case("wal") {
             let _ = conn.pragma_update(None, "journal_mode", "DELETE");
             eprintln!(
@@ -97,6 +95,32 @@ impl LocalSqliteMemoryStore {
     /// Path to the underlying SQLite file. Useful for tests + `dismissals show`.
     pub fn path(&self) -> &Path {
         &self.db_path
+    }
+}
+
+/// `PRAGMA journal_mode = WAL`, retried while another connection is busy.
+///
+/// Converting a rollback-journal database to WAL opens a read
+/// transaction and then upgrades it to an exclusive lock
+/// (`sqlite3BtreeSetVersion`). SQLite does not invoke the busy handler
+/// for an upgrade, so a concurrent opener gets `SQLITE_BUSY` at once
+/// instead of waiting. That window exists only while two processes
+/// create a fresh store together; once the file is in WAL mode the
+/// pragma is a no-op. The retry is bounded by 5 s, the same wait the
+/// `busy_timeout` pragma allows everywhere else.
+fn enable_wal(conn: &Connection) -> rusqlite::Result<String> {
+    const RETRY_FOR: std::time::Duration = std::time::Duration::from_millis(5000);
+    let deadline = std::time::Instant::now() + RETRY_FOR;
+    loop {
+        match conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0)) {
+            Err(rusqlite::Error::SqliteFailure(e, _))
+                if e.code == rusqlite::ErrorCode::DatabaseBusy
+                    && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            other => return other,
+        }
     }
 }
 
@@ -1072,6 +1096,98 @@ mod tests {
         assert!(
             active.contains_key(&hash),
             "reopen must surface the committed dismissal"
+        );
+    }
+
+    /// Concurrent first runs: N threads open one fresh `.quorum/` at once,
+    /// as a pre-push hook and a manual `quorum review` do in a fresh
+    /// clone. Every open must succeed. Before the migration ran in an
+    /// IMMEDIATE transaction, about a third of trials failed with
+    /// `UNIQUE constraint failed: schema_version.version` or `database is
+    /// locked`, so 30 clean trials is far past chance.
+    #[test]
+    fn concurrent_first_opens_of_a_fresh_store_all_succeed() {
+        const THREADS: usize = 4;
+        const TRIALS: usize = 30;
+        let mut failures = Vec::new();
+        for trial in 0..TRIALS {
+            let td = TempDir::new().unwrap();
+            let _ = git2::Repository::init(td.path()).unwrap();
+            let root = td.path().to_path_buf();
+            // The barrier sits before the fallible open, so a failed open
+            // cannot leave a peer waiting on it.
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(THREADS));
+            let handles: Vec<_> = (0..THREADS)
+                .map(|_| {
+                    let root = root.clone();
+                    let barrier = std::sync::Arc::clone(&barrier);
+                    std::thread::spawn(move || {
+                        barrier.wait();
+                        LocalSqliteMemoryStore::new(&root).map(|_| ())
+                    })
+                })
+                .collect();
+            for (tid, h) in handles.into_iter().enumerate() {
+                if let Err(e) = h.join().unwrap() {
+                    failures.push(format!("trial {trial} thread {tid}: {e}"));
+                }
+            }
+            // Every thread saw the same single version row.
+            let conn = Connection::open(root.join(".quorum/dismissals.sqlite")).unwrap();
+            let (rows, max): (i64, Option<i64>) = conn
+                .query_row(
+                    "SELECT COUNT(*), MAX(version) FROM schema_version",
+                    [],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            if rows != 1 || max != Some(schema::CURRENT_VERSION) {
+                failures.push(format!(
+                    "trial {trial}: schema_version has {rows} rows, max {max:?}"
+                ));
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{} of {} opens failed:\n{}",
+            failures.len(),
+            THREADS * TRIALS,
+            failures.join("\n")
+        );
+    }
+
+    /// Deterministic form of the same race: another connection holds the
+    /// write lock while the store opens. The open must wait for it, not
+    /// fail. Before the fix the migration's DEFERRED transaction began as
+    /// a read and then upgraded to a write, and SQLite returns SQLITE_BUSY
+    /// for that upgrade without consulting the busy handler.
+    #[test]
+    fn open_waits_for_a_concurrent_writer_instead_of_failing() {
+        let td = TempDir::new().unwrap();
+        let _ = git2::Repository::init(td.path()).unwrap();
+        let db_path = LocalSqliteMemoryStore::new(td.path())
+            .unwrap()
+            .path()
+            .to_path_buf();
+
+        let holder = Connection::open(&db_path).unwrap();
+        holder
+            .execute_batch(
+                "BEGIN IMMEDIATE;
+                 INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('test_holder', '1');",
+            )
+            .unwrap();
+
+        let root = td.path().to_path_buf();
+        let opener = std::thread::spawn(move || LocalSqliteMemoryStore::new(&root).map(|_| ()));
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        holder.execute_batch("COMMIT").unwrap();
+
+        let result = opener.join().unwrap();
+        assert!(
+            result.is_ok(),
+            "open must wait out a concurrent writer: {}",
+            result.unwrap_err()
         );
     }
 }
