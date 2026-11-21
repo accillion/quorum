@@ -7,21 +7,23 @@ Chronological log of closed milestones. Most-recent first.
 ## Phase 0.4.0 — v0.4 Stage 1 plus SEC-1, DL Parts 1–2 and two-factor login ✦ 2026-11-21
 
 **Spec:** `specs/Quorum-v0_4-Spec-v0_1.md`, Stage 1 (ACs 176–194) plus AC 211a. SEC-1, DL Part 1, DL Part 2 and the two-factor login fix are bug fixes with no spec gate. Stages 2–4 are retargeted to 0.5.x.
-**Status:** **Release prep merged as PR #8 (`1b361f1`). The macOS runner fix is in review as PR #9 (`ci/aarch64-darwin-macos-15`).** It is a minor bump because the library crates' public API breaks (below). The tag on PR #9's merge commit, the first live Trusted Publishing run and the install check fill in the `TBD`s.
+**Status:** **Closed at `v0.4.0`.** All three crates are on crates.io at 0.4.0. GitHub Release v0.4.0 is live with sigstore-attested assets. It is a minor bump because the library crates' public API breaks (below). This was the first live Trusted Publishing run, and it published all three crates with no stored token.
 
 **Public release:**
-- crates.io: `quorum-core 0.4.0` (TBD), `quorum-lippa-client 0.4.0` (TBD), `quorum-cli 0.4.0` (TBD).
-- GitHub Release: `v0.4.0` (TBD).
-- CI run: TBD.
+- crates.io: [`quorum-core 0.4.0`](https://crates.io/crates/quorum-core/0.4.0), [`quorum-lippa-client 0.4.0`](https://crates.io/crates/quorum-lippa-client/0.4.0), [`quorum-cli 0.4.0`](https://crates.io/crates/quorum-cli/0.4.0).
+- GitHub Release: [`v0.4.0`](https://github.com/accillion/quorum/releases/tag/v0.4.0), 18 assets.
+- CI run: [`44931991241`](https://github.com/accillion/quorum/actions/runs/44931991241). All 10 jobs were green: `plan` → `build-local-artifacts` × 5 targets → `build-global-artifacts` → `host` → `custom-publish-crates / publish-crates` → `announce`. The run took 7 minutes, 17:47–17:54 UTC.
 
-**The first `v0.4.0` tag was deleted unconsumed** because GitHub retired the `macos-14` image. That tag pointed at `1b361f1`, PR #8's merge. Its run, [`44924050931`](https://github.com/accillion/quorum/actions/runs/44924050931), passed `plan` and four of the five `build-local-artifacts` targets. The `aarch64-apple-darwin` job never got a machine, because cargo-dist 0.31's default runner for that target is `macos-14`. GitHub answered "The configuration 'macos-14-arm64-us-default' is not supported" and the job was cancelled with zero steps. `build-global-artifacts`, `host`, `custom-publish-crates` and `announce` were skipped. Nothing reached crates.io, which stayed at 0.3.3 for all three crates, and no GitHub Release was created. PR #9 pins the target to `macos-15` in `dist-workspace.toml`, and `v0.4.0` was re-cut on PR #9's merge commit (TBD). Deleting a pushed tag departs from the no-rewrite rule the v0.3.x tags followed. Rolf ruled it, because nothing was published or attached under that tag. A PR's `plan` run shows which runner label a target gets, but PR mode schedules no build job. So only a tag run proves that the label can be scheduled.
+Tag `v0.4.0` (tag object `d8425ab`) points at `024ed97`, PR #9's merge.
+
+**The first `v0.4.0` tag was deleted unconsumed** because GitHub retired the `macos-14` image. That tag pointed at `1b361f1`, PR #8's merge. Its run, [`44924050931`](https://github.com/accillion/quorum/actions/runs/44924050931), passed `plan` and four of the five `build-local-artifacts` targets. The `aarch64-apple-darwin` job never got a machine, because cargo-dist 0.31's default runner for that target is `macos-14`. GitHub answered "The configuration 'macos-14-arm64-us-default' is not supported" and the job was cancelled with zero steps. `build-global-artifacts`, `host`, `custom-publish-crates` and `announce` were skipped. Nothing reached crates.io, which stayed at 0.3.3 for all three crates, and no GitHub Release was created. PR #9 pins the target to `macos-15` in `dist-workspace.toml`, and `v0.4.0` was re-cut on PR #9's merge commit, `024ed97`. Deleting a pushed tag departs from the no-rewrite rule the v0.3.x tags followed. Rolf ruled it, because nothing was published or attached under that tag. A PR's `plan` run shows which runner label a target gets, but PR mode schedules no build job. So only a tag run proves that the label can be scheduled.
 
 ### Commit graph
 
 Everything on `main` since `v0.3.3` (`83f59d8`), first parent:
 
 ```
-TBD      Merge PR #9: aarch64-apple-darwin builds on macos-15
+024ed97  Merge PR #9: aarch64-apple-darwin builds on macos-15
 1b361f1  Merge PR #8: release 0.4.0
 e294692  Merge PR #6: two-factor login
 1816867  Merge PR #7: DL Part 2
@@ -35,7 +37,7 @@ f443ef5  Merge PR #3: Trusted Publishing, job narrowed to id-token: write
 a31ded1  feat(bundle): v0.4 Stage 1 — priority scoring, related files, [bundle] config
 ```
 
-PR #8 itself is three commits: `6842955` (AC 211a), `b9fcb6f` (version bump), then the docs commit carrying this entry. PR #9 is two: `5ebedc3` (the runner pin), then a docs commit.
+PR #8 itself is three commits: `6842955` (AC 211a), `b9fcb6f` (version bump), then the docs commit carrying this entry. PR #9 is two: `5ebedc3` (the runner pin), then `03a04a0` (docs).
 
 ### What shipped
 
@@ -44,7 +46,7 @@ PR #8 itself is three commits: `6842955` (AC 211a), `b9fcb6f` (version bump), th
 - **SEC-1 (PR #2, `95c1f62`).** Three egress fixes, each separately revertable. The deny list drops whole per-file diff sections (`894bd3c`, SERVICES.md §5.1). Related-file reads never follow a link out of the repo, and allowlist hits must be tracked (`8cc144b`, §2.4). `base_url` must be https, and `QUORUM_LIPPA_SESSION` is sent only when the now-mandatory `QUORUM_LIPPA_BASE_URL` names the same host (`029d3d8`, §4.1).
 - **DL Part 1 (PR #5, `ad428e1`).** The dismissals store opens, migrates and reports safely under concurrency. The real cause was the busy handler being skipped on a read-to-write lock upgrade. Rules: DATABASE.md, SERVICES.md §6/§6.1.
 - **DL Part 2 (PR #7, `1816867`).** Promote and demote no longer lose user text in `.quorum/conventions.md`. Blocks a write does not own are kept verbatim, a broken structure refuses the write, titles and bodies are neutralized at render, promote and demote hold the store's write lock from the file read to the commit, and `quorum convention` roots `.quorum/` at the repo.
-- **Two-factor login (PR #6, `e294692`).** A refused login says why: two-factor, unverified email, or suspended (SERVICES.md §3). Interactive `auth login` completes Lippa's two-factor step on one cookie jar, with at most three codes, and the pending cookie is never stored (§4.2). Rolf's live test on `app.lippa.ai` passed on 21 Nov 2026.
+- **Two-factor login (PR #6, `e294692`).** A refused login says why: two-factor, unverified email, or suspended (SERVICES.md §3). Interactive `auth login` completes Lippa's two-factor step on one cookie jar, with at most three codes, and the pending cookie is never stored (§4.2). Rolf's live test on `app.lippa.ai` passed on 21 Nov 2026. `f4deab4` depends on `1448387` by design: revert it alone, or revert it and then `1448387`.
 - **crates.io Trusted Publishing (PR #1 `8f335bb`, PR #3 `f443ef5`).** `publish-crates.yml` exchanges the job's OIDC token through `rust-lang/crates-io-auth-action@v1` and holds no stored token. This release is its first live run.
 
 ### Breaking changes
@@ -75,7 +77,12 @@ PR #8 itself is three commits: `6842955` (AC 211a), `b9fcb6f` (version bump), th
 ### Live verification
 
 - **Two-factor login LIVE ✓** (before the tag): Rolf, on `app.lippa.ai`, 21 Nov 2026: login with the code, `auth status`, `auth logout`.
-- **Trusted Publishing, crates.io, GitHub Release, `cargo install --locked`:** TBD.
+- **Trusted Publishing LIVE ✓.** In run `44931991241`, `custom-publish-crates / publish-crates` ran `rust-lang/crates-io-auth-action@v1`, then `cargo publish` for `quorum-core`, `quorum-lippa-client` and `quorum-cli` in order, then the action's token-revoking post step. Every step succeeded. No stored secret was used: the workflows read only the auth step's output.
+- **crates.io ✓.** The API shows `0.4.0`, not yanked, for all three crates: `quorum-core` at 17:54:11Z, `quorum-lippa-client` at 17:54:24Z and `quorum-cli` at 17:54:42Z.
+- **GitHub Release ✓.** `v0.4.0` is published, not a draft, with 18 assets: the five platform archives with `.sha256` sidecars, the `.msi` and its sidecar, the shell and PowerShell installers, `quorum-cli.rb`, `sha256.sum`, and `source.tar.gz` with its sidecar.
+- **AC 93 LIVE ✓.** In a scratch directory outside the repo, `cargo install quorum-cli --version 0.4.0 --locked --root <scratch>` downloaded `quorum-cli`, `quorum-core` and `quorum-lippa-client` 0.4.0 from crates.io. The binary printed `quorum 0.4.0 (unknown)`.
+- **AC 94 LIVE ✓.** The SHA256 of `quorum-cli-x86_64-unknown-linux-gnu.tar.xz` (3,434,768 bytes), `ada401799246b31d6441ec45a01d2519c02b91ef24bb7eeb8c48114e0592365a`, matches its `sha256.sum` entry.
+- **AC 132 LIVE ✓.** `gh attestation verify quorum-cli-x86_64-unknown-linux-gnu.tar.xz --owner accillion` exits 0. Its fields: SAN `https://github.com/accillion/quorum/.github/workflows/release.yml@refs/tags/v0.4.0`, issuer `https://token.actions.githubusercontent.com`, source digest `024ed97f5b8703b2c996b840f6d854102ef9f393`, ref `refs/tags/v0.4.0`, predicate `https://slsa.dev/provenance/v1`. All five `build-local-artifacts` Attest steps succeeded.
 
 ### Process learnings (3)
 

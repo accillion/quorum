@@ -168,58 +168,46 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **0.4.0 release. Part A merged as PR #8 (`1b361f1`). The
-first `v0.4.0` tag run (44924050931) failed before publishing.** The
-aarch64-apple-darwin job could not get cargo-dist's default `macos-14`
-runner, which GitHub retired. Nothing reached crates.io, and no Release
-was created. **The fix is in review as PR #9 on
-`ci/aarch64-darwin-macos-15`:** `5ebedc3` pins that target to
-`macos-15`. After the merge, Rolf's ruling (option 2) applies: delete
-`v0.4.0` locally and on the remote, and tag PR #9's merge commit
-`v0.4.0`. Push only that tag. Then run the rest of Part B unchanged:
-- watch the first live Trusted Publishing run;
-- verify crates.io, the GitHub Release and
-  `cargo install quorum-cli --version 0.4.0 --locked`;
-- fill in the `TBD`s in HISTORY.md's Phase 0.4.0 entry.
+**Active:** **none. 0.4.0 shipped on 21 Nov 2026:** tag `v0.4.0` on
+`024ed97`, run 44931991241, all 10 jobs green. All three crates are on
+crates.io at 0.4.0. The GitHub Release is live, and its assets pass
+`gh attestation verify`. The release docs (HISTORY's 0.4.0 entry filled
+in, BACKLOG closures) are in review as PR #10 on `doc/v0.4.0-released`.
+**Next: v0.4 Stages 2–4, retargeted to 0.5.x, not started.** Each
+stage needs Rolf's go.
 
-PR #8 is three commits. `6842955` is AC 211a: truncation cuts at a
-codepoint boundary, and so does `exit.rs`'s 16-byte HTML sniff. It
-reverts alone. `b9fcb6f` moves the workspace to 0.4.0 and moves
-`quorum-cli`'s path-dep pins, which still said `"0.3.0"`. Docs come
-last. `Cargo.lock` is gitignored, so the bump commits no lockfile
-(BACKLOG).
-
-0.4.0 ships v0.4 Stage 1 (ACs 176–194) plus AC 211a, SEC-1 (PR #2),
+0.4.0 shipped v0.4 Stage 1 (ACs 176–194) plus AC 211a, SEC-1 (PR #2),
 DL Part 1 (PR #5), DL Part 2 (PR #7), two-factor login (PR #6) and
-Trusted Publishing. HISTORY.md's Phase 0.4.0 entry says what each did
-and lists every library breaking change. Behavioural rules live in:
+Trusted Publishing. HISTORY.md's Phase 0.4.0 entry says what each did,
+gives revert notes, and lists every library breaking change.
+Behavioural rules live in:
 - SERVICES.md §2.1–2.4: bundle;
 - §3, §4.1, §4.2: auth and the session pin;
 - §5.1: deny list;
 - §6/§6.1 and DATABASE.md: the dismissals store and conventions writes.
 
-**v0.4 Stages 2–4 are retargeted to 0.5.x and not started.** Spec:
-`specs/Quorum-v0_4-Spec-v0_1.md` (AC range 176–241). The §5.3 budget
-*rebalance* (80/72/16/24/6 plus the review-policy section) is Stage
-2's. Stage 1 shipped the derivation mechanism at v0.3.3 proportions.
-AC 211a is done. Of AC 240, only the session/base-URL pairing is done.
+**v0.4 Stages 2–4 (0.5.x).** Spec: `specs/Quorum-v0_4-Spec-v0_1.md`
+(AC range 176–241). The §5.3 budget *rebalance* (80/72/16/24/6 plus
+the review-policy section) is Stage 2's. Stage 1 shipped the
+derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
+240, only the session/base-URL pairing is done.
 
-**Two-factor login (bug fix, no spec gate) is closed:** PR #6 merged
-into `main` (`e294692`). `f4deab4` depends on `1448387` by design:
-revert it alone, or revert it and then `1448387`.
+**Release engineering.**
+- **Trusted Publishing is proven live.** Run 44931991241 published all
+  three crates through OIDC. Rolf still has to delete the unused
+  `CARGO_REGISTRY_TOKEN` secret (BACKLOG).
+- **The first `v0.4.0` tag was deleted unconsumed.** It was on
+  `1b361f1`, and its run (44924050931) failed because GitHub retired
+  cargo-dist's default `macos-14` runner for aarch64-apple-darwin.
+  PR #9 pins that target to `macos-15`.
+- **`ubuntu-22.04` is next to retire.** It is open in BACKLOG.
+- **Before a tag, check the runners** with a local `dist plan`, since
+  a PR plan run cannot prove a label can be scheduled.
 
-**crates.io Trusted Publishing is merged but unproven.** PR #1
-(`8f335bb`) moved `publish-crates.yml` from a stored token to OIDC, and
-PR #3 (`f443ef5`) narrowed the job to `id-token: write`. No tagged
-release has run it yet. Count it as working only once the 0.4.0 run's
-`custom-publish-crates` job has published all three crates.
-
-Repo state on `main` (`1b361f1`): 494 tests pass, 1 ignored, on Linux,
-and 493 on Windows. PR #9 changes no Rust code. clippy
-`-D warnings` and fmt `--check` are clean. `cargo publish --dry-run`
-passes for both libraries and with `--workspace`. `../lippa` is
-untouched. Open items, including the Stage 1 deferrals, are in
-`BACKLOG.md`.
+Repo state on `main` (`024ed97`): 494 tests pass, 1 ignored, on Linux,
+and 493 on Windows. No Rust code has changed since `1b361f1`. clippy
+`-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
+Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 
 ---
 
