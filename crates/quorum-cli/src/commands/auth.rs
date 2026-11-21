@@ -155,13 +155,17 @@ pub async fn login(base_url: &str, storage: &Storage, interactive: bool) -> Resu
     let password =
         rpassword::prompt_password("Password: ").map_err(|e| CliError::Io(e.to_string()))?;
 
-    match login_with_cookie(LoginRequest {
+    // Same login as before; an account with two-factor authentication on is
+    // asked for its code and completed on the same cookie jar. Only the
+    // verified session reaches the store below.
+    let outcome = super::second_factor::sign_in(
         base_url,
-        email: &email,
-        password: &password,
-    })
-    .await
-    {
+        &email,
+        &password,
+        &mut super::second_factor::TerminalPrompt,
+    )
+    .await?;
+    match outcome {
         Ok(secret) => {
             store_cookie(storage, base_url, &secret)
                 .map_err(|e| CliError::Keyring(e.to_string()))?;
