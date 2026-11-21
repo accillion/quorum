@@ -113,7 +113,8 @@ impl CliError {
 pub(crate) fn classify_http_status(status: u16, body: &str) -> CliError {
     let trimmed = body.trim_start();
     let body_is_html = trimmed.len() >= 5 && {
-        let head = &trimmed[..trimmed.len().min(16)].to_ascii_lowercase();
+        let head =
+            quorum_core::memory::truncate_at_codepoint_boundary(trimmed, 16).to_ascii_lowercase();
         head.starts_with("<!doctype") || head.starts_with("<html")
     };
     let body_preview = if body_is_html {
@@ -195,5 +196,20 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("HTML page"));
         assert!(!msg.contains("bad gateway"));
+    }
+
+    /// The 16-byte HTML sniff cuts at a codepoint boundary (AC 211a's
+    /// swap): a body whose 16th byte falls inside a character is
+    /// classified, not a panic.
+    #[test]
+    fn classify_body_with_split_char_at_sniff_cut_does_not_panic() {
+        // `–` (3 bytes) sits at bytes 15..18; a cut at 16 lands inside it.
+        let body = "Accès refusé – réessayez";
+        let msg = classify_http_status(403, body).to_string();
+        assert!(msg.contains("HTTP 403"));
+        assert!(msg.contains(body));
+        // `é` sits at bytes 15..17, right after a 15-byte doctype.
+        let msg = classify_http_status(502, "<!doctype html>é<body>x</body>").to_string();
+        assert!(msg.contains("HTML page"));
     }
 }
