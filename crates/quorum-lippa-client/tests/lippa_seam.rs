@@ -78,6 +78,8 @@ fn quorum_lippa_client_endpoint_set_is_phase_1a_1b_only() {
     let allowed_prefixes = [
         "/api/v1/auth/login",
         "/api/v1/auth/logout",
+        // The second step of a two-factor login (Lippa M-SettingsT3 T3-2).
+        "/api/v1/auth/mfa/verify",
         "/api/v1/me",
         "/api/v1/consensus/sessions",
     ];

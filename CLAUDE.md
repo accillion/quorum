@@ -215,10 +215,10 @@ run it yet: every `release.yml` run so far was a pull-request plan.
 Count it as working only once the next tagged release's
 `custom-publish-crates` job has published all three crates.
 
-**DL Part 1 (bug fix, no spec gate) is in review** on
-`fix/dl-1-store-concurrency`. The dismissals store now opens, migrates
-and reports safely under concurrency, in five separately revertable
-commits. Rules are in `DATABASE.md` (new) and SERVICES.md §6/§6.1:
+**DL Part 1 (bug fix, no spec gate) is closed:** PR #5 merged into
+`main` (`ad428e1`). The dismissals store now opens, migrates and
+reports safely under concurrency, in five separately revertable
+commits. Rules are in `DATABASE.md` and SERVICES.md §6/§6.1:
 
 1. `11128e6`: the concurrent `record_seen` test fails instead of
    hanging the suite. `busy_timeout` is set first; this is not
@@ -233,14 +233,25 @@ commits. Rules are in `DATABASE.md` (new) and SERVICES.md §6/§6.1:
    rename.
 
 DL Part 2 (conventions.md never loses user text) has not started and
-waits for approval. Branch state: 435 pass, 1 ignored, on Linux, and
-434 on Windows. That count includes the formerly hanging test in the
-full run.
+waits for approval.
 
-Repo state on `main` (`f443ef5`): 425 tests pass, 1 ignored, on Linux
-(397 before SEC-1); clippy `-D warnings` + fmt `--check` clean;
-`../lippa` untouched. Stage 1 deferrals are in `BACKLOG.md`. Prior
-milestone detail: `HISTORY.md` v0.3.3 entry.
+**MFA login fix (bug fix, no spec gate) is in review** on
+`fix/mfa-login`. It must not merge until Rolf's live cookie-jar probe
+against Lippa returns 200 at step 2 (see the PR). Accounts with Lippa
+two-factor on could not log in. Two code commits and a docs commit.
+Commit 2 depends on commit 1 by design: revert 2 alone, or 2 then 1.
+
+1. `7eff6ad`: a refused login says why (two-factor on, email not
+   verified, account suspended), not "403 Forbidden" (SERVICES.md §3);
+2. `43384e7`: interactive login completes Lippa's two-factor step on
+   one cookie jar, at most three codes, and the pending cookie is never
+   stored (§4.2).
+
+Repo state on `main` (`ad428e1`): 435 tests pass, 1 ignored, on Linux,
+and 434 on Windows; `fix/mfa-login` has 463 / 1 and 462. clippy
+`-D warnings` + fmt `--check` clean; `../lippa` untouched. Stage 1
+deferrals, the staging cookie name and the upstream PAT ask are in
+`BACKLOG.md`. Prior milestone detail: `HISTORY.md` v0.3.3 entry.
 
 ---
 

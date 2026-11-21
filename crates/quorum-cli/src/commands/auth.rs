@@ -44,13 +44,7 @@ pub async fn login_non_interactive(base_url: &str, storage: &Storage) -> Result<
             println!("Logged in to {base_url} as {email}");
             Ok(())
         }
-        Err(AuthError::LoginRejected(s)) => Err(CliError::LoginRejected(s.to_string())),
-        Err(AuthError::NoSessionCookie) => Err(CliError::LoginRejected(
-            "server returned 200 but no session cookie".into(),
-        )),
-        Err(AuthError::CookieParseError(m)) => Err(CliError::LoginRejected(m)),
-        Err(AuthError::Transport(m)) => Err(CliError::Network(m)),
-        Err(other) => Err(CliError::LoginRejected(format!("{other}"))),
+        Err(e) => Err(login_error(e)),
     }
 }
 
@@ -118,6 +112,26 @@ fn require_env(name: &str) -> Result<String, CliError> {
     }
 }
 
+/// What a failed login means, in words. One mapping for both login paths,
+/// so a refusal reads the same interactively and with `--non-interactive`.
+fn login_error(e: AuthError) -> CliError {
+    match e {
+        AuthError::MfaRequired => CliError::MfaRequired,
+        AuthError::EmailNotVerified => CliError::EmailNotVerified,
+        AuthError::AccountSuspended => CliError::AccountSuspended,
+        AuthError::LoginRejectedWithCode { status, code } => {
+            CliError::LoginRejected(format!("{status} ({code})"))
+        }
+        AuthError::LoginRejected(s) => CliError::LoginRejected(s.to_string()),
+        AuthError::NoSessionCookie => {
+            CliError::LoginRejected("server returned 200 but no session cookie".into())
+        }
+        AuthError::CookieParseError(m) => CliError::LoginRejected(m),
+        AuthError::Transport(m) => CliError::Network(m),
+        other => CliError::LoginRejected(format!("{other}")),
+    }
+}
+
 pub async fn login(base_url: &str, storage: &Storage, interactive: bool) -> Result<(), CliError> {
     if !interactive {
         return Err(CliError::NoTtyForInteractive);
@@ -141,26 +155,24 @@ pub async fn login(base_url: &str, storage: &Storage, interactive: bool) -> Resu
     let password =
         rpassword::prompt_password("Password: ").map_err(|e| CliError::Io(e.to_string()))?;
 
-    match login_with_cookie(LoginRequest {
+    // Same login as before; an account with two-factor authentication on is
+    // asked for its code and completed on the same cookie jar. Only the
+    // verified session reaches the store below.
+    let outcome = super::second_factor::sign_in(
         base_url,
-        email: &email,
-        password: &password,
-    })
-    .await
-    {
+        &email,
+        &password,
+        &mut super::second_factor::TerminalPrompt,
+    )
+    .await?;
+    match outcome {
         Ok(secret) => {
             store_cookie(storage, base_url, &secret)
                 .map_err(|e| CliError::Keyring(e.to_string()))?;
             println!("Logged in to {base_url} as {email}");
             Ok(())
         }
-        Err(AuthError::LoginRejected(s)) => Err(CliError::LoginRejected(s.to_string())),
-        Err(AuthError::NoSessionCookie) => Err(CliError::LoginRejected(
-            "server returned 200 but no session cookie".into(),
-        )),
-        Err(AuthError::CookieParseError(m)) => Err(CliError::LoginRejected(m)),
-        Err(AuthError::Transport(m)) => Err(CliError::Network(m)),
-        Err(other) => Err(CliError::LoginRejected(format!("{other}"))),
+        Err(e) => Err(login_error(e)),
     }
 }
 
