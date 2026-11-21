@@ -25,6 +25,22 @@ Group by next-target version. Most-recent first.
   `quorum-lippa-client` users. In 0.4.0, five enums gained nine variants.
   Marking the error enums `#[non_exhaustive]` (itself a one-time break)
   would let later releases add variants in a patch. It is an API decision.
+- **CI still runs on `ubuntu-22.04`, which will retire the way `macos-14`
+  did.** The first v0.4.0 tag run (44924050931) lost its
+  aarch64-apple-darwin job to that retirement. Still on 22.04:
+  - `release.yml`'s `plan`, `build-global-artifacts`, `host` and
+    `announce` (`runs-on: "ubuntu-22.04"`);
+  - the two Linux build targets that `dist plan` assigns by default,
+    `x86_64-unknown-linux-gnu` on `ubuntu-22.04` and
+    `aarch64-unknown-linux-gnu` on `ubuntu-22.04-arm`;
+  - `publish-crates.yml`'s `publish-crates` job.
+
+  Move them to `ubuntu-24.04` in a later PR, not the macOS runner fix (PR
+  #9). The build targets move through `[dist.github-custom-runners]`. The
+  fixed jobs are edited by hand in `release.yml`, which
+  `allow-dirty = ["ci"]` permits. Building the Linux binaries on 24.04
+  raises their glibc floor from 2.35 to 2.39. That is a support decision
+  to make in that PR.
 
 ---
 

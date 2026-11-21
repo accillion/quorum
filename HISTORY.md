@@ -7,19 +7,22 @@ Chronological log of closed milestones. Most-recent first.
 ## Phase 0.4.0 — v0.4 Stage 1 plus SEC-1, DL Parts 1–2 and two-factor login ✦ 2026-11-21
 
 **Spec:** `specs/Quorum-v0_4-Spec-v0_1.md`, Stage 1 (ACs 176–194) plus AC 211a. SEC-1, DL Part 1, DL Part 2 and the two-factor login fix are bug fixes with no spec gate. Stages 2–4 are retargeted to 0.5.x.
-**Status:** **Release prep in review as PR #8 (`release/v0.4.0`).** It is a minor bump because the library crates' public API breaks (below). The tag, the first live Trusted Publishing run and the install check follow the merge. They fill in the `TBD`s.
+**Status:** **Release prep merged as PR #8 (`1b361f1`). The macOS runner fix is in review as PR #9 (`ci/aarch64-darwin-macos-15`).** It is a minor bump because the library crates' public API breaks (below). The tag on PR #9's merge commit, the first live Trusted Publishing run and the install check fill in the `TBD`s.
 
 **Public release:**
 - crates.io: `quorum-core 0.4.0` (TBD), `quorum-lippa-client 0.4.0` (TBD), `quorum-cli 0.4.0` (TBD).
 - GitHub Release: `v0.4.0` (TBD).
 - CI run: TBD.
 
+**The first `v0.4.0` tag was deleted unconsumed** because GitHub retired the `macos-14` image. That tag pointed at `1b361f1`, PR #8's merge. Its run, [`44924050931`](https://github.com/accillion/quorum/actions/runs/44924050931), passed `plan` and four of the five `build-local-artifacts` targets. The `aarch64-apple-darwin` job never got a machine, because cargo-dist 0.31's default runner for that target is `macos-14`. GitHub answered "The configuration 'macos-14-arm64-us-default' is not supported" and the job was cancelled with zero steps. `build-global-artifacts`, `host`, `custom-publish-crates` and `announce` were skipped. Nothing reached crates.io, which stayed at 0.3.3 for all three crates, and no GitHub Release was created. PR #9 pins the target to `macos-15` in `dist-workspace.toml`, and `v0.4.0` was re-cut on PR #9's merge commit (TBD). Deleting a pushed tag departs from the no-rewrite rule the v0.3.x tags followed. Rolf ruled it, because nothing was published or attached under that tag. A PR's `plan` run shows which runner label a target gets, but PR mode schedules no build job. So only a tag run proves that the label can be scheduled.
+
 ### Commit graph
 
 Everything on `main` since `v0.3.3` (`83f59d8`), first parent:
 
 ```
-TBD      Merge PR #8: release 0.4.0
+TBD      Merge PR #9: aarch64-apple-darwin builds on macos-15
+1b361f1  Merge PR #8: release 0.4.0
 e294692  Merge PR #6: two-factor login
 1816867  Merge PR #7: DL Part 2
 ad428e1  Merge PR #5: DL Part 1
@@ -32,7 +35,7 @@ f443ef5  Merge PR #3: Trusted Publishing, job narrowed to id-token: write
 a31ded1  feat(bundle): v0.4 Stage 1 — priority scoring, related files, [bundle] config
 ```
 
-PR #8 itself is three commits: `6842955` (AC 211a), `b9fcb6f` (version bump), then the docs commit carrying this entry.
+PR #8 itself is three commits: `6842955` (AC 211a), `b9fcb6f` (version bump), then the docs commit carrying this entry. PR #9 is two: `5ebedc3` (the runner pin), then a docs commit.
 
 ### What shipped
 

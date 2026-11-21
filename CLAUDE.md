@@ -168,12 +168,19 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **0.4.0 release. Part A (release prep) is in review as
-PR #8 on `release/v0.4.0`, off `main` `e294692`. Part B waits for
-Rolf's "tag it":** tag the merge commit `v0.4.0`, watch the first live
-Trusted Publishing run, verify crates.io, the GitHub Release and
-`cargo install quorum-cli --version 0.4.0 --locked`, then fill in the
-`TBD`s in HISTORY.md's Phase 0.4.0 entry.
+**Active:** **0.4.0 release. Part A merged as PR #8 (`1b361f1`). The
+first `v0.4.0` tag run (44924050931) failed before publishing.** The
+aarch64-apple-darwin job could not get cargo-dist's default `macos-14`
+runner, which GitHub retired. Nothing reached crates.io, and no Release
+was created. **The fix is in review as PR #9 on
+`ci/aarch64-darwin-macos-15`:** `5ebedc3` pins that target to
+`macos-15`. After the merge, Rolf's ruling (option 2) applies: delete
+`v0.4.0` locally and on the remote, and tag PR #9's merge commit
+`v0.4.0`. Push only that tag. Then run the rest of Part B unchanged:
+- watch the first live Trusted Publishing run;
+- verify crates.io, the GitHub Release and
+  `cargo install quorum-cli --version 0.4.0 --locked`;
+- fill in the `TBD`s in HISTORY.md's Phase 0.4.0 entry.
 
 PR #8 is three commits. `6842955` is AC 211a: truncation cuts at a
 codepoint boundary, and so does `exit.rs`'s 16-byte HTML sniff. It
@@ -207,8 +214,8 @@ PR #3 (`f443ef5`) narrowed the job to `id-token: write`. No tagged
 release has run it yet. Count it as working only once the 0.4.0 run's
 `custom-publish-crates` job has published all three crates.
 
-Repo state on `main` (`e294692`): 492 tests pass, 1 ignored, on Linux,
-and 491 on Windows. `release/v0.4.0` has 494 / 1 and 493. clippy
+Repo state on `main` (`1b361f1`): 494 tests pass, 1 ignored, on Linux,
+and 493 on Windows. PR #9 changes no Rust code. clippy
 `-D warnings` and fmt `--check` are clean. `cargo publish --dry-run`
 passes for both libraries and with `--workspace`. `../lippa` is
 untouched. Open items, including the Stage 1 deferrals, are in
