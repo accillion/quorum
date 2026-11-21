@@ -5,6 +5,42 @@ Group by next-target version. Most-recent first.
 
 ---
 
+## Surfaced by the MFA login fix (21 Nov 2026)
+
+- **Staging names its session cookie `session_stg`.** Lippa's
+  `SESSION_COOKIE_NAME` is per environment (`config.py:478-485`): the
+  default is `session`, and staging uses `session_stg`. Quorum hard-codes
+  `session=` when sending (`AuthMethod::apply`, the `LippaClient::new`
+  jar seed) and when capturing (`extract_session_cookie`). A *successful* staging
+  login therefore fails with "server returned 200 but no session
+  cookie". Fixing it means storing the cookie name with its value,
+  which changes the keyring and `--no-keyring` file format, so it is
+  its own change.
+- **`login_with_cookie` has no request timeout.** SERVICES.md §3 says
+  "30 s request timeout", which holds for `LippaClient` and the
+  two-factor `SignIn` but not for the one-shot login client. A
+  non-interactive login against a server that accepts the connection
+  and never answers hangs. Pre-existing; the 403-body read added by the
+  MFA fix has its own 10 s bound.
+- **Upstream ask: accept Lippa's `lpa_` personal access tokens on the
+  routes Quorum calls.** This supersedes the parked M-ExternalAuth v0.2
+  draft, none of which shipped: `optional_bearer_auth`, `AuthPrincipal`
+  and `EXTERNAL_AUTH_BEARER_ENABLED` have no hits on Lippa `origin/main`
+  `514b4f5`. Lippa already ships hashed, scoped, revocable PATs
+  (`models/personal_access_token.py`). They are minted from a session
+  (`routes/api_v1/pat.py:142-147`), so the second factor is already
+  satisfied, and verified by `require_pat_auth`
+  (`dependencies.py:372`). Its only consumer is the public MCP route
+  (`routes/mcp_public.py:233`), and `require_auth`, used by
+  `/api/v1/consensus/*` and `/api/v1/memory/propose`, reads the session
+  cookie only (`dependencies.py:135-164`). Accepting a PAT there would
+  give CI a revocable token, end cookie rotation, and make the
+  interactive two-factor step optional. The Quorum side is the existing
+  `AuthMethod::Bearer` seam. It is a Lippa-side change, filed as a Lippa
+  spec, never made from this repo.
+
+---
+
 ## Surfaced by DL Part 1 (21 Nov 2026)
 
 - **Concurrent first opens duplicate the `.gitignore` line.**
