@@ -414,3 +414,164 @@ fn tracing_at_trace_level_does_not_leak_session_env() {
         .stderr(predicate::str::contains("TRACE-LEAK-CANARY-XYZ").not())
         .stderr(predicate::str::contains("PASSWORD-LEAK-CANARY-XYZ").not());
 }
+
+// ---------------------------------------------------------------------------
+// A refused (403) login says what went wrong, and the cookie that came with
+// it is never kept. Lippa's two-factor challenge answers 403 `mfa_required`
+// AND sets a pending session cookie with no `user_id` in it: signed out by
+// construction, so storing it would leave a login that fails on first use.
+// Bodies are Lippa's own shapes (routes/api_v1/auth.py:802-824).
+// ---------------------------------------------------------------------------
+
+const PENDING_COOKIE: &str = "PENDING-MFA-COOKIE-CANARY";
+
+const BODY_MFA_REQUIRED: &str = r#"{"detail":{"error":"mfa_required"}}"#;
+const BODY_EMAIL_NOT_VERIFIED: &str = r#"{"detail":{"error":"email_not_verified","email":"x***@example.com","message":"Please verify your email address before signing in."}}"#;
+const BODY_SUSPENDED: &str = r#"{"detail":"Your account has been suspended. Contact support if you believe this is an error."}"#;
+const BODY_OTHER_CODE: &str =
+    r#"{"error":"csrf_origin_rejected","message":"Cross-site request refused."}"#;
+const BODY_HTML: &str = "<html><body><h1>403 Forbidden</h1></body></html>";
+
+/// `quorum auth login --non-interactive --no-keyring` against a mock whose
+/// login answers 403 with `body` and sets the pending cookie. Returns the
+/// assertion and the storage base dir so callers can inspect what was kept.
+fn refused_login(body: &str) -> (assert_cmd::assert::Assert, TempDir) {
+    let mut server = mockito::Server::new();
+    let mock = server
+        .mock("POST", "/api/v1/auth/login")
+        .with_status(403)
+        .with_header("content-type", "application/json")
+        .with_header(
+            "set-cookie",
+            &format!("session={PENDING_COOKIE}; path=/; Max-Age=1209600; httponly; samesite=lax"),
+        )
+        .with_body(body)
+        .create();
+    let td = init_repo();
+    let cfg = TempDir::new().unwrap();
+    let assert = quorum_in(td.path(), cfg.path())
+        .args([
+            "auth",
+            "login",
+            "--non-interactive",
+            "--no-keyring",
+            "--url",
+        ])
+        .arg(server.url())
+        .env("QUORUM_LIPPA_EMAIL", "x@example.com")
+        .env("QUORUM_LIPPA_PASSWORD", "p")
+        .env("RUST_LOG", "trace")
+        .assert();
+    mock.assert();
+    (assert, cfg)
+}
+
+/// Every file under `root` whose bytes contain `needle`.
+fn files_containing(root: &Path, needle: &str) -> Vec<std::path::PathBuf> {
+    let mut hits = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if String::from_utf8_lossy(&fs::read(&path).unwrap()).contains(needle) {
+                hits.push(path);
+            }
+        }
+    }
+    hits
+}
+
+#[test]
+fn login_non_interactive_403_mfa_required_names_the_session_pair() {
+    let (assert, _cfg) = refused_login(BODY_MFA_REQUIRED);
+    assert
+        .failure()
+        .code(predicate::eq(3))
+        .stderr(predicate::str::contains(
+            "This account has two-factor authentication enabled. \
+             Use QUORUM_LIPPA_SESSION together with QUORUM_LIPPA_BASE_URL.",
+        ));
+}
+
+#[test]
+fn login_non_interactive_403_email_not_verified_says_so() {
+    let (assert, _cfg) = refused_login(BODY_EMAIL_NOT_VERIFIED);
+    assert
+        .failure()
+        .code(predicate::eq(3))
+        .stderr(predicate::str::contains(
+            "This account's email address is not verified.",
+        ));
+}
+
+#[test]
+fn login_non_interactive_403_suspended_says_so() {
+    let (assert, _cfg) = refused_login(BODY_SUSPENDED);
+    assert
+        .failure()
+        .code(predicate::eq(3))
+        .stderr(predicate::str::contains("This Lippa account is suspended."));
+}
+
+#[test]
+fn login_non_interactive_other_403_appends_lippas_error_code() {
+    let (assert, _cfg) = refused_login(BODY_OTHER_CODE);
+    assert
+        .failure()
+        .code(predicate::eq(3))
+        .stderr(predicate::str::contains(
+            "Login rejected: 403 Forbidden (csrf_origin_rejected)\n",
+        ));
+}
+
+#[test]
+fn login_non_interactive_unreadable_403_keeps_todays_message() {
+    // Never fail harder than before: HTML from an edge proxy, an empty
+    // body, and a "code" that is not a plain identifier (here it carries
+    // an ANSI escape) all fall back to the message Quorum printed before.
+    for body in [
+        BODY_HTML,
+        "",
+        r#"{"detail":{"error":"not a code \u001b[31m"}}"#,
+    ] {
+        let (assert, _cfg) = refused_login(body);
+        assert
+            .failure()
+            .code(predicate::eq(3))
+            .stderr(predicate::str::contains("Login rejected: 403 Forbidden\n"));
+    }
+}
+
+#[test]
+fn login_non_interactive_403_keeps_no_cookie_anywhere() {
+    for body in [
+        BODY_MFA_REQUIRED,
+        BODY_EMAIL_NOT_VERIFIED,
+        BODY_SUSPENDED,
+        BODY_OTHER_CODE,
+        BODY_HTML,
+    ] {
+        let (assert, cfg) = refused_login(body);
+        // What was kept is checked before the exit code, so a regression
+        // that stores the cookie fails on that property, not on a correlate.
+        let out = assert.get_output().clone();
+        for (name, stream) in [("stdout", &out.stdout), ("stderr", &out.stderr)] {
+            assert!(
+                !String::from_utf8_lossy(stream).contains(PENDING_COOKIE),
+                "pending cookie printed to {name} for body {body:?}"
+            );
+        }
+        let kept = files_containing(cfg.path(), PENDING_COOKIE);
+        assert!(
+            kept.is_empty(),
+            "pending cookie written to {kept:?} for body {body:?}"
+        );
+        assert!(
+            !cfg.path().join("quorum").join("sessions").exists(),
+            "a session file was created for body {body:?}"
+        );
+        assert.failure().code(predicate::eq(3));
+    }
+}
