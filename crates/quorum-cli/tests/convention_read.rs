@@ -810,3 +810,45 @@ body
     assert_eq!(db_orph.len(), 1);
     assert_eq!(db_orph[0]["conventions_md_block_id"], "abcdef012345");
 }
+
+// ---------------------------------------------------------------------------
+// DL 2.5 — run from a subdirectory, the convention commands use the
+// repository's store and conventions.md, as `quorum review` does, and
+// create no nested `.quorum/`.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn convention_commands_in_a_subdirectory_use_the_repo_root_store() {
+    let td = init_repo();
+    let store = LocalSqliteMemoryStore::new(td.path()).unwrap();
+    let h = dismiss_then_force_state(&store, "seen from below", PromotionState::LocalOnly);
+    drop(store);
+    let short = &h.to_hex()[..12];
+    let sub = td.path().join("src").join("deep");
+    std::fs::create_dir_all(&sub).unwrap();
+
+    let no_nested_quorum_dir = || {
+        for dir in [&sub, &td.path().join("src")] {
+            assert!(
+                !dir.join(".quorum").exists(),
+                "a nested .quorum/ was created at {}",
+                dir.display()
+            );
+        }
+    };
+    let listed = quorum()
+        .current_dir(&sub)
+        .args(["convention", "list"])
+        .assert()
+        .success();
+    no_nested_quorum_dir();
+    listed.stdout(predicate::str::contains(short));
+    quorum()
+        .current_dir(&sub)
+        .args(["convention", "promote", short, "--text", "body"])
+        .assert()
+        .success();
+    no_nested_quorum_dir();
+    let conv = std::fs::read_to_string(td.path().join(".quorum").join("conventions.md")).unwrap();
+    assert!(conv.contains(&format!("id={short}")));
+}

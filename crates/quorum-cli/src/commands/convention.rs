@@ -8,8 +8,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use quorum_core::conventions::{
-    atomic_write, detect_orphans, parse_conventions_md, render_conventions_md, BlockToWrite,
-    LineEnding, OrphanReport, ParsedConventionsMd,
+    atomic_write, build_block_set, detect_orphans, parse_conventions_md, render_conventions_md,
+    BlockSetChange, CanonicalBlock, LineEnding, OrphanReport, ParsedConventionsMd,
 };
 use quorum_core::memory::{
     DemoteOutcome, Dismissal, LocalSqliteMemoryStore, MemoryStore, PromoteOutcome, PromotionState,
@@ -20,13 +20,20 @@ use crate::exit::{CliError, Exit};
 
 /// Resolve the directory under which `.quorum/` lives. Honors the
 /// `--quorum-dir` flag (spec §5.1: "all `convention` subcommands honor
-/// `--quorum-dir <path>` for tests") and falls back to the current
-/// working directory.
+/// `--quorum-dir <path>` for tests"). Otherwise it is the working tree of
+/// the repository holding the current directory, found as `quorum review`
+/// finds it (`Repository::discover`, then `workdir`), so a subdirectory
+/// reaches the same store and conventions.md. Outside a repository, or in
+/// a bare one, it falls back to the current directory, as before.
 fn resolve_quorum_root(quorum_dir: Option<&PathBuf>) -> Result<PathBuf, CliError> {
     if let Some(p) = quorum_dir {
         return Ok(p.clone());
     }
-    std::env::current_dir().map_err(|e| CliError::Io(e.to_string()))
+    let cwd = std::env::current_dir().map_err(|e| CliError::Io(e.to_string()))?;
+    Ok(git2::Repository::discover(&cwd)
+        .ok()
+        .and_then(|repo| repo.workdir().map(Path::to_path_buf))
+        .unwrap_or(cwd))
 }
 
 fn open_store(root: &std::path::Path) -> Result<LocalSqliteMemoryStore, CliError> {
@@ -187,6 +194,14 @@ pub fn format_diagnostic(d: &quorum_core::conventions::ConventionParseError) -> 
         DuplicateManagedSection { start_byte } => format!(
             ".quorum/conventions.md: duplicate managed-section marker at byte {start_byte}; \
              only the first section is parsed"
+        ),
+        UnclosedManagedSection { start_byte } => format!(
+            ".quorum/conventions.md: managed-section marker at byte {start_byte} has no closing \
+             marker; the section is ignored"
+        ),
+        UnopenedManagedSection { start_byte } => format!(
+            ".quorum/conventions.md: managed-section closing marker at byte {start_byte} has no \
+             opening marker line; the section is ignored"
         ),
     }
 }
@@ -561,9 +576,18 @@ pub fn promote(
 
     // 2. Body resolution (--text / --from-editor / title-only).
     let body = resolve_body(&body_source, &row.title_snapshot, &root)?;
+    // DL 2.4: take the store's write lock before reading conventions.md and
+    // hold it through the rename to the commit, so a concurrent promote or
+    // demote waits instead of rendering from the same read. Taken after
+    // the body, which may wait on $EDITOR.
+    let lock = store
+        .begin_convention_write()
+        .map_err(|e| CliError::Io(format!("lock the dismissals store: {e}")))?;
 
-    // 3. Pre-flight on conventions.md: parse, run orphan detection, surface
-    //    diagnostics via stderr (AC 168 promote-side closure).
+    // 3. Pre-flight on conventions.md: refuse a broken structure before
+    //    anything is written (a rewrite would delete the text the parser
+    //    lost track of, and there is deliberately no override), then
+    //    surface orphan drift via stderr (AC 168 promote-side closure).
     let conv_path = root.join(".quorum").join("conventions.md");
     let existing_bytes = match std::fs::read(&conv_path) {
         Ok(b) => b,
@@ -571,60 +595,26 @@ pub fn promote(
         Err(e) => return Err(CliError::Io(format!("read {conv_path:?}: {e}"))),
     };
     let le = LineEnding::detect(&existing_bytes);
-    let (parsed, diagnostics) = parse_conventions_md(&existing_bytes);
-    for d in &diagnostics {
-        eprintln!("warning: {}", format_diagnostic(d));
-    }
+    quorum_core::conventions::check_writable(&conv_path, &existing_bytes)
+        .map_err(|r| CliError::Config(r.to_string()))?;
+    let (parsed, _) = parse_conventions_md(&existing_bytes);
     preflight_dirty_warning(&store, &parsed)?;
 
     // 4. Build the new block set. Idempotent re-promote: if a block for
     //    this hash already exists in the file (file-ahead-of-SQLite
-    //    recovery), replace it; otherwise append.
+    //    recovery), it is replaced; otherwise the new block is appended.
+    //    Every other block is kept byte for byte, whatever its layout.
     let title_for_block = &row.title_snapshot;
     let block_id: String = hex[..12].to_string();
-    let mut to_write: Vec<BlockToWrite<'_>> = Vec::with_capacity(parsed.blocks.len() + 1);
-    let mut replaced = false;
-    for pb in &parsed.blocks {
-        if pb.id == block_id {
-            // Caller hash matches — replace with the fresh content.
-            to_write.push(BlockToWrite {
-                id: &block_id,
-                version: 1,
-                title: title_for_block,
-                body: &body,
-            });
-            replaced = true;
-        } else {
-            // Preserve untouched blocks. If the on-disk layout is non-
-            // canonical (user hand-edited), we fall back to title=header_line,
-            // body=parsed.body — keeps the byte layout reasonable but the
-            // exact-byte round-trip property only holds on canonical files.
-            match BlockToWrite::from_parsed_block(pb) {
-                Some(bt) => to_write.push(bt),
-                None => {
-                    eprintln!(
-                        "warning: .quorum/conventions.md: block id={} has a non-canonical layout; \
-                         re-rendering may reformat the block (untouched content otherwise preserved)",
-                        pb.id
-                    );
-                    to_write.push(BlockToWrite {
-                        id: pb.id,
-                        version: pb.version,
-                        title: pb.header_line.trim_start_matches("### Convention: "),
-                        body: "",
-                    });
-                }
-            }
-        }
-    }
-    if !replaced {
-        to_write.push(BlockToWrite {
+    let to_write = build_block_set(
+        &parsed,
+        BlockSetChange::Promote(CanonicalBlock {
             id: &block_id,
             version: 1,
             title: title_for_block,
             body: &body,
-        });
-    }
+        }),
+    );
 
     // 5. Render bytes + atomic_write. File-first-rename, then SQLite.
     let new_bytes = render_conventions_md(&parsed, &to_write, le);
@@ -649,7 +639,7 @@ pub fn promote(
         body.as_str()
     };
     let ts_ms = current_unix_millis();
-    let outcome = store
+    let outcome = lock
         .commit_promote(
             &row.finding_identity_hash,
             convention_text_for_db,
@@ -681,6 +671,11 @@ pub fn promote(
 pub fn demote(quorum_dir: Option<&PathBuf>, hash_prefix: &str) -> Result<Exit, CliError> {
     let root = resolve_quorum_root(quorum_dir)?;
     let store = open_store(&root)?;
+    // DL 2.4: the store's write lock, held from the state check through
+    // the rename to the commit, as in `promote`.
+    let lock = store
+        .begin_convention_write()
+        .map_err(|e| CliError::Io(format!("lock the dismissals store: {e}")))?;
     let row = resolve_short_hash(&store, hash_prefix)?;
 
     let hex = row.finding_identity_hash.to_hex();
@@ -703,20 +698,15 @@ pub fn demote(quorum_dir: Option<&PathBuf>, hash_prefix: &str) -> Result<Exit, C
     let block_id: String = hex[..12].to_string();
 
     if let Some(existing_bytes) = existing_bytes_opt {
-        // File present — parse, remove the matching block, atomic-write.
+        // File present — refuse a broken structure, as promote does; then
+        // parse, remove the matching block, atomic-write.
         let le = LineEnding::detect(&existing_bytes);
-        let (parsed, diagnostics) = parse_conventions_md(&existing_bytes);
-        for d in &diagnostics {
-            eprintln!("warning: {}", format_diagnostic(d));
-        }
+        quorum_core::conventions::check_writable(&conv_path, &existing_bytes)
+            .map_err(|r| CliError::Config(r.to_string()))?;
+        let (parsed, _) = parse_conventions_md(&existing_bytes);
         preflight_dirty_warning(&store, &parsed)?;
 
-        let to_write: Vec<BlockToWrite<'_>> = parsed
-            .blocks
-            .iter()
-            .filter(|pb| pb.id != block_id)
-            .filter_map(BlockToWrite::from_parsed_block)
-            .collect();
+        let to_write = build_block_set(&parsed, BlockSetChange::Demote { id: &block_id });
         let new_bytes = render_conventions_md(&parsed, &to_write, le);
         atomic_write(&conv_path, &new_bytes).map_err(|e| CliError::Io(e.to_string()))?;
     } else {
@@ -729,7 +719,7 @@ pub fn demote(quorum_dir: Option<&PathBuf>, hash_prefix: &str) -> Result<Exit, C
     }
 
     let ts_ms = current_unix_millis();
-    let outcome = store
+    let outcome = lock
         .commit_demote(&row.finding_identity_hash, ts_ms)
         .map_err(|e| CliError::Io(format!("commit_demote: {e}")))?;
     match outcome {
@@ -866,4 +856,138 @@ fn preflight_dirty_warning(
 
 fn current_unix_millis() -> i64 {
     (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64
+}
+
+#[cfg(test)]
+mod tests {
+    //! The CLI orchestrators run in-process here: `tests/convention_write.rs`
+    //! drives the binary, but two `promote` processes started together are
+    //! too far apart (each first waits out the other's store open) to race
+    //! reliably. Threads calling `promote` each open their own store, so
+    //! each has its own SQLite connection, as two processes would.
+
+    use super::*;
+    use quorum_core::memory::identity::finding_identity_hash;
+    use quorum_core::memory::DismissalReason;
+    use quorum_core::review::{Finding, FindingSource, Severity};
+
+    fn seed_local_only(store: &LocalSqliteMemoryStore, title: &str) -> String {
+        let f = Finding {
+            severity: Severity::High,
+            title: title.to_string(),
+            body: format!("Body for {title}."),
+            source: FindingSource::Divergence,
+            supported_by: vec!["m".into()],
+            confidence: Some(0.9),
+        };
+        store
+            .dismiss(
+                &f,
+                "head",
+                "main",
+                DismissalReason::FalsePositive,
+                None,
+                None,
+            )
+            .unwrap();
+        let hex = finding_identity_hash(&f).to_hex();
+        let conn = rusqlite::Connection::open(store.path()).unwrap();
+        conn.execute(
+            "UPDATE dismissals SET promotion_state = 'local_only' WHERE finding_identity_hash = ?1",
+            [&hex],
+        )
+        .unwrap();
+        hex[..12].to_string()
+    }
+
+    #[test]
+    fn concurrent_promotes_of_different_hashes_keep_both_blocks() {
+        // DL 2.4. Without serialization both promotes read the same file,
+        // both write N+1 blocks, and the later rename deletes the other's
+        // block while both rows say promoted_convention.
+        const TRIALS: usize = 20;
+        let mut failures = Vec::new();
+        for trial in 0..TRIALS {
+            let td = tempfile::TempDir::new().unwrap();
+            let root = td.path().to_path_buf();
+            let store = LocalSqliteMemoryStore::new(&root).unwrap();
+            let shorts = [
+                seed_local_only(&store, &format!("first {trial}")),
+                seed_local_only(&store, &format!("second {trial}")),
+            ];
+            drop(store);
+            let barrier = std::sync::Barrier::new(2);
+            let results: Vec<Result<Exit, CliError>> = std::thread::scope(|s| {
+                let handles: Vec<_> = shorts
+                    .iter()
+                    .map(|short| {
+                        let (root, barrier) = (&root, &barrier);
+                        s.spawn(move || {
+                            barrier.wait();
+                            promote(Some(root), short, BodySource::Text("body".into()))
+                        })
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            });
+            for r in results {
+                if let Err(e) = r {
+                    failures.push(format!("trial {trial}: promote failed: {e}"));
+                }
+            }
+            let conv = std::fs::read_to_string(root.join(".quorum").join("conventions.md"))
+                .unwrap_or_default();
+            for short in &shorts {
+                if !conv.contains(&format!("id={short}")) {
+                    failures.push(format!("trial {trial}: block {short} lost"));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    #[test]
+    fn a_demote_racing_a_promote_keeps_the_promoted_block() {
+        // DL 2.4 — demote takes the same lock. Unserialized, both read
+        // [Y]; the promote writes [Y, X], the demote writes [], and X's
+        // block is lost behind a promoted_convention row.
+        const TRIALS: usize = 20;
+        let mut failures = Vec::new();
+        for trial in 0..TRIALS {
+            let td = tempfile::TempDir::new().unwrap();
+            let root = td.path().to_path_buf();
+            let store = LocalSqliteMemoryStore::new(&root).unwrap();
+            let x = seed_local_only(&store, &format!("promoted {trial}"));
+            let y = seed_local_only(&store, &format!("demoted {trial}"));
+            drop(store);
+            promote(Some(&root), &y, BodySource::Text("y".into())).unwrap();
+            let barrier = std::sync::Barrier::new(2);
+            let results: Vec<Result<Exit, CliError>> = std::thread::scope(|s| {
+                let (root, barrier, x, y) = (&root, &barrier, &x, &y);
+                let a = s.spawn(move || {
+                    barrier.wait();
+                    promote(Some(root), x, BodySource::Text("x".into()))
+                });
+                let b = s.spawn(move || {
+                    barrier.wait();
+                    demote(Some(root), y)
+                });
+                vec![a.join().unwrap(), b.join().unwrap()]
+            });
+            for r in results {
+                if let Err(e) = r {
+                    failures.push(format!("trial {trial}: failed: {e}"));
+                }
+            }
+            let conv = std::fs::read_to_string(root.join(".quorum").join("conventions.md"))
+                .unwrap_or_default();
+            if !conv.contains(&format!("id={x}")) {
+                failures.push(format!("trial {trial}: promoted block {x} lost"));
+            }
+            if conv.contains(&format!("id={y}")) {
+                failures.push(format!("trial {trial}: demoted block {y} kept"));
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
 }

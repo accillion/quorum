@@ -21,10 +21,22 @@ manual `quorum review`, two terminals, or both on a fresh clone.
   `busy_timeout = 5000` helps only a transaction whose first lock is the
   write lock. The store sets it as its first pragma, though rusqlite
   0.32 already sets the same value inside `Connection::open`. The
-  migration begins `IMMEDIATE`. `record_seen`, `commit_promote` and
-  `commit_demote` begin DEFERRED, but their first statement is an
+  migration and `begin_convention_write` begin `IMMEDIATE`.
+  `record_seen` begins DEFERRED, but its first statement is an
   `UPDATE`, which takes the write lock straight from no lock. A new
   write path must do one or the other.
+- **Promote and demote hold the write lock across the file write.**
+  `MemoryStore::begin_convention_write` runs `BEGIN IMMEDIATE` and
+  returns a guard. Each promote and demote takes it before reading
+  `conventions.md` and commits through it after the rename. The
+  store's mutex is not held between calls, so the orchestrator's own
+  reads (the row lookup, the orphan pre-flight) run inside that
+  transaction. While a promote holds it, every other writer waits up to
+  the 5 s busy timeout: another promote or demote, a `record_seen`, and
+  any store open, since the migration begins `IMMEDIATE`. A promote
+  holds it for milliseconds. CLI promote takes it only after
+  `--from-editor` returns, never across `$EDITOR`. Dropping the guard
+  without committing, on a refusal, an error or a panic, rolls back.
 - **The WAL conversion is retried by hand.** On a fresh file,
   `PRAGMA journal_mode = WAL` opens a read and upgrades it internally,
   so it hits the same immediate `SQLITE_BUSY`. It is retried every

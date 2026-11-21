@@ -61,6 +61,10 @@ pub struct ParsedBlock<'a> {
     /// Byte range covered by the block, inclusive of open + close markers.
     /// Used by the Stage 4 writer for surgical replacement.
     pub byte_range_in_file: std::ops::Range<usize>,
+    /// The block's bytes exactly as they sit in the file: `byte_range_in_file`
+    /// sliced out of the input. A write that does not own this block
+    /// re-emits these bytes unchanged ([`BlockToWrite::Verbatim`]).
+    pub raw: &'a [u8],
 }
 
 /// Top-level view of a `.quorum/conventions.md` file.
@@ -82,8 +86,11 @@ pub struct ParsedConventionsMd<'a> {
 }
 
 /// Parser diagnostic — surfaced via the AC 168 stderr warning path when
-/// `quorum convention list --orphans` runs (Stage 3) and when Stage 4
-/// promote/demote run.
+/// `quorum convention list --orphans` runs (Stage 3). Every variant is
+/// structural: it means the parse lost track of text in or around the
+/// managed section, so promote and demote refuse the file
+/// ([`check_writable`]). A future variant that is not structural must be
+/// exempted there explicitly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConventionParseError {
     /// Open marker found but no matching `<!-- /quorum:convention -->`
@@ -98,6 +105,15 @@ pub enum ConventionParseError {
     /// diagnostic. (Spec is silent on multi-section files; lean per the
     /// dispatch prompt §2 calibration: treat as malformed, parse first only.)
     DuplicateManagedSection { start_byte: usize },
+    /// A `<!-- quorum:managed-section v=1 -->` line with no
+    /// `<!-- /quorum:managed-section -->` line after it. The fence is not
+    /// recognized; `start_byte` is the open marker.
+    UnclosedManagedSection { start_byte: usize },
+    /// A `<!-- /quorum:managed-section -->` line with no open-marker line
+    /// anywhere in the file: the open marker was deleted, or does not sit
+    /// on a line of its own. The fence is not recognized; `start_byte` is
+    /// the close marker.
+    UnopenedManagedSection { start_byte: usize },
 }
 
 const MARKER_OPEN_SECTION: &str = "<!-- quorum:managed-section v=1 -->";
@@ -114,13 +130,20 @@ pub fn parse_conventions_md(input: &[u8]) -> (ParsedConventionsMd<'_>, Vec<Conve
     let mut diags: Vec<ConventionParseError> = Vec::new();
     let first_line_marker_present = file_starts_with_marker(input);
 
-    // Locate the managed-section open marker. Treat any byte sequence
-    // matching the literal as the marker — we don't insist on it sitting on
-    // its own line. Lippa-side Phase 1A users have authored these files by
-    // hand and the spec §4.4 example places the marker on its own line, but
-    // adversarial content inside a code fence would mislead a line-only
-    // search. The byte search is robust and matches the writer (Stage 4).
-    let Some(open_idx) = find_subslice(input, MARKER_OPEN_SECTION.as_bytes()) else {
+    // Locate the managed-section open marker. Only a marker on a line of
+    // its own counts: at column 0 and followed by a line break or the end
+    // of the file, the rule `file_starts_with_marker` applies to the
+    // first-line marker. A file explaining the mechanism can then quote the
+    // marker mid-line without redirecting the write. A marker at column 0
+    // inside a fenced code example still counts; it surfaces as
+    // `DuplicateManagedSection`, and promote/demote refuse the file.
+    let Some(open_idx) = find_marker_line(input, 0, MARKER_OPEN_SECTION) else {
+        // A close-marker line with no open-marker line is a broken fence,
+        // not an absent one: writing a fresh fence would leave the old
+        // section's blocks stranded in prose.
+        if let Some(close) = find_marker_line(input, 0, MARKER_CLOSE_SECTION) {
+            diags.push(ConventionParseError::UnopenedManagedSection { start_byte: close });
+        }
         return (
             ParsedConventionsMd {
                 above_fence: input,
@@ -134,22 +157,21 @@ pub fn parse_conventions_md(input: &[u8]) -> (ParsedConventionsMd<'_>, Vec<Conve
     };
     // Multi-section diagnostic (lean per dispatch prompt §2: parse first only).
     let after_first_open = open_idx + MARKER_OPEN_SECTION.len();
-    if let Some(dup) = find_subslice(&input[after_first_open..], MARKER_OPEN_SECTION.as_bytes()) {
-        diags.push(ConventionParseError::DuplicateManagedSection {
-            start_byte: after_first_open + dup,
-        });
+    if let Some(dup) = find_marker_line(input, after_first_open, MARKER_OPEN_SECTION) {
+        diags.push(ConventionParseError::DuplicateManagedSection { start_byte: dup });
     }
 
     // Locate the close marker AFTER the open marker. If absent, treat the
     // fence as malformed and return everything-below as empty.
-    let close_search_start = after_first_open;
-    let Some(rel_close_idx) = find_subslice(
-        &input[close_search_start..],
-        MARKER_CLOSE_SECTION.as_bytes(),
-    ) else {
-        // Open marker without close — treat as malformed; surface a
-        // diagnostic and refuse to recognize the fence. The Stage 4 writer
-        // will rewrite a clean fence on the next promote.
+    let Some(close_idx) = find_marker_line(input, after_first_open, MARKER_CLOSE_SECTION) else {
+        // Open marker without close: the fence is not recognized, and the
+        // diagnostic makes promote/demote refuse the file. Writing anyway
+        // would append a second fence, and the write after that would read
+        // the stale open marker and the new close marker as one section,
+        // deleting the prose between them.
+        diags.push(ConventionParseError::UnclosedManagedSection {
+            start_byte: open_idx,
+        });
         return (
             ParsedConventionsMd {
                 above_fence: input,
@@ -161,7 +183,6 @@ pub fn parse_conventions_md(input: &[u8]) -> (ParsedConventionsMd<'_>, Vec<Conve
             diags,
         );
     };
-    let close_idx = close_search_start + rel_close_idx;
     let close_end = close_idx + MARKER_CLOSE_SECTION.len();
 
     let above_fence = &input[..open_idx];
@@ -193,6 +214,27 @@ fn file_starts_with_marker(input: &[u8]) -> bool {
     }
     // Must be followed by EOF or a line terminator.
     matches!(input.get(marker.len()), None | Some(b'\n') | Some(b'\r'))
+}
+
+/// Find `marker` on a line of its own, at or after byte `from`: at column 0
+/// (the start of the input, or just after a `\n`) and followed by a line
+/// break or the end of the input.
+fn find_marker_line(input: &[u8], from: usize, marker: &str) -> Option<usize> {
+    let marker = marker.as_bytes();
+    let mut at = from;
+    while let Some(rel) = find_subslice(&input[at..], marker) {
+        let start = at + rel;
+        let starts_line = start == 0 || input[start - 1] == b'\n';
+        let ends_line = matches!(
+            input.get(start + marker.len()),
+            None | Some(b'\n') | Some(b'\r')
+        );
+        if starts_line && ends_line {
+            return Some(start);
+        }
+        at = start + 1;
+    }
+    None
 }
 
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -327,6 +369,7 @@ fn parse_blocks<'a>(
             header_line,
             body: body_str,
             byte_range_in_file: (inside_offset + open_marker_start)..abs_block_end,
+            raw: &full_input[abs_block_start..abs_block_end],
         });
         cursor = close_end;
     }
@@ -496,6 +539,136 @@ pub fn detect_orphans(conventions_md_path: &Path, db_rows: &[ConventionRow]) -> 
 }
 
 // ---------------------------------------------------------------------------
+// Write refusal (DL 2.2).
+//
+// Promote and demote rewrite the managed section from the blocks the parser
+// found. Any parser diagnostic means the parse lost track of text in or
+// around that section: a block it skipped, a fence it could not close.
+// Rewriting would delete that text, so both refuse until the user repairs
+// the file. There is deliberately no flag to write anyway. `list --orphans`
+// never writes and only warns.
+
+/// A promote or demote refused because conventions.md's structure is broken.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WriteRefusal {
+    /// The file, as the caller named it.
+    pub path: std::path::PathBuf,
+    /// One entry per parser diagnostic, in the order the parser raised them.
+    pub problems: Vec<StructuralProblem>,
+}
+
+/// One broken spot in conventions.md: where it is and how to repair it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructuralProblem {
+    /// 1-based line of the marker the diagnostic points at.
+    pub line: usize,
+    /// What is wrong, and what to change.
+    pub repair: String,
+}
+
+impl std::fmt::Display for WriteRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "refusing to rewrite {}: ", self.path.display())?;
+        for (i, p) in self.problems.iter().enumerate() {
+            if i > 0 {
+                f.write_str("; ")?;
+            }
+            write!(f, "line {}: {}", p.line, p.repair)?;
+        }
+        f.write_str(". Nothing was written; repair the file and re-run")
+    }
+}
+
+impl std::error::Error for WriteRefusal {}
+
+/// Refuse to rewrite `input`, the current contents of the conventions.md at
+/// `path`, when its structure is broken. Every promote and demote calls
+/// this before it renders; `path` is used only in the message.
+pub fn check_writable(path: &Path, input: &[u8]) -> Result<(), WriteRefusal> {
+    let (_, diagnostics) = parse_conventions_md(input);
+    if diagnostics.is_empty() {
+        return Ok(());
+    }
+    let problems = diagnostics
+        .iter()
+        .map(|d| StructuralProblem {
+            line: line_of(input, d.start_byte()),
+            repair: d.repair(),
+        })
+        .collect();
+    Err(WriteRefusal {
+        path: path.to_path_buf(),
+        problems,
+    })
+}
+
+fn line_of(input: &[u8], byte: usize) -> usize {
+    1 + input[..byte.min(input.len())]
+        .iter()
+        .filter(|&&b| b == b'\n')
+        .count()
+}
+
+impl ConventionParseError {
+    /// Byte offset of the marker the diagnostic points at.
+    pub fn start_byte(&self) -> usize {
+        use ConventionParseError::*;
+        match self {
+            UnclosedBlock { start_byte, .. }
+            | BadBlockId { start_byte, .. }
+            | BadBlockVersion { start_byte, .. }
+            | DuplicateManagedSection { start_byte }
+            | UnclosedManagedSection { start_byte }
+            | UnopenedManagedSection { start_byte } => *start_byte,
+        }
+    }
+
+    /// What is wrong, and how to repair it, for a [`WriteRefusal`].
+    fn repair(&self) -> String {
+        use ConventionParseError::*;
+        match self {
+            // `parse_blocks` uses these placeholders for markers it could not read.
+            UnclosedBlock { id, .. } if id == "<unterminated open marker>" => {
+                "a `<!-- quorum:convention` marker never ends in `-->`; complete it or delete it"
+                    .to_string()
+            }
+            BadBlockId { raw, .. }
+                if raw == "<non-utf8 attrs>" || raw.ends_with("(non-utf8 body)") =>
+            {
+                "a block is not valid UTF-8; re-save the file as UTF-8".to_string()
+            }
+            UnclosedBlock { id, .. } => format!(
+                "block id={id} has no `<!-- /quorum:convention -->` line; add one after the \
+                 block's text"
+            ),
+            BadBlockId { raw, .. } => format!(
+                "block marker id {raw:?} is not 12 lowercase hex characters; restore the id \
+                 `quorum convention list` shows, or delete the block"
+            ),
+            BadBlockVersion { raw, .. } => {
+                format!("block marker version {raw:?} is not a number; write v=1")
+            }
+            DuplicateManagedSection { .. } => {
+                "a second `<!-- quorum:managed-section v=1 -->` line; keep one managed section, \
+                 and indent the marker wherever the file only shows it as an example"
+                    .to_string()
+            }
+            UnclosedManagedSection { .. } => {
+                "the managed section opened here has no `<!-- /quorum:managed-section -->` line \
+                 after it; add that line where the section ends"
+                    .to_string()
+            }
+            UnopenedManagedSection { .. } => {
+                "`<!-- /quorum:managed-section -->` has no `<!-- quorum:managed-section v=1 -->` \
+                 line before it; put the open marker on a line of its own where the section \
+                 starts"
+                    .to_string()
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Phase 1C Stage 4 — writer + atomic file write helper (AC 137/148/149/150).
 //
 // The writer is the inverse of `parse_conventions_md`: it emits a canonical
@@ -549,21 +722,80 @@ impl LineEnding {
     }
 }
 
-/// One managed block, fully described for the writer. `id` is the 12-hex
+/// One managed block as the writer emits it.
+#[derive(Debug, Clone, Copy)]
+pub enum BlockToWrite<'a> {
+    /// A block this write owns, rendered in the canonical layout.
+    Canonical(CanonicalBlock<'a>),
+    /// A block this write does not own. `raw` is the block's original
+    /// bytes ([`ParsedBlock::raw`]), re-emitted unchanged, so a hand-edited
+    /// layout survives byte for byte. `id` is the block's id.
+    Verbatim { id: &'a str, raw: &'a [u8] },
+}
+
+/// A block rendered from its parts. `id` is the 12-hex
 /// prefix of `finding_identity_hash`; `version` is the on-disk format
 /// version (always 1 in Phase 1C). `title` becomes the `### Convention:
 /// <title>` header line; `body` is the user-supplied prose (may span
 /// multiple lines; may be empty for title-only promotes per §4.4).
-#[derive(Debug, Clone)]
-pub struct BlockToWrite<'a> {
+#[derive(Debug, Clone, Copy)]
+pub struct CanonicalBlock<'a> {
     pub id: &'a str,
     pub version: u32,
     pub title: &'a str,
     pub body: &'a str,
 }
 
-impl<'a> BlockToWrite<'a> {
-    /// Round-trip helper: reconstruct a `BlockToWrite` from a `ParsedBlock`
+/// What a promote or demote does to the managed section's blocks.
+#[derive(Debug, Clone, Copy)]
+pub enum BlockSetChange<'a> {
+    /// Write this block: in place of the file's block with the same id,
+    /// or appended when the file has none.
+    Promote(CanonicalBlock<'a>),
+    /// Remove the block with this id.
+    Demote { id: &'a str },
+}
+
+/// The block set a promote or demote writes. Every promote and demote
+/// call site (CLI and TUI) builds its blocks here, so there is one policy
+/// for blocks the write does not own: each one is carried through as
+/// [`BlockToWrite::Verbatim`] whatever its layout, in its original order.
+///
+/// The write owns every block whose id is the change's id. A promote
+/// puts its new block where the first of them stood (or appends it); a
+/// demote drops them. Either way, further copies of that id are dropped
+/// too: they are the same convention, and only one block may carry it.
+pub fn build_block_set<'a>(
+    parsed: &ParsedConventionsMd<'a>,
+    change: BlockSetChange<'a>,
+) -> Vec<BlockToWrite<'a>> {
+    let owned_id = match change {
+        BlockSetChange::Promote(block) => block.id,
+        BlockSetChange::Demote { id } => id,
+    };
+    let mut new_block = match change {
+        BlockSetChange::Promote(block) => Some(block),
+        BlockSetChange::Demote { .. } => None,
+    };
+    let mut out = Vec::with_capacity(parsed.blocks.len() + 1);
+    for pb in &parsed.blocks {
+        if pb.id != owned_id {
+            out.push(BlockToWrite::Verbatim {
+                id: pb.id,
+                raw: pb.raw,
+            });
+        } else if let Some(block) = new_block.take() {
+            out.push(BlockToWrite::Canonical(block));
+        }
+    }
+    if let Some(block) = new_block {
+        out.push(BlockToWrite::Canonical(block));
+    }
+    out
+}
+
+impl<'a> CanonicalBlock<'a> {
+    /// Round-trip helper: reconstruct a `CanonicalBlock` from a `ParsedBlock`
     /// produced by `parse_conventions_md` on this writer's own output.
     ///
     /// The canonical body layout this writer emits is:
@@ -590,7 +822,7 @@ impl<'a> BlockToWrite<'a> {
         let title = header.strip_prefix("### Convention: ")?;
         if rest.is_empty() {
             // No body.
-            return Some(BlockToWrite {
+            return Some(CanonicalBlock {
                 id: pb.id,
                 version: pb.version,
                 title,
@@ -607,7 +839,7 @@ impl<'a> BlockToWrite<'a> {
             .strip_suffix("\r\n")
             .or_else(|| after_blank.strip_suffix('\n'))
             .unwrap_or(after_blank);
-        Some(BlockToWrite {
+        Some(CanonicalBlock {
             id: pb.id,
             version: pb.version,
             title,
@@ -628,17 +860,19 @@ impl<'a> BlockToWrite<'a> {
 ///   only on fresh files (`parsed.above_fence` empty AND fence absent).
 ///   Preserved by `parsed.above_fence` byte-passthrough when already present.
 /// - Line endings: every inserted line uses `le.as_str()` (AC 150).
-/// - Duplicate-id `blocks_to_write` is a caller bug. In debug builds we
+/// - A `Canonical` block whose id appears on any other entry is a caller
+///   bug ([`build_block_set`] never produces one). In debug builds we
 ///   panic via `debug_assert!`; in release the writer emits all entries
-///   (last-wins behavior on re-parse).
+///   (last-wins behavior on re-parse). `Verbatim` blocks may share an id
+///   with each other: they are the file's own bytes, passed through.
 pub fn render_conventions_md(
     parsed: &ParsedConventionsMd<'_>,
     blocks_to_write: &[BlockToWrite<'_>],
     le: LineEnding,
 ) -> Vec<u8> {
     debug_assert!(
-        unique_ids(blocks_to_write),
-        "render_conventions_md called with duplicate-id blocks; caller must dedupe"
+        canonical_ids_unique(blocks_to_write),
+        "render_conventions_md called with a duplicated canonical block id; caller must dedupe"
     );
 
     let mut out: Vec<u8> = Vec::with_capacity(
@@ -655,6 +889,11 @@ pub fn render_conventions_md(
         out.extend_from_slice(lebytes);
     } else {
         out.extend_from_slice(parsed.above_fence);
+        // The parser only recognizes an open marker at column 0, so a file
+        // that does not end in a line break gets one before the new fence.
+        if !parsed.above_fence.is_empty() && !parsed.above_fence.ends_with(b"\n") {
+            out.extend_from_slice(lebytes);
+        }
     }
 
     // Managed-section open marker + DO NOT EDIT comments + blank line.
@@ -670,7 +909,10 @@ pub fn render_conventions_md(
     //   [<LE><body><LE>] <!-- /quorum:convention --><LE>
     for block in blocks_to_write {
         out.extend_from_slice(lebytes); // blank line before each block
-        emit_block(&mut out, block, lebytes);
+        match block {
+            BlockToWrite::Canonical(block) => emit_block(&mut out, block, lebytes),
+            BlockToWrite::Verbatim { raw, .. } => out.extend_from_slice(raw),
+        }
         out.extend_from_slice(lebytes);
     }
 
@@ -686,12 +928,22 @@ pub fn render_conventions_md(
     out
 }
 
-fn unique_ids(blocks: &[BlockToWrite<'_>]) -> bool {
-    let mut seen = std::collections::HashSet::with_capacity(blocks.len());
-    blocks.iter().all(|b| seen.insert(b.id))
+fn canonical_ids_unique(blocks: &[BlockToWrite<'_>]) -> bool {
+    let mut canonical = std::collections::HashSet::new();
+    for b in blocks {
+        if let BlockToWrite::Canonical(c) = b {
+            if !canonical.insert(c.id) {
+                return false;
+            }
+        }
+    }
+    blocks.iter().all(|b| match b {
+        BlockToWrite::Verbatim { id, .. } => !canonical.contains(id),
+        BlockToWrite::Canonical(_) => true,
+    })
 }
 
-fn emit_block(out: &mut Vec<u8>, block: &BlockToWrite<'_>, le: &[u8]) {
+fn emit_block(out: &mut Vec<u8>, block: &CanonicalBlock<'_>, le: &[u8]) {
     out.extend_from_slice(b"<!-- quorum:convention id=");
     out.extend_from_slice(block.id.as_bytes());
     out.extend_from_slice(b" v=");
@@ -699,16 +951,46 @@ fn emit_block(out: &mut Vec<u8>, block: &BlockToWrite<'_>, le: &[u8]) {
     out.extend_from_slice(b" -->");
     out.extend_from_slice(le);
     out.extend_from_slice(b"### Convention: ");
-    out.extend_from_slice(block.title.as_bytes());
+    // The title is a model-written finding title and the body may quote a
+    // reviewed file: render both so they cannot open or close a section or
+    // a block. Rendering only; what is stored and hashed is untouched.
+    out.extend_from_slice(neutralize_markers(&single_line(block.title)).as_bytes());
     out.extend_from_slice(le);
     if !block.body.is_empty() {
         out.extend_from_slice(le);
-        out.extend_from_slice(block.body.as_bytes());
+        out.extend_from_slice(neutralize_markers(block.body).as_bytes());
         if !block.body.ends_with('\n') {
             out.extend_from_slice(le);
         }
     }
     out.extend_from_slice(b"<!-- /quorum:convention -->");
+}
+
+/// `s` on one line: each line break (`\r\n`, `\n` or a lone `\r`) becomes
+/// a space, so a title cannot leave the `### Convention:` header line.
+fn single_line(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.contains(['\n', '\r']) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    std::borrow::Cow::Owned(s.replace("\r\n", " ").replace(['\n', '\r'], " "))
+}
+
+/// `s` with every marker prefix the parser recognizes made inert:
+/// `<!-- quorum:` and `<!-- /quorum:` become `<\!-- quorum:` and
+/// `<\!-- /quorum:`. Markdown renders `\!` as `!`, so the text reads the
+/// same, but no section or block marker can start there. The replacements
+/// contain no `<!--`, so a single pass cannot create a new marker. Run it
+/// after [`single_line`]: joining lines can complete a marker.
+fn neutralize_markers(s: &str) -> std::borrow::Cow<'_, str> {
+    const OPEN: &str = "<!-- quorum:";
+    const CLOSE: &str = "<!-- /quorum:";
+    if !s.contains(OPEN) && !s.contains(CLOSE) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    std::borrow::Cow::Owned(
+        s.replace(OPEN, "<\\!-- quorum:")
+            .replace(CLOSE, "<\\!-- /quorum:"),
+    )
 }
 
 /// Atomic-on-same-volume write: write `bytes` to a sibling temp file, then
@@ -1103,6 +1385,128 @@ body
         let report = detect_orphans(&path, &[]);
         assert!(!report.parser_diagnostics.is_empty());
     }
+
+    // DL 2.2 — the fence is a whole line, and a broken structure refuses
+    // promote and demote.
+
+    #[test]
+    fn missing_close_marker_raises_a_diagnostic_at_the_open_marker() {
+        let raw = "prose\n<!-- quorum:managed-section v=1 -->\n\nmore prose\n";
+        let (parsed, diags) = parse_conventions_md(raw.as_bytes());
+        assert!(!parsed.fence_present);
+        assert_eq!(
+            diags,
+            [ConventionParseError::UnclosedManagedSection { start_byte: 6 }]
+        );
+    }
+
+    #[test]
+    fn section_markers_count_only_on_a_line_of_their_own() {
+        // Quoted mid-line, indented, or followed by text: none is a fence.
+        for raw in [
+            "see `<!-- quorum:managed-section v=1 -->` and `<!-- /quorum:managed-section -->`\n",
+            "    <!-- quorum:managed-section v=1 -->\n    <!-- /quorum:managed-section -->\n",
+            "<!-- quorum:managed-section v=1 --> trailing\n<!-- /quorum:managed-section --> x\n",
+        ] {
+            let (parsed, diags) = parse_conventions_md(raw.as_bytes());
+            assert!(!parsed.fence_present, "{raw:?}");
+            assert!(diags.is_empty(), "{raw:?}: {diags:?}");
+            assert_eq!(parsed.above_fence, raw.as_bytes());
+        }
+        // CRLF line ends and the end of the file both end a marker line.
+        let raw = "<!-- quorum:managed-section v=1 -->\r\n<!-- /quorum:managed-section -->";
+        let (parsed, diags) = parse_conventions_md(raw.as_bytes());
+        assert!(parsed.fence_present && diags.is_empty());
+    }
+
+    #[test]
+    fn close_marker_line_without_an_open_marker_line_is_a_diagnostic() {
+        // What an older writer produced on a file with no trailing newline:
+        // the open marker glued to the last line of prose.
+        let raw =
+            "last line<!-- quorum:managed-section v=1 -->\n\n<!-- /quorum:managed-section -->\n";
+        let (parsed, diags) = parse_conventions_md(raw.as_bytes());
+        assert!(!parsed.fence_present);
+        assert_eq!(
+            diags,
+            [ConventionParseError::UnopenedManagedSection { start_byte: 46 }]
+        );
+    }
+
+    #[test]
+    fn writer_starts_the_fence_on_its_own_line() {
+        // A file whose last line has no line break gets one before the
+        // fence, so the parser finds the fence again.
+        let (parsed, _) = parse_conventions_md(b"# Conventions\n\nno trailing newline");
+        let out = render_conventions_md(&parsed, &[], LineEnding::Lf);
+        assert!(
+            out.starts_with(b"# Conventions\n\nno trailing newline\n<!-- quorum:managed-section")
+        );
+        let (again, diags) = parse_conventions_md(&out);
+        assert!(again.fence_present && diags.is_empty(), "{diags:?}");
+    }
+
+    #[test]
+    fn check_writable_accepts_clean_files_and_absent_fences() {
+        let p = Path::new(".quorum/conventions.md");
+        assert!(check_writable(p, b"").is_ok());
+        assert!(check_writable(p, b"# just prose\n").is_ok());
+        let clean = wrap_managed(&format!("\n{SAMPLE_BLOCK}\n"), "above\n", "\nbelow\n");
+        assert!(check_writable(p, clean.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn check_writable_names_the_file_line_and_repair_for_every_diagnostic() {
+        let p = Path::new(".quorum/conventions.md");
+        // (file, line, words the repair must contain)
+        let cases = [
+            (
+                "a\n<!-- quorum:managed-section v=1 -->\n".to_string(),
+                2,
+                "/quorum:managed-section -->` line after it",
+            ),
+            (
+                "a\nb<!-- quorum:managed-section v=1 -->\n<!-- /quorum:managed-section -->\n"
+                    .to_string(),
+                3,
+                "on a line of its own",
+            ),
+            (
+                wrap_managed("\n<!-- quorum:convention id=XYZ v=1 -->\nt\n<!-- /quorum:convention -->\n", "", ""),
+                3,
+                "not 12 lowercase hex",
+            ),
+            (
+                wrap_managed("\n<!-- quorum:convention id=a1b2c3d4e5f6 v=x -->\nt\n<!-- /quorum:convention -->\n", "", ""),
+                3,
+                "write v=1",
+            ),
+            (
+                wrap_managed("\n<!-- quorum:convention id=a1b2c3d4e5f6 v=1 -->\nno close\n", "", ""),
+                3,
+                "id=a1b2c3d4e5f6 has no",
+            ),
+            (
+                format!(
+                    "{}\n<!-- quorum:managed-section v=1 -->\n",
+                    wrap_managed("", "", "")
+                ),
+                4,
+                "keep one managed section",
+            ),
+        ];
+        for (file, line, repair) in cases {
+            let refusal = check_writable(p, file.as_bytes()).expect_err(&file);
+            let msg = refusal.to_string();
+            assert!(
+                msg.starts_with("refusing to rewrite .quorum/conventions.md: "),
+                "{msg}"
+            );
+            assert!(msg.contains(&format!("line {line}: ")), "{file:?}: {msg}");
+            assert!(msg.contains(repair), "{file:?}: {msg}");
+            assert!(msg.ends_with("Nothing was written; repair the file and re-run"));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1119,18 +1523,20 @@ mod writer_tests {
             .blocks
             .iter()
             .map(|pb| {
-                BlockToWrite::from_parsed_block(pb).unwrap_or_else(|| {
-                    panic!(
-                        "from_parsed_block failed on canonical fixture block id={}",
-                        pb.id
-                    )
-                })
+                BlockToWrite::Canonical(CanonicalBlock::from_parsed_block(pb).unwrap_or_else(
+                    || {
+                        panic!(
+                            "from_parsed_block failed on canonical fixture block id={}",
+                            pb.id
+                        )
+                    },
+                ))
             })
             .collect();
         render_conventions_md(&parsed, &blocks, le)
     }
 
-    fn write_then_round_trip(blocks: &[BlockToWrite<'_>], le: LineEnding) -> Vec<u8> {
+    fn write_then_round_trip(blocks: &[CanonicalBlock<'_>], le: LineEnding) -> Vec<u8> {
         // Fresh-file render → first-line marker + fence + blocks.
         let empty = ParsedConventionsMd {
             above_fence: b"",
@@ -1139,7 +1545,12 @@ mod writer_tests {
             first_line_marker_present: false,
             blocks: Vec::new(),
         };
-        render_conventions_md(&empty, blocks, le)
+        let blocks: Vec<BlockToWrite<'_>> = blocks
+            .iter()
+            .copied()
+            .map(BlockToWrite::Canonical)
+            .collect();
+        render_conventions_md(&empty, &blocks, le)
     }
 
     #[test]
@@ -1155,7 +1566,7 @@ mod writer_tests {
 
     #[test]
     fn fresh_file_emits_first_line_marker_and_fence() {
-        let blocks: Vec<BlockToWrite<'_>> = Vec::new();
+        let blocks: Vec<CanonicalBlock<'_>> = Vec::new();
         let bytes = write_then_round_trip(&blocks, LineEnding::Lf);
         let s = std::str::from_utf8(&bytes).unwrap();
         assert!(
@@ -1184,13 +1595,14 @@ mod writer_tests {
             first_line_marker_present: false,
             blocks: Vec::new(),
         };
-        let block = BlockToWrite {
+        let block = CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "test",
             body: "",
         };
-        let bytes = render_conventions_md(&parsed, &[block], LineEnding::Lf);
+        let bytes =
+            render_conventions_md(&parsed, &[BlockToWrite::Canonical(block)], LineEnding::Lf);
         let s = std::str::from_utf8(&bytes).unwrap();
         assert!(
             !s.starts_with("<!-- quorum-managed-conventions-md"),
@@ -1202,7 +1614,7 @@ mod writer_tests {
 
     #[test]
     fn empty_body_block_canonical_layout() {
-        let block = BlockToWrite {
+        let block = CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "title-only",
@@ -1217,7 +1629,7 @@ mod writer_tests {
 
     #[test]
     fn non_empty_body_block_canonical_layout() {
-        let block = BlockToWrite {
+        let block = CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "with body",
@@ -1234,7 +1646,7 @@ mod writer_tests {
     fn round_trip_lf_single_block() {
         // AC 149 round-trip: writer-produced bytes round-trip through the
         // parser and back.
-        let blocks = [BlockToWrite {
+        let blocks = [CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "the title",
@@ -1247,7 +1659,7 @@ mod writer_tests {
 
     #[test]
     fn round_trip_crlf_single_block() {
-        let blocks = [BlockToWrite {
+        let blocks = [CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "crlf-title",
@@ -1263,13 +1675,13 @@ mod writer_tests {
     #[test]
     fn round_trip_two_blocks() {
         let blocks = [
-            BlockToWrite {
+            CanonicalBlock {
                 id: "a1b2c3d4e5f6",
                 version: 1,
                 title: "first",
                 body: "body A",
             },
-            BlockToWrite {
+            CanonicalBlock {
                 id: "9876fedcba01",
                 version: 1,
                 title: "second",
@@ -1292,13 +1704,14 @@ mod writer_tests {
             first_line_marker_present: false,
             blocks: Vec::new(),
         };
-        let block = BlockToWrite {
+        let block = CanonicalBlock {
             id: "a1b2c3d4e5f6",
             version: 1,
             title: "t",
             body: "b",
         };
-        let bytes = render_conventions_md(&parsed, &[block], LineEnding::Lf);
+        let bytes =
+            render_conventions_md(&parsed, &[BlockToWrite::Canonical(block)], LineEnding::Lf);
         assert!(bytes.starts_with(above));
         assert!(bytes.ends_with(b"\n\nfooter line\n"));
     }
@@ -1307,7 +1720,7 @@ mod writer_tests {
     fn from_parsed_block_recovers_canonical_layout() {
         // Round-trip a hand-built canonical file through parse → from_parsed
         // → render and verify byte equality.
-        let blocks = [BlockToWrite {
+        let blocks = [CanonicalBlock {
             id: "abcdef012345",
             version: 1,
             title: "round-trip me",
@@ -1317,7 +1730,7 @@ mod writer_tests {
         let (parsed, diags) = parse_conventions_md(&original);
         assert!(diags.is_empty());
         assert_eq!(parsed.blocks.len(), 1);
-        let recovered = BlockToWrite::from_parsed_block(&parsed.blocks[0]).unwrap();
+        let recovered = CanonicalBlock::from_parsed_block(&parsed.blocks[0]).unwrap();
         assert_eq!(recovered.title, "round-trip me");
         assert_eq!(recovered.body, "some\nbody\nlines");
     }
@@ -1332,7 +1745,100 @@ mod writer_tests {
         // Header_line is non-empty (parser picks first non-blank line) but
         // doesn't start with `### Convention: `, so from_parsed_block
         // refuses.
-        assert!(BlockToWrite::from_parsed_block(&parsed.blocks[0]).is_none());
+        assert!(CanonicalBlock::from_parsed_block(&parsed.blocks[0]).is_none());
+    }
+
+    // DL 2.1 — `build_block_set`, the one policy for blocks a write does
+    // not own.
+
+    /// Canonical block `aaaaaaaaaaaa` between two non-canonical ones, in a
+    /// CRLF file, with prose and stray spacing around the fence.
+    const MIXED: &str = "intro\r\n<!-- quorum:managed-section v=1 -->\r\n\r\n\
+        <!-- quorum:convention id=111111111111 v=1 -->\r\n### Convention: no blank line\r\nbody one\r\n<!-- /quorum:convention -->\r\n\r\n\r\n\
+        <!-- quorum:convention id=aaaaaaaaaaaa v=1 -->\r\n### Convention: canonical\r\n\r\nowned body\r\n<!-- /quorum:convention -->\r\n\r\n\
+        <!-- quorum:convention id=222222222222 v=1 -->\r\nno header at all\r\n<!-- /quorum:convention -->\r\n\
+        <!-- /quorum:managed-section -->\r\noutro\r\n";
+
+    fn block_bytes<'a>(input: &'a [u8], id: &str) -> &'a [u8] {
+        let (parsed, _) = parse_conventions_md(input);
+        parsed.blocks.iter().find(|b| b.id == id).unwrap().raw
+    }
+
+    fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+        haystack.windows(needle.len()).any(|w| w == needle)
+    }
+
+    #[test]
+    fn demote_set_keeps_every_other_block_verbatim() {
+        let input = MIXED.as_bytes();
+        let (parsed, diags) = parse_conventions_md(input);
+        assert!(diags.is_empty(), "{diags:?}");
+        let set = build_block_set(&parsed, BlockSetChange::Demote { id: "aaaaaaaaaaaa" });
+        let out = render_conventions_md(&parsed, &set, LineEnding::Crlf);
+        for id in ["111111111111", "222222222222"] {
+            assert!(contains(&out, block_bytes(input, id)), "{id} not kept");
+        }
+        assert!(!contains(&out, b"id=aaaaaaaaaaaa"));
+        assert!(out.starts_with(b"intro\r\n") && out.ends_with(b"\r\noutro\r\n"));
+    }
+
+    #[test]
+    fn promote_set_replaces_in_place_and_keeps_the_rest_verbatim() {
+        let input = MIXED.as_bytes();
+        let (parsed, _) = parse_conventions_md(input);
+        let new = CanonicalBlock {
+            id: "aaaaaaaaaaaa",
+            version: 1,
+            title: "canonical",
+            body: "replaced body",
+        };
+        let set = build_block_set(&parsed, BlockSetChange::Promote(new));
+        let ids: Vec<&str> = set
+            .iter()
+            .map(|b| match b {
+                BlockToWrite::Canonical(c) => c.id,
+                BlockToWrite::Verbatim { id, .. } => id,
+            })
+            .collect();
+        assert_eq!(ids, ["111111111111", "aaaaaaaaaaaa", "222222222222"]);
+        assert!(matches!(set[1], BlockToWrite::Canonical(_)));
+        let out = render_conventions_md(&parsed, &set, LineEnding::Crlf);
+        for id in ["111111111111", "222222222222"] {
+            assert!(contains(&out, block_bytes(input, id)), "{id} not kept");
+        }
+        assert!(contains(&out, b"replaced body") && !contains(&out, b"owned body"));
+    }
+
+    #[test]
+    fn promote_set_appends_a_new_block_and_drops_extra_copies_of_its_id() {
+        let input = "<!-- quorum:managed-section v=1 -->\n\
+            <!-- quorum:convention id=bbbbbbbbbbbb v=1 -->\nkept\n<!-- /quorum:convention -->\n\
+            <!-- quorum:convention id=bbbbbbbbbbbb v=1 -->\nkept twice\n<!-- /quorum:convention -->\n\
+            <!-- /quorum:managed-section -->\n";
+        let (parsed, _) = parse_conventions_md(input.as_bytes());
+        let new = CanonicalBlock {
+            id: "cccccccccccc",
+            version: 1,
+            title: "new",
+            body: "",
+        };
+        let set = build_block_set(&parsed, BlockSetChange::Promote(new));
+        assert_eq!(
+            set.len(),
+            3,
+            "two verbatim copies of another id, then the new block"
+        );
+        assert!(matches!(set[2], BlockToWrite::Canonical(c) if c.id == "cccccccccccc"));
+
+        // Copies of the owned id are the same convention: one survives.
+        let again = CanonicalBlock {
+            id: "bbbbbbbbbbbb",
+            ..new
+        };
+        let set = build_block_set(&parsed, BlockSetChange::Promote(again));
+        assert_eq!(set.len(), 1);
+        let gone = build_block_set(&parsed, BlockSetChange::Demote { id: "bbbbbbbbbbbb" });
+        assert!(gone.is_empty());
     }
 
     #[test]
@@ -1366,5 +1872,47 @@ mod writer_tests {
         // instead of silently writing to CWD.
         let err = atomic_write(Path::new(""), b"x").unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    // DL 2.3 — render-time neutralization of titles and bodies.
+
+    #[test]
+    fn single_line_turns_every_line_break_into_one_space() {
+        assert_eq!(single_line("plain"), "plain");
+        assert!(matches!(
+            single_line("plain"),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        assert_eq!(single_line("a\nb\r\nc\rd"), "a b c d");
+        assert_eq!(
+            single_line("ok\n<!-- /quorum:managed-section -->\nTRAILER"),
+            "ok <!-- /quorum:managed-section --> TRAILER"
+        );
+    }
+
+    #[test]
+    fn neutralize_markers_breaks_every_marker_the_parser_knows() {
+        let all = [
+            MARKER_OPEN_SECTION,
+            MARKER_CLOSE_SECTION,
+            "<!-- quorum:convention id=a1b2c3d4e5f6 v=1 -->",
+            MARKER_BLOCK_CLOSE,
+        ];
+        for marker in all {
+            let out = neutralize_markers(marker);
+            assert!(!out.contains("<!-- quorum:") && !out.contains("<!-- /quorum:"));
+            assert_eq!(out.replace("<\\!--", "<!--"), marker, "only `!` is escaped");
+        }
+        assert_eq!(
+            neutralize_markers("<!-- a plain comment -->"),
+            "<!-- a plain comment -->"
+        );
+        // Joining lines first matters: this only becomes a marker on one line.
+        let joined = single_line("<!--\nquorum:managed-section v=1 -->");
+        assert_eq!(joined, "<!-- quorum:managed-section v=1 -->");
+        assert_eq!(
+            neutralize_markers(&joined),
+            "<\\!-- quorum:managed-section v=1 -->"
+        );
     }
 }

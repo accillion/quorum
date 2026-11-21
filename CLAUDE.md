@@ -215,30 +215,33 @@ run it yet: every `release.yml` run so far was a pull-request plan.
 Count it as working only once the next tagged release's
 `custom-publish-crates` job has published all three crates.
 
-**DL Part 1 (bug fix, no spec gate) is in review** on
-`fix/dl-1-store-concurrency`. The dismissals store now opens, migrates
-and reports safely under concurrency, in five separately revertable
-commits. Rules are in `DATABASE.md` (new) and SERVICES.md §6/§6.1:
+**DL Part 1 (bug fix, no spec gate) is closed:** PR #5 merged into
+`main` (`ad428e1`). The dismissals store opens, migrates and reports
+safely under concurrency (`11128e6`..`856618c`, five separately
+revertable commits). The full suite no longer needs a `--skip`. Rules:
+`DATABASE.md` and SERVICES.md §6/§6.1.
 
-1. `11128e6`: the concurrent `record_seen` test fails instead of
-   hanging the suite. `busy_timeout` is set first; this is not
-   load-bearing, because rusqlite already sets it at open;
-2. `e405479`: concurrent first opens succeed. The WAL conversion is
-   retried, and the migration begins IMMEDIATE, because SQLite skips the
-   busy handler on a read→write upgrade;
-3. `07180ab`: `schema_version` is read as `MAX()`, and a table with
-   more than one row is refused;
-4. `14091c7`: the committed-DB warning fires (it tests index membership);
-5. `856618c`: `synchronous=FULL`, and a parent-directory fsync after the
-   rename.
+**DL Part 2 (bug fix, no spec gate) is in review** on
+`fix/dl-2-conventions-file`, off `main` `ad428e1`. Promote and demote
+no longer lose user text in `.quorum/conventions.md`. The work is five
+separately revertable commits; rules are in SERVICES.md §6/§6.1 and
+DATABASE.md:
 
-DL Part 2 (conventions.md never loses user text) has not started and
-waits for approval. Branch state: 435 pass, 1 ignored, on Linux, and
-434 on Windows. That count includes the formerly hanging test in the
-full run.
+1. `78fcbf1`: one block-set builder for CLI and TUI promote/demote;
+   blocks a write does not own are re-emitted verbatim;
+2. `d0fb207`: a broken structure refuses the write, with no bypass; the
+   section markers count only on a line of their own;
+3. `03ee273`: titles and bodies are neutralized at render (stored title
+   and identity hash untouched);
+4. `a83b730`: promote/demote hold the store's write lock from the file
+   read to the commit;
+5. `e32a0e9`: `quorum convention` finds `.quorum/` at the repo root,
+   not the cwd.
 
-Repo state on `main` (`f443ef5`): 425 tests pass, 1 ignored, on Linux
-(397 before SEC-1); clippy `-D warnings` + fmt `--check` clean;
+Branch state: 464 pass, 1 ignored, on Linux; 463 on Windows.
+
+Repo state on `main` (`ad428e1`): 435 tests pass, 1 ignored, on Linux,
+and 434 on Windows; clippy `-D warnings` + fmt `--check` clean;
 `../lippa` untouched. Stage 1 deferrals are in `BACKLOG.md`. Prior
 milestone detail: `HISTORY.md` v0.3.3 entry.
 

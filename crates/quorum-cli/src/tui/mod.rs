@@ -37,7 +37,8 @@ use std::sync::Mutex;
 
 use quorum_core::archive::SuppressionSummary;
 use quorum_core::conventions::{
-    atomic_write, parse_conventions_md, render_conventions_md, BlockToWrite, LineEnding,
+    atomic_write, build_block_set, parse_conventions_md, render_conventions_md, BlockSetChange,
+    CanonicalBlock, LineEnding,
 };
 use quorum_core::memory::{
     Dismissal, FindingIdentityHash, MemoryError, MemoryStore, PromoteOutcome, PromotionState,
@@ -246,8 +247,10 @@ fn db_path_label(_store: &dyn MemoryStore) -> String {
 /// orchestration directly using public `quorum_core::conventions`
 /// helpers rather than calling `commands::convention::promote`. This
 /// avoids stderr emission inside the alt-screen buffer; the CLI
-/// orchestrator's pre-flight diagnostics (AC 168) are skipped here as
-/// non-AC TUI surface (documented in the Stage 5 close report).
+/// orchestrator's pre-flight orphan warnings (AC 168) are skipped here as
+/// non-AC TUI surface (documented in the Stage 5 close report). A broken
+/// file structure is not skipped: it refuses the write, as in the CLI, and
+/// the refusal comes back as the error for the status bar.
 ///
 /// Returns the row's title on success (for status-bar feedback) or a
 /// short error message on failure.
@@ -257,6 +260,13 @@ fn tui_promote(
     hash: &FindingIdentityHash,
     body: &str,
 ) -> Result<String, String> {
+    // DL 2.4: the store's write lock, held from the state check through
+    // the rename to the commit, so a concurrent promote or demote (another
+    // process, or the CLI) waits instead of rendering from the same read.
+    let lock = store
+        .begin_convention_write()
+        .map_err(|e| format!("lock the dismissals store: {e}"))?;
+
     // 1. Resolve the row using the public short-hash API (the full
     //    64-hex always resolves as Exact or NotFound — the trait
     //    documents this contract).
@@ -273,45 +283,31 @@ fn tui_promote(
     let block_id: String = hex[..12].to_string();
     let title_for_block = &dismissal.title_snapshot;
 
-    // 2. Read + parse conventions.md (diagnostics silently dropped —
-    //    AC 168 stderr is a CLI surface, not a TUI surface).
+    // 2. Read + parse conventions.md. A broken structure refuses the
+    //    write before anything changes, as in the CLI.
     let conv_path = repo_root.join(".quorum").join("conventions.md");
     let existing_bytes = match std::fs::read(&conv_path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => return Err(format!("read {conv_path:?}: {e}")),
     };
+    quorum_core::conventions::check_writable(Path::new(CONVENTIONS_MD), &existing_bytes)
+        .map_err(|r| r.to_string())?;
     let le = LineEnding::detect(&existing_bytes);
     let (parsed, _diagnostics) = parse_conventions_md(&existing_bytes);
 
     // 3. Build the new block set (idempotent re-promote: replace if
-    //    block_id already present, else append).
-    let mut to_write: Vec<BlockToWrite<'_>> = Vec::with_capacity(parsed.blocks.len() + 1);
-    let mut replaced = false;
-    for pb in &parsed.blocks {
-        if pb.id == block_id {
-            to_write.push(BlockToWrite {
-                id: &block_id,
-                version: 1,
-                title: title_for_block,
-                body,
-            });
-            replaced = true;
-        } else if let Some(bt) = BlockToWrite::from_parsed_block(pb) {
-            to_write.push(bt);
-        }
-        // Non-canonical blocks: skip silently (CLI logs a warning to
-        // stderr but the TUI status bar can't carry per-block notes
-        // cleanly. Mirrors AC 168 simplification.)
-    }
-    if !replaced {
-        to_write.push(BlockToWrite {
+    //    block_id already present, else append). The same builder as the
+    //    CLI, so every other block is kept byte for byte.
+    let to_write = build_block_set(
+        &parsed,
+        BlockSetChange::Promote(CanonicalBlock {
             id: &block_id,
             version: 1,
             title: title_for_block,
             body,
-        });
-    }
+        }),
+    );
 
     // 4. Render + atomic_write (file-first per spec §3.2 T2).
     let new_bytes = render_conventions_md(&parsed, &to_write, le);
@@ -332,7 +328,7 @@ fn tui_promote(
         body
     };
     let ts_ms = current_unix_millis();
-    let outcome = store
+    let outcome = lock
         .commit_promote(hash, convention_text_for_db, &block_id, ts_ms)
         .map_err(|e| format!("commit_promote: {e}"))?;
     match outcome {
@@ -346,6 +342,10 @@ fn tui_promote(
     }
 }
 
+/// conventions.md as a refusal names it in the status bar: relative to the
+/// repo root, which is short and unambiguous inside a review session.
+const CONVENTIONS_MD: &str = ".quorum/conventions.md";
+
 /// Phase 1C Stage 5 — TUI-side T3 demote orchestrator (spec §3.2 T3,
 /// AC 159).
 fn tui_demote(
@@ -353,6 +353,10 @@ fn tui_demote(
     repo_root: &Path,
     hash: &FindingIdentityHash,
 ) -> Result<(), String> {
+    // DL 2.4: the store's write lock, as in `tui_promote`.
+    let lock = store
+        .begin_convention_write()
+        .map_err(|e| format!("lock the dismissals store: {e}"))?;
     let dismissal = resolve_full_hash(store, hash)?;
     if dismissal.promotion_state != PromotionState::PromotedConvention {
         return Err(format!(
@@ -371,14 +375,11 @@ fn tui_demote(
     // write, DB still advances).
     match std::fs::read(&conv_path) {
         Ok(existing_bytes) => {
+            quorum_core::conventions::check_writable(Path::new(CONVENTIONS_MD), &existing_bytes)
+                .map_err(|r| r.to_string())?;
             let le = LineEnding::detect(&existing_bytes);
             let (parsed, _diagnostics) = parse_conventions_md(&existing_bytes);
-            let to_write: Vec<BlockToWrite<'_>> = parsed
-                .blocks
-                .iter()
-                .filter(|pb| pb.id != block_id)
-                .filter_map(BlockToWrite::from_parsed_block)
-                .collect();
+            let to_write = build_block_set(&parsed, BlockSetChange::Demote { id: &block_id });
             let new_bytes = render_conventions_md(&parsed, &to_write, le);
             atomic_write(&conv_path, &new_bytes).map_err(|e| format!("atomic_write: {e}"))?;
         }
@@ -389,7 +390,7 @@ fn tui_demote(
     }
 
     let ts_ms = current_unix_millis();
-    let outcome = store
+    let outcome = lock
         .commit_demote(hash, ts_ms)
         .map_err(|e| format!("commit_demote: {e}"))?;
     match outcome {
@@ -647,6 +648,71 @@ mod tests {
     }
 
     #[test]
+    fn tui_concurrent_promotes_of_different_hashes_keep_both_blocks() {
+        // DL 2.4 — two promotes racing, as from two processes: each thread
+        // has its own store, so its own SQLite connection. Without
+        // serialization both read the same file, both write N+1 blocks,
+        // and the later rename deletes the other's block.
+        const TRIALS: usize = 20;
+        let mut failures = Vec::new();
+        for trial in 0..TRIALS {
+            let td = TempDir::new().unwrap();
+            let seeding = store_in(&td);
+            let a = seed(
+                &seeding,
+                &format!("first {trial}"),
+                PromotionState::LocalOnly,
+            );
+            let b = seed(
+                &seeding,
+                &format!("second {trial}"),
+                PromotionState::LocalOnly,
+            );
+            drop(seeding);
+            // Open both stores before the barrier, so no thread can fail
+            // before it and leave the other waiting forever.
+            let stores = [store_in(&td), store_in(&td)];
+            let barrier = std::sync::Barrier::new(2);
+            let results: Vec<Result<String, String>> = std::thread::scope(|s| {
+                let handles: Vec<_> = stores
+                    .into_iter()
+                    .zip([&a, &b])
+                    .map(|(store, h)| {
+                        let (root, barrier) = (td.path(), &barrier);
+                        s.spawn(move || {
+                            barrier.wait();
+                            tui_promote(&store, root, h, "body")
+                        })
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            });
+            for r in results {
+                if let Err(e) = r {
+                    failures.push(format!("trial {trial}: promote failed: {e}"));
+                }
+            }
+            let conv = std::fs::read_to_string(td.path().join(".quorum").join("conventions.md"))
+                .unwrap_or_default();
+            for h in [&a, &b] {
+                let short = &h.to_hex()[..12];
+                if !conv.contains(&format!("id={short}")) {
+                    failures.push(format!("trial {trial}: block {short} lost"));
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{} of {TRIALS} trials: {failures:#?}",
+            {
+                let mut t: Vec<_> = failures.iter().map(|f| f.split(':').next()).collect();
+                t.dedup();
+                t.len()
+            }
+        );
+    }
+
+    #[test]
     fn tui_demote_removes_block_and_flips_state() {
         // AC 159 — full T3 round-trip via the TUI orchestrator.
         // Setup: promote first (so conventions.md has the block), then
@@ -711,6 +777,69 @@ mod tests {
         assert!(err.contains("local_only"), "unexpected error: {err}");
     }
 
+    // DL 2.1 — the TUI keeps blocks it does not own byte for byte, the
+    // same as the CLI (`tests/convention_write.rs`).
+
+    /// No blank line under the header: a layout the writer never emits.
+    fn hand_edited_block(id: &str) -> String {
+        format!(
+            "<!-- quorum:convention id={id} v=1 -->\n\
+             ### Convention: hand-edited, no blank line\n\
+             Body text the user typed straight under the header.\n\
+             <!-- /quorum:convention -->"
+        )
+    }
+
+    fn managed_file(blocks: &[String]) -> String {
+        let mut s = String::from("Prose above.\n\n<!-- quorum:managed-section v=1 -->\n");
+        for b in blocks {
+            s.push('\n');
+            s.push_str(b);
+            s.push('\n');
+        }
+        s.push_str("<!-- /quorum:managed-section -->\n\nProse below.\n");
+        s
+    }
+
+    #[test]
+    fn tui_demote_keeps_non_canonical_block_byte_for_byte() {
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let kept = seed(&store, "hand-edited", PromotionState::PromotedConvention);
+        let gone = seed(&store, "demoted", PromotionState::PromotedConvention);
+        let kept_block = hand_edited_block(&kept.to_hex()[..12]);
+        let gone_id = &gone.to_hex()[..12];
+        let canonical = format!(
+            "<!-- quorum:convention id={gone_id} v=1 -->\n### Convention: demoted\n\n\
+             Goes away.\n<!-- /quorum:convention -->"
+        );
+        let conv = td.path().join(".quorum").join("conventions.md");
+        std::fs::write(&conv, managed_file(&[kept_block.clone(), canonical])).unwrap();
+
+        tui_demote(&store, td.path(), &gone).expect("demote succeeds");
+
+        let after = std::fs::read_to_string(&conv).unwrap();
+        assert!(after.contains(&kept_block), "block lost:\n{after}");
+        assert!(!after.contains(&format!("id={gone_id}")));
+    }
+
+    #[test]
+    fn tui_promote_keeps_non_canonical_block_byte_for_byte() {
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let kept = seed(&store, "hand-edited", PromotionState::PromotedConvention);
+        let new = seed(&store, "newly promoted", PromotionState::LocalOnly);
+        let kept_block = hand_edited_block(&kept.to_hex()[..12]);
+        let conv = td.path().join(".quorum").join("conventions.md");
+        std::fs::write(&conv, managed_file(std::slice::from_ref(&kept_block))).unwrap();
+
+        tui_promote(&store, td.path(), &new, "New body.").expect("promote succeeds");
+
+        let after = std::fs::read_to_string(&conv).unwrap();
+        assert!(after.contains(&kept_block), "block lost:\n{after}");
+        assert!(after.contains(&format!("id={}", &new.to_hex()[..12])));
+    }
+
     #[test]
     fn ac_161_panic_hook_chain_no_new_set_hook_in_stage_5_code() {
         // AC 161 — Phase 1B's panic-hook chain is the canonical install
@@ -745,5 +874,62 @@ mod tests {
         );
 
         std::panic::set_hook(original);
+    }
+
+    // DL 2.2 — the TUI refuses a broken structure the same way the CLI
+    // does, and returns the refusal for the status bar.
+
+    /// Line 4 holds a block marker whose id is not a hash.
+    const BAD_ID_FILE: &str = "intro\n<!-- quorum:managed-section v=1 -->\n\n\
+        <!-- quorum:convention id=NOT-A-HASH v=1 -->\n### Convention: t\n\nText.\n\
+        <!-- /quorum:convention -->\n<!-- /quorum:managed-section -->\n";
+
+    /// Line 3 opens a managed section that never closes.
+    const UNCLOSED_FILE: &str = "intro\n\n<!-- quorum:managed-section v=1 -->\n\nprose\n";
+
+    fn assert_tui_refusal(err: &str, line: usize) {
+        assert!(
+            err.contains("refusing to rewrite") && err.contains("conventions.md"),
+            "refusal must name the file: {err}"
+        );
+        assert!(err.contains(&format!("line {line}:")), "line {line}: {err}");
+    }
+
+    #[test]
+    fn tui_promote_refuses_a_malformed_block_and_reports_it() {
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(&store, "would be promoted", PromotionState::LocalOnly);
+        let conv = td.path().join(".quorum").join("conventions.md");
+        std::fs::write(&conv, BAD_ID_FILE).unwrap();
+
+        let err = tui_promote(&store, td.path(), &hash, "body").expect_err("must refuse");
+        assert_tui_refusal(&err, 4);
+        assert_eq!(std::fs::read_to_string(&conv).unwrap(), BAD_ID_FILE);
+        match store.find_by_short_hash(&hash.to_hex()).unwrap() {
+            ShortHashResolution::Exact(d) => {
+                assert_eq!(d.promotion_state, PromotionState::LocalOnly)
+            }
+            other => panic!("expected Exact, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tui_demote_refuses_an_unclosed_section_and_reports_it() {
+        let td = TempDir::new().unwrap();
+        let store = store_in(&td);
+        let hash = seed(&store, "stays promoted", PromotionState::PromotedConvention);
+        let conv = td.path().join(".quorum").join("conventions.md");
+        std::fs::write(&conv, UNCLOSED_FILE).unwrap();
+
+        let err = tui_demote(&store, td.path(), &hash).expect_err("must refuse");
+        assert_tui_refusal(&err, 3);
+        assert_eq!(std::fs::read_to_string(&conv).unwrap(), UNCLOSED_FILE);
+        match store.find_by_short_hash(&hash.to_hex()).unwrap() {
+            ShortHashResolution::Exact(d) => {
+                assert_eq!(d.promotion_state, PromotionState::PromotedConvention)
+            }
+            other => panic!("expected Exact, got {other:?}"),
+        }
     }
 }

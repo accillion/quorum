@@ -5,6 +5,38 @@ Group by next-target version. Most-recent first.
 
 ---
 
+## Surfaced by DL Part 2 (21 Nov 2026)
+
+- **`quorum link` writes `.quorum/config.toml` relative to the cwd.**
+  `main.rs` passes `current_dir()` as the repo root, so `quorum link`
+  run from a subdirectory writes `<subdir>/.quorum/config.toml`, which
+  `quorum review` (rooted at the workdir) never reads. This is the same
+  class as the `quorum convention` bug DL 2.5 fixed, but outside that
+  fix's scope.
+- **Prose inside the managed section, outside every block, is dropped.**
+  A rewrite regenerates the section's scaffolding from the blocks
+  alone, so text a user types between blocks, or between the open
+  marker and the first block, disappears on the next promote or demote,
+  with no diagnostic. The section is marked DO NOT EDIT, so this is
+  documented behaviour. It is still user text, though, and a parser
+  diagnostic, which the write refusal would pick up, would close it.
+- **CLI promote checks the row's state before taking the store lock.**
+  The lock cannot be held across `--from-editor`'s `$EDITOR`, so the
+  state is read before the editor opens. If a promote of the same hash
+  finishes in that window, this one still writes its block, replacing
+  the other's body, and then ends on StateDrifted: no block is lost, but
+  the file's body and `conventions.convention_text` disagree.
+  Re-reading the state under the lock would close it. No test can drive
+  the window without a new test seam, because a store open already
+  waits out the lock.
+- **A `--from-editor` body is discarded when the write is then refused.**
+  The editor runs before conventions.md is read, so a structural refusal
+  (DL 2.2) loses what the user typed. Checking the file once before the
+  editor opens would avoid it; the check under the lock stays
+  authoritative.
+
+---
+
 ## Surfaced by DL Part 1 (21 Nov 2026)
 
 - **Concurrent first opens duplicate the `.gitignore` line.**
@@ -14,13 +46,6 @@ Group by next-target version. Most-recent first.
   `.quorum/dismissals.sqlite*` line in 18 of 20 trials. Cosmetic, but
   it edits a file the user commits. One fix is to append while holding
   the migration's IMMEDIATE write lock.
-- **`quorum convention` resolves the store from the cwd, not the repo
-  root.** `resolve_quorum_root` returns `--quorum-dir` or the current
-  directory, while `quorum review` uses the repository workdir. Run from
-  a subdirectory, the convention commands open (and create) a second
-  store at `<subdir>/.quorum/`. The `.gitignore` and tracked-file checks
-  also use the literal path `.quorum/dismissals.sqlite` relative to the
-  workdir, which is not that stray store's path. Pre-existing.
 
 ---
 
@@ -71,9 +96,9 @@ Group by next-target version. Most-recent first.
 
 - **CI: explicit system-dependency declaration.** Both `release.yml` and `publish-crates.yml` currently rely on a manual `Install libdbus on Linux` apt step because cargo-dist 0.31 ignores `[dist.dependencies.apt]` in `dist-workspace.toml`. The duplication caused the v0.3.1 → v0.3.2 → v0.3.3 cascade (v0.3.1 added the manual step in only `release.yml`; v0.3.2 needed `allow-dirty = ["ci"]` to silence cargo-dist's self-check on that file; v0.3.3 added the same manual step to `publish-crates.yml` after `cargo publish --verify` re-compiled `libdbus-sys`). A future cargo-dist upgrade (or a `dependencies` config syntax change) should reduce this to a single declarative config entry. Until then, any new workflow file that runs `cargo build` / `cargo publish --verify` on Linux needs its own libdbus apt step. Tracking item — revisit at next cargo-dist bump.
 
-- **Shared file+SQL orchestrator helper** (Phase 1C Stage 5 — new). Refactor the file-write-then-`commit_promote/commit_demote` sequence into a `quorum-core::conventions` library helper. Currently duplicated ~50 LOC between `commands/convention.rs` (CLI orchestrator) and `tui/mod.rs::tui_promote/tui_demote` (TUI orchestrator). Library-code change so it was correctly deferred from Stage 5's TUI-only scope.
+- **Shared file+SQL orchestrator helper** (Phase 1C Stage 5; narrowed by DL Part 2). The block-set decision is shared since DL 2.1: all four promote/demote call sites use `conventions::build_block_set`, so there is one policy for blocks a write does not own. The rest of the sequence is still duplicated between `commands/convention.rs` (CLI orchestrator) and `tui/mod.rs::tui_promote/tui_demote` (TUI orchestrator): take the store lock, read, `check_writable`, parse, render, `atomic_write`, the AC 175 seam, commit through the guard. Moving it into a `quorum-core::conventions` helper is still open. It was deliberately left out of DL Part 2.
 
-- **TUI pre-flight diagnostics surface** (Phase 1C Stage 5 — new). Library helper `pre_flight_check() -> Vec<String>` callable from both the CLI orchestrator (currently emits to stderr via `format_diagnostic`) and the TUI orchestrator (currently silent). Closes the AC 168 gap on the TUI side. Render as transient status-bar messages on the TUI; suppress on `--hook-mode=*` consistent with Q14 lean.
+- **TUI pre-flight orphan warnings** (Phase 1C Stage 5; narrowed by DL Part 2). Structural diagnostics are no longer silent in the TUI: since DL 2.2 they refuse the write, and the refusal shows as the status-bar error. Still open: the orphan warnings from the AC 168 pre-flight (file block with no row, row with no block), which the CLI prints to stderr and the TUI drops. A library helper `pre_flight_check() -> Vec<String>` callable from both would close it; render them as transient status-bar messages on the TUI, and suppress them on `--hook-mode=*`, consistent with the Q14 lean.
 
 - **Q15 inside-vs-outside-fence detection** (Phase 1C Stage 4 — deferred). Stage 4 simplified to warn-on-any-pre-flight-discrepancy. If user feedback ever surfaces the distinction mattering, add body-text comparison against `conventions.convention_text` + `--yes` gating for inside-fence modifications, per the v1.1 spec §10 Q15 lean.
 
