@@ -646,6 +646,53 @@ fn forward_compat_rejects_future_schema_version() {
     }
 }
 
+/// A future binary that *appends* its version row instead of bumping the
+/// single row in place leaves `schema_version` holding {2, 3}. An
+/// unordered `SELECT version` reads 2 and the guard passes, and this v2
+/// binary goes on to write to a v3 database. The open must refuse,
+/// naming the file, and must leave the table as it found it.
+#[test]
+fn forward_compat_rejects_an_appended_future_version_row() {
+    let td = init_repo();
+    drop(LocalSqliteMemoryStore::new(td.path()).unwrap());
+    let db_path = td.path().join(".quorum").join("dismissals.sqlite");
+    {
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute(
+            "INSERT INTO schema_version (version, applied_at) VALUES (3, '2027-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+    }
+    let err = match LocalSqliteMemoryStore::new(td.path()) {
+        Ok(_) => panic!("a two-row schema_version {{2, 3}} must be refused, but the store opened"),
+        Err(e) => e,
+    };
+    let msg = err.to_string();
+    assert!(
+        msg.contains("dismissals.sqlite") && msg.contains("schema_version"),
+        "the refusal must name the file and the table: {msg}"
+    );
+    assert!(
+        matches!(err, MemoryError::SchemaVersionRows { rows: 2, .. }),
+        "expected SchemaVersionRows {{ rows: 2 }}, got {err:?}"
+    );
+
+    let conn = Connection::open(&db_path).unwrap();
+    let (rows, max): (i64, i64) = conn
+        .query_row(
+            "SELECT COUNT(*), MAX(version) FROM schema_version",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        (rows, max),
+        (2, 3),
+        "a refused open must not touch the table"
+    );
+}
+
 #[test]
 fn forward_compat_rejects_future_min_version_marker() {
     // AC 174 — second arm: schema_version is OK (==2) but
@@ -999,4 +1046,51 @@ fn load_transitions_for_unknown_hash_returns_empty() {
     let bogus = FindingIdentityHash([0u8; 32]);
     let rows = store.load_transitions(&bogus).unwrap();
     assert!(rows.is_empty());
+}
+
+/// The dismissals DB holds free-text notes. Once it is committed, and so
+/// pushable, opening the store must say so, and must say that a
+/// `.gitignore` entry does not undo it. Before the fix the warning never
+/// fired for a committed file: its git status is `CURRENT`, the empty bit
+/// set, and the check tested status flags.
+#[test]
+fn committed_dismissals_db_warns_on_open() {
+    let td = init_repo();
+    drop(LocalSqliteMemoryStore::new(td.path()).unwrap());
+    {
+        let repo = git2::Repository::open(td.path()).unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(std::path::Path::new(".quorum/dismissals.sqlite"))
+            .unwrap();
+        index.write().unwrap();
+        let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+        let sig = git2::Signature::now("test", "test@example.invalid").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "commit the db", &tree, &[])
+            .unwrap();
+    }
+
+    let out = assert_cmd::Command::cargo_bin("quorum")
+        .unwrap()
+        .args([
+            "convention",
+            "--quorum-dir",
+            td.path().to_str().unwrap(),
+            "list",
+        ])
+        .assert()
+        .success();
+    let stderr = String::from_utf8(out.get_output().stderr.clone()).unwrap();
+    assert!(
+        stderr.contains(".quorum/dismissals.sqlite is tracked by git"),
+        "opening a committed DB must warn; stderr was:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("does not untrack"),
+        "the warning must say .gitignore does not untrack the file; stderr was:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("git rm --cached .quorum/dismissals.sqlite"),
+        "the warning must give the untrack command; stderr was:\n{stderr}"
+    );
 }

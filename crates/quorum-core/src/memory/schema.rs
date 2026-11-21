@@ -10,11 +10,13 @@
 //! once version=2). `schema_version` holds exactly one row whose `version`
 //! field is bumped in place rather than appending a new row — this matches
 //! Phase 1B's invariant (`reopen_is_idempotent` asserts `COUNT(*) = 1`).
+//! The table's DDL cannot express that invariant, so [`read_schema_version`]
+//! enforces it on every open and refuses a table with more than one row.
 //!
 //! No backfill of `state_transitions` for pre-v2 dismissals (spec §4.1
 //! last paragraph). Phase 1B rows have no audit trail and stay that way.
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 
 use super::MemoryError;
 
@@ -122,21 +124,30 @@ const SQL_CREATE_SCHEMA_META: &str = "
 ///
 /// The whole migration runs in one transaction so a failure leaves the DB
 /// in its pre-migration state.
+///
+/// That transaction begins IMMEDIATE, and the version probe runs inside
+/// it, because two processes can open a fresh store at once (a pre-push
+/// hook and a manual review in a new clone). With the probe outside a
+/// DEFERRED transaction, both saw no version row, both migrated, and the
+/// loser failed on `schema_version`'s primary key. A DEFERRED transaction
+/// also starts as a read here (the `IF NOT EXISTS` DDL only reads when
+/// the tables exist), and SQLite returns `SQLITE_BUSY` for the later
+/// upgrade to a write without consulting the busy handler. IMMEDIATE
+/// takes the write lock at `BEGIN`, where the busy handler does apply, so
+/// a concurrent opener waits its turn and then finds the work done.
 pub fn migrate(conn: &mut Connection) -> Result<(), MemoryError> {
-    // The `schema_version` table itself is created outside the migration
-    // transaction so we can probe the current version. This is consistent
-    // with the Phase 1B pattern.
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| MemoryError::Migration(format!("begin migration tx: {e}")))?;
+    // From here on `conn` is the transaction: the table creation and the
+    // version probe below both run under its write lock.
+    let conn: &Connection = &tx;
     conn.execute(SQL_CREATE_SCHEMA_VERSION, [])
         .map_err(|e| MemoryError::Migration(format!("schema_version DDL: {e}")))?;
 
-    let current: Option<i64> = conn
-        .query_row("SELECT version FROM schema_version", [], |r| r.get(0))
-        .optional()
-        .map_err(|e| MemoryError::Migration(format!("schema_version probe: {e}")))?;
-
-    let tx = conn
-        .transaction()
-        .map_err(|e| MemoryError::Migration(format!("begin migration tx: {e}")))?;
+    // A refusal here drops `tx`, which rolls back: nothing is written to
+    // a store whose version cannot be trusted.
+    let current = read_schema_version(conn)?;
 
     let now_rfc3339 = time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
@@ -145,11 +156,14 @@ pub fn migrate(conn: &mut Connection) -> Result<(), MemoryError> {
     match current {
         None => {
             // Fresh install: apply v1 DDL + v2 DDL, then INSERT the
-            // version row at CURRENT_VERSION directly.
+            // version row at CURRENT_VERSION directly. The probe ran
+            // under the write lock, so no other opener can have written
+            // the row since; OR IGNORE keeps the insert harmless if one
+            // somehow did.
             apply_v1_ddl(&tx)?;
             apply_v2_ddl(&tx)?;
             tx.execute(
-                "INSERT INTO schema_version (version, applied_at) VALUES (?1, ?2)",
+                "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?1, ?2)",
                 rusqlite::params![CURRENT_VERSION, now_rfc3339],
             )
             .map_err(|e| MemoryError::Migration(format!("schema_version insert: {e}")))?;
@@ -191,6 +205,32 @@ pub fn migrate(conn: &mut Connection) -> Result<(), MemoryError> {
     tx.commit()
         .map_err(|e| MemoryError::Migration(format!("commit migration tx: {e}")))?;
     Ok(())
+}
+
+/// The store's schema version: `MAX(schema_version.version)`, or `None`
+/// when the table has no rows.
+///
+/// Nothing in the schema enforces the single-row invariant the module
+/// doc describes, so this enforces it on read: more than one row is
+/// refused with [`MemoryError::SchemaVersionRows`], naming the file.
+/// `MAX()` keeps the read independent of row order regardless. Both the
+/// migration dispatch and the forward-compat check read through here.
+pub(crate) fn read_schema_version(conn: &Connection) -> Result<Option<i64>, MemoryError> {
+    let (rows, max): (i64, Option<i64>) = conn
+        .query_row(
+            "SELECT COUNT(*), MAX(version) FROM schema_version",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|e| MemoryError::Migration(format!("schema_version probe: {e}")))?;
+    if rows > 1 {
+        let path = match conn.path() {
+            Some(p) if !p.is_empty() => p.to_string(),
+            _ => ":memory:".to_string(),
+        };
+        return Err(MemoryError::SchemaVersionRows { path, rows });
+    }
+    Ok(max)
 }
 
 fn apply_v1_ddl(tx: &rusqlite::Transaction<'_>) -> Result<(), MemoryError> {
@@ -328,6 +368,29 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM dismissals", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count2, 1);
+    }
+
+    #[test]
+    fn migrate_refuses_a_multi_row_schema_version_and_writes_nothing() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        conn.execute(
+            "INSERT INTO schema_version (version, applied_at) VALUES (3, '2027-01-01T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+        conn.execute("DELETE FROM schema_meta", []).unwrap();
+
+        match migrate(&mut conn) {
+            Err(MemoryError::SchemaVersionRows { rows, .. }) => assert_eq!(rows, 2),
+            other => panic!("expected SchemaVersionRows, got {other:?}"),
+        }
+        // The idempotent branch would have restored the marker; a refusal
+        // must not.
+        let meta_rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM schema_meta", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(meta_rows, 0, "a refused migration must write nothing");
     }
 
     #[test]

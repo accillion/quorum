@@ -263,6 +263,17 @@ pub enum MemoryError {
         schema_version: i64,
         forward_compat_min: i64,
     },
+    /// `schema_version` must hold exactly one row, bumped in place by each
+    /// migration. More than one row means something other than this
+    /// binary's migration runner wrote to it, such as a newer binary that
+    /// appends instead of updating, or a hand edit. No version read from
+    /// it can be trusted, so the store refuses to read or write.
+    #[error(
+        "{path}: schema_version holds {rows} rows where exactly one is expected; \
+         refusing to read or write this store. A newer Quorum may have written it: \
+         upgrade your binary, or inspect the table with the sqlite3 shell"
+    )]
+    SchemaVersionRows { path: String, rows: i64 },
 }
 
 /// The dismissals store contract. Phase 1B has one implementor

@@ -5,6 +5,25 @@ Group by next-target version. Most-recent first.
 
 ---
 
+## Surfaced by DL Part 1 (21 Nov 2026)
+
+- **Concurrent first opens duplicate the `.gitignore` line.**
+  `gitignore::ensure_ignored` checks ignore status, then appends, and
+  nothing serialises the two across processes. Four threads doing a
+  first open of one fresh repo left more than one
+  `.quorum/dismissals.sqlite*` line in 18 of 20 trials. Cosmetic, but
+  it edits a file the user commits. One fix is to append while holding
+  the migration's IMMEDIATE write lock.
+- **`quorum convention` resolves the store from the cwd, not the repo
+  root.** `resolve_quorum_root` returns `--quorum-dir` or the current
+  directory, while `quorum review` uses the repository workdir. Run from
+  a subdirectory, the convention commands open (and create) a second
+  store at `<subdir>/.quorum/`. The `.gitignore` and tracked-file checks
+  also use the literal path `.quorum/dismissals.sqlite` relative to the
+  workdir, which is not that stray store's path. Pre-existing.
+
+---
+
 ## Surfaced by SEC-1 (20 Nov 2026)
 
 - **Deny-list pattern coverage gaps.** Found alongside the three SEC-1
@@ -60,7 +79,7 @@ Group by next-target version. Most-recent first.
 
 - **Auto-promote stderr end-to-end integration test** (Phase 1C Stage 1 — deferred). The `quorum: dismissal <short-hash> auto-promoted ...` message + `--hook-mode=*` suppression has constituent-part test coverage (TransitionEvent shape via AC-135 test; formatter exercised at call site) but no dedicated end-to-end integration test running `quorum review` against a synthetic Lippa fixture. Stage 3's stderr work covered parser diagnostics on `list --orphans`, not this surface; the gap persists.
 
-- **`review.rs` MemoryStore double-open consolidation** (Phase 1C Stage 2 — deferred). Bundle assembly and the dismissals-filter site each open the SQLite store independently per `quorum review` invocation. Consolidate into one handle threaded through the pipeline. Stage 4 design-judgment, not Phase 1C blocker.
+- **`review.rs` MemoryStore double-open consolidation** (Phase 1C Stage 2 — deferred). Bundle assembly and the dismissals-filter site each open the SQLite store independently per `quorum review` invocation. Consolidate into one handle threaded through the pipeline. Stage 4 design-judgment, not Phase 1C blocker. Since DL Part 1 the tracked-DB warning actually fires, once per open, so a review in a repo with the DB committed prints it twice.
 
 - **Transition-log in-memory cache for TUI body pane** (Phase 1C Stage 5 — perf optimization). `Command::LoadTransitions` fires per `j`/`k`/`g`/`G` cursor move in the dismissal-history view. Each query is an indexed `state_transitions` read by hash — fine for typical histories, but a small per-hash cache keyed in the TUI app state would avoid repeated reads when scrolling. Add only if perf data demands it.
 

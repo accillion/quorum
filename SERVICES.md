@@ -335,12 +335,19 @@ String::new()` fixtures cannot exercise this path.
 
 - **Location:** `<repo_root>/.quorum/dismissals.sqlite`. Auto-created
   on first `quorum review`; auto-gitignored via `.gitignore` write
-  on first open. Stderr warning if the DB is currently tracked by
-  git (its free-text `note` column must not be shared).
-- **Pragmas applied at open:** `journal_mode=WAL` with fallback to
+  on first open. Stderr warning if any store file (`.sqlite`, `-wal`,
+  `-shm`) is tracked by git, since its free-text `note` column must
+  not be shared. Tracking is tested by index membership, never by
+  status flags: a committed, unmodified file has the empty status set.
+  The warning says a `.gitignore` entry does not untrack the file and
+  gives the `git rm --cached` command for the tracked files. When a
+  store file is tracked, the `wrote .gitignore` note says it is not the fix.
+- **Pragmas applied at open:** `busy_timeout=5000` first (see
+  DATABASE.md "Concurrency and migration"); `journal_mode=WAL` with fallback to
   `journal_mode=DELETE` + stderr warning on filesystems without
-  shared-memory support (NFS / SMB / sandboxed); `synchronous=NORMAL`;
-  `foreign_keys=ON`; `busy_timeout=5000`.
+  shared-memory support (NFS / SMB / sandboxed); `synchronous=FULL`,
+  so a commit survives power loss (DATABASE.md "Durability");
+  `foreign_keys=ON`.
 - **Schema v1:** `schema_version` + `dismissals` tables. CHECK
   constraints enforce `recurrence_count >= 1`, `reason IN
   {false_positive, intentional, out_of_scope, wont_fix, other}`,
@@ -390,11 +397,11 @@ String::new()` fixtures cannot exercise this path.
 **Crate:** `quorum-core::memory` + `quorum-core::conventions`. Extends §6 without breaking the Phase 1B `MemoryStore` contract.
 
 - **Schema v2.** Three new tables: `state_transitions` (append-only audit log of T1/T2/T3 transitions, FK to `dismissals` with `ON DELETE CASCADE`); `conventions` (one row per `promoted_convention` state, FK to `dismissals`); `schema_meta` (key/value, holds `forward_compat_min_version`). `finding_identity_hash` columns in both new tables are TEXT (matching Phase 1B v1's hex-encoded `dismissals.finding_identity_hash` for FK affinity). No backfill of `state_transitions` for pre-v2 dismissal rows.
-- **Forward-compat gate at every DB open.** Binary checks `schema_version` against installed max (currently 2) and `schema_meta.forward_compat_min_version` against installed max. Either exceeds → exit 2 with upgrade message before any read or write. v0.2 binaries opening a v3+ DB hit this gate cleanly.
+- **Forward-compat gate at every DB open.** Binary checks `schema_version` against installed max (currently 2) and `schema_meta.forward_compat_min_version` against installed max. Either exceeds → exit 2 with upgrade message before any read or write. v0.2 binaries opening a v3+ DB hit this gate cleanly. `schema_version` is read as `MAX(version)`, and a table holding more than one row is refused outright (`MemoryError::SchemaVersionRows`, naming the file) before the migration writes anything; DATABASE.md "Concurrency and migration".
 - **State machine: T1 / T2 / T3 / T4 / T5.** T1 (`candidate → local_only`, `auto_recurrence`) fires inside `record_seen()` during the post-Lippa dismissal-suppression filter pass — Phase 1B's existing call site, no relocation. T2 (`local_only → promoted_convention`, `explicit_promote`) and T3 (`promoted_convention → local_only`, `explicit_demote`) fire from `convention promote`/`demote`. T4 (candidate deletion via `convention prune`) and T5 (existing Phase 1B undismiss path) are audit-trail-silent: ON DELETE CASCADE evaporates would-be audit rows; `'deleted'` and `'explicit_undismiss'` are NOT in the `state_transitions` CHECK enum.
 - **T1 concurrency: `rows_affected > 0` is primary.** `UPDATE dismissals SET promotion_state='local_only' WHERE ... AND promotion_state='candidate'` is the contention surface; the application code reads `rows_affected` to decide whether to insert the audit row. A no-op UPDATE produces no audit row. The `UNIQUE (finding_identity_hash, from_state, to_state, ts)` on `state_transitions` is secondary defense for the same-millisecond corner case.
 - **`TransitionEvent` returned-value channel.** `record_seen` returns `Vec<TransitionEvent>` (owned, `Clone`); callers consume the vec to emit user-visible notes (e.g. CLI's `quorum review` stderr `quorum: dismissal <short-hash> auto-promoted to local convention (recurrence=N)`). No callback into `quorum-cli` from `quorum-core` — preserves the C3 boundary lock.
-- **File-then-SQLite atomicity (T2 / T3).** The promote/demote path is: (1) parse current conventions.md; (2) compute new block set; (3) write new content to `.quorum/conventions.md.tmp.<pid>.<nanos>`; (4) `fs::rename` temp → real (atomic on same volume on both Unix and Windows); (5) BEGIN SQLite transaction; (6) UPDATE state + INSERT/DELETE `conventions` row + INSERT state_transition; (7) COMMIT. Crash between (4) and (7) leaves the file ahead of SQLite. Recovery is idempotent re-promote: the WHERE clause on the state UPDATE filters by current state, and the writer's add-block helper detects "block already present for this hash" and upserts (no duplicate blocks emitted). `list --orphans` surfaces the pre-recovery drift if the user wants to inspect first.
+- **File-then-SQLite atomicity (T2 / T3).** The promote/demote path is: (1) parse current conventions.md; (2) compute new block set; (3) write new content to `.quorum/conventions.md.tmp.<pid>.<nanos>`; (4) `fs::rename` temp → real (atomic on same volume on both Unix and Windows; made durable on Unix by a parent-directory fsync, see DATABASE.md "Durability"); (5) BEGIN SQLite transaction; (6) UPDATE state + INSERT/DELETE `conventions` row + INSERT state_transition; (7) COMMIT. Crash between (4) and (7) leaves the file ahead of SQLite. Recovery is idempotent re-promote: the WHERE clause on the state UPDATE filters by current state, and the writer's add-block helper detects "block already present for this hash" and upserts (no duplicate blocks emitted). `list --orphans` surfaces the pre-recovery drift if the user wants to inspect first.
 - **Writer round-trip property.** `quorum-core::conventions::render_conventions_md` consumes `ParsedConventionsMd` (preserving `above_fence` + `below_fence` byte slices) + a new `BlockToWrite` set, producing output bytes byte-equal to input on well-formed unchanged files. Line endings (LF / CRLF) detected from input bytes and preserved on output. First-line marker `<!-- quorum-managed-conventions-md v=1 -->` written only on freshly-created files (no marker emitted into existing files lacking it).
 - **§6.2 promote-but-uncommitted bridge.** A `promoted_convention` row whose `.quorum/conventions.md` is uncommitted / dirty / missing renders inside the 20 KB memory section as a local-convention entry, NOT in the 10 KB conventions section. The fork is per-row at render time; SQLite state is unchanged. The committed-and-clean check is called once per bundle assembly (not per row) and reuses the existing Phase 1A `ConventionsState` value already loaded by `quorum review`. Zero new libgit2 calls.
 - **TUI write path** (Stage 5) calls `MemoryStore::commit_promote` / `commit_demote` directly with a thin `tui_promote` / `tui_demote` orchestrator that performs the same file-first-then-SQLite ordering. Pre-flight diagnostics (AC 168) are not emitted from the TUI side (stderr doesn't render cleanly in the alt-screen surface); deferred to a future `pre_flight_check()` helper.

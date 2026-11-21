@@ -215,6 +215,28 @@ run it yet: every `release.yml` run so far was a pull-request plan.
 Count it as working only once the next tagged release's
 `custom-publish-crates` job has published all three crates.
 
+**DL Part 1 (bug fix, no spec gate) is in review** on
+`fix/dl-1-store-concurrency`. The dismissals store now opens, migrates
+and reports safely under concurrency, in five separately revertable
+commits. Rules are in `DATABASE.md` (new) and SERVICES.md §6/§6.1:
+
+1. `11128e6`: the concurrent `record_seen` test fails instead of
+   hanging the suite. `busy_timeout` is set first; this is not
+   load-bearing, because rusqlite already sets it at open;
+2. `e405479`: concurrent first opens succeed. The WAL conversion is
+   retried, and the migration begins IMMEDIATE, because SQLite skips the
+   busy handler on a read→write upgrade;
+3. `07180ab`: `schema_version` is read as `MAX()`, and a table with
+   more than one row is refused;
+4. `14091c7`: the committed-DB warning fires (it tests index membership);
+5. `856618c`: `synchronous=FULL`, and a parent-directory fsync after the
+   rename.
+
+DL Part 2 (conventions.md never loses user text) has not started and
+waits for approval. Branch state: 435 pass, 1 ignored, on Linux, and
+434 on Windows. That count includes the formerly hanging test in the
+full run.
+
 Repo state on `main` (`f443ef5`): 425 tests pass, 1 ignored, on Linux
 (397 before SEC-1); clippy `-D warnings` + fmt `--check` clean;
 `../lippa` untouched. Stage 1 deferrals are in `BACKLOG.md`. Prior
