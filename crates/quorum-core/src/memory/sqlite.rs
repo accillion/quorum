@@ -14,9 +14,10 @@ use super::gitignore;
 use super::identity::FindingIdentityHash;
 use super::schema;
 use super::{
-    truncate_at_codepoint_boundary, validate_note, DemoteOutcome, Dismissal, DismissalId,
-    DismissalReason, MemoryError, MemoryStore, PromoteOutcome, PromotionState, ShortHashResolution,
-    StateTransitionRow, TransitionEvent, TransitionTrigger, BODY_SNAPSHOT_MAX_BYTES,
+    truncate_at_codepoint_boundary, validate_note, ConventionWrite, DemoteOutcome, Dismissal,
+    DismissalId, DismissalReason, MemoryError, MemoryStore, PromoteOutcome, PromotionState,
+    ShortHashResolution, StateTransitionRow, TransitionEvent, TransitionTrigger,
+    BODY_SNAPSHOT_MAX_BYTES,
 };
 use crate::review::Finding;
 
@@ -696,52 +697,12 @@ impl MemoryStore for LocalSqliteMemoryStore {
         conventions_md_block_id: &str,
         ts_ms: i64,
     ) -> Result<PromoteOutcome, MemoryError> {
-        let hex = hash.to_hex();
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn
-            .transaction()
-            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-
-        let rows_affected = tx
-            .execute(
-                "UPDATE dismissals
-                 SET promotion_state = 'promoted_convention'
-                 WHERE finding_identity_hash = ?1
-                   AND promotion_state = 'local_only'",
-                [&hex],
-            )
-            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-        if rows_affected == 0 {
-            // Concurrent writer beat us OR state has drifted. ROLLBACK and
-            // surface to caller — the file is ahead of SQLite; orphan
-            // detection will reconcile on next run.
-            // Dropping `tx` without commit() rolls back automatically; we
-            // explicitly invoke rollback() for clarity.
-            tx.rollback()
-                .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-            return Ok(PromoteOutcome::StateDrifted);
-        }
-
-        tx.execute(
-            "INSERT INTO conventions
-                (finding_identity_hash, convention_text, promoted_at, conventions_md_block_id)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![hex, convention_text, ts_ms, conventions_md_block_id],
+        self.begin_convention_write()?.commit_promote(
+            hash,
+            convention_text,
+            conventions_md_block_id,
+            ts_ms,
         )
-        .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-
-        tx.execute(
-            "INSERT INTO state_transitions
-                (finding_identity_hash, from_state, to_state, trigger, ts,
-                 by_review_session_id, recurrence_at_transition)
-             VALUES (?1, 'local_only', 'promoted_convention', 'explicit_promote',
-                     ?2, NULL, NULL)",
-            params![hex, ts_ms],
-        )
-        .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-
-        tx.commit().map_err(|e| MemoryError::Backend(Box::new(e)))?;
-        Ok(PromoteOutcome::Committed)
     }
 
     fn commit_demote(
@@ -749,45 +710,21 @@ impl MemoryStore for LocalSqliteMemoryStore {
         hash: &FindingIdentityHash,
         ts_ms: i64,
     ) -> Result<DemoteOutcome, MemoryError> {
-        let hex = hash.to_hex();
-        let mut conn = self.conn.lock().unwrap();
-        let tx = conn
-            .transaction()
+        self.begin_convention_write()?.commit_demote(hash, ts_ms)
+    }
+
+    fn begin_convention_write(&self) -> Result<Box<dyn ConventionWrite + '_>, MemoryError> {
+        // IMMEDIATE takes the write lock up front, so waiting for another
+        // writer goes through the busy handler. A transaction that began
+        // with a read and then wrote would get SQLITE_BUSY at once
+        // (DATABASE.md "Concurrency and migration").
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch("BEGIN IMMEDIATE")
             .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-
-        let rows_affected = tx
-            .execute(
-                "UPDATE dismissals
-                 SET promotion_state = 'local_only'
-                 WHERE finding_identity_hash = ?1
-                   AND promotion_state = 'promoted_convention'",
-                [&hex],
-            )
-            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-        if rows_affected == 0 {
-            tx.rollback()
-                .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-            return Ok(DemoteOutcome::StateDrifted);
-        }
-
-        tx.execute(
-            "DELETE FROM conventions WHERE finding_identity_hash = ?1",
-            [&hex],
-        )
-        .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-
-        tx.execute(
-            "INSERT INTO state_transitions
-                (finding_identity_hash, from_state, to_state, trigger, ts,
-                 by_review_session_id, recurrence_at_transition)
-             VALUES (?1, 'promoted_convention', 'local_only', 'explicit_demote',
-                     ?2, NULL, NULL)",
-            params![hex, ts_ms],
-        )
-        .map_err(|e| MemoryError::Backend(Box::new(e)))?;
-
-        tx.commit().map_err(|e| MemoryError::Backend(Box::new(e)))?;
-        Ok(DemoteOutcome::Committed)
+        Ok(Box::new(SqliteConventionWrite {
+            store: self,
+            open: true,
+        }))
     }
 
     fn prune_candidates(&self, older_than: time::OffsetDateTime) -> Result<u64, MemoryError> {
@@ -833,6 +770,136 @@ impl MemoryStore for LocalSqliteMemoryStore {
             out.push(r.map_err(|e| MemoryError::Backend(Box::new(e)))?);
         }
         Ok(out)
+    }
+}
+
+/// [`MemoryStore::begin_convention_write`]'s guard: the connection is inside
+/// a `BEGIN IMMEDIATE` transaction while `open` is set. The store's mutex
+/// is not held between calls, so the caller's other store calls (reads
+/// before the commit) run inside the transaction.
+struct SqliteConventionWrite<'a> {
+    store: &'a LocalSqliteMemoryStore,
+    open: bool,
+}
+
+impl SqliteConventionWrite<'_> {
+    /// Run `statements` inside the held transaction. COMMIT when they ask
+    /// for it; otherwise, and on any error, `Drop` rolls back.
+    fn finish<T>(
+        mut self,
+        statements: impl FnOnce(&Connection) -> Result<(T, bool), MemoryError>,
+    ) -> Result<T, MemoryError> {
+        let store = self.store;
+        let conn = store.conn.lock().unwrap();
+        let (outcome, commit) = statements(&conn)?;
+        if commit {
+            conn.execute_batch("COMMIT")
+                .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+            self.open = false;
+        }
+        Ok(outcome)
+    }
+}
+
+impl ConventionWrite for SqliteConventionWrite<'_> {
+    fn commit_promote(
+        self: Box<Self>,
+        hash: &FindingIdentityHash,
+        convention_text: &str,
+        conventions_md_block_id: &str,
+        ts_ms: i64,
+    ) -> Result<PromoteOutcome, MemoryError> {
+        let hex = hash.to_hex();
+        (*self).finish(|conn| {
+            let rows_affected = conn
+                .execute(
+                    "UPDATE dismissals
+                     SET promotion_state = 'promoted_convention'
+                     WHERE finding_identity_hash = ?1
+                       AND promotion_state = 'local_only'",
+                    [&hex],
+                )
+                .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+            if rows_affected == 0 {
+                // Concurrent writer beat us OR state has drifted. Roll back
+                // and surface to caller — the file is ahead of SQLite;
+                // orphan detection will reconcile on next run.
+                return Ok((PromoteOutcome::StateDrifted, false));
+            }
+
+            conn.execute(
+                "INSERT INTO conventions
+                    (finding_identity_hash, convention_text, promoted_at, conventions_md_block_id)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![hex, convention_text, ts_ms, conventions_md_block_id],
+            )
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+            conn.execute(
+                "INSERT INTO state_transitions
+                    (finding_identity_hash, from_state, to_state, trigger, ts,
+                     by_review_session_id, recurrence_at_transition)
+                 VALUES (?1, 'local_only', 'promoted_convention', 'explicit_promote',
+                         ?2, NULL, NULL)",
+                params![hex, ts_ms],
+            )
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+            Ok((PromoteOutcome::Committed, true))
+        })
+    }
+
+    fn commit_demote(
+        self: Box<Self>,
+        hash: &FindingIdentityHash,
+        ts_ms: i64,
+    ) -> Result<DemoteOutcome, MemoryError> {
+        let hex = hash.to_hex();
+        (*self).finish(|conn| {
+            let rows_affected = conn
+                .execute(
+                    "UPDATE dismissals
+                     SET promotion_state = 'local_only'
+                     WHERE finding_identity_hash = ?1
+                       AND promotion_state = 'promoted_convention'",
+                    [&hex],
+                )
+                .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+            if rows_affected == 0 {
+                return Ok((DemoteOutcome::StateDrifted, false));
+            }
+
+            conn.execute(
+                "DELETE FROM conventions WHERE finding_identity_hash = ?1",
+                [&hex],
+            )
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+
+            conn.execute(
+                "INSERT INTO state_transitions
+                    (finding_identity_hash, from_state, to_state, trigger, ts,
+                     by_review_session_id, recurrence_at_transition)
+                 VALUES (?1, 'promoted_convention', 'local_only', 'explicit_demote',
+                         ?2, NULL, NULL)",
+                params![hex, ts_ms],
+            )
+            .map_err(|e| MemoryError::Backend(Box::new(e)))?;
+            Ok((DemoteOutcome::Committed, true))
+        })
+    }
+}
+
+impl Drop for SqliteConventionWrite<'_> {
+    fn drop(&mut self) {
+        if self.open {
+            // Reached on a refusal, an error, StateDrifted, or a panic
+            // unwinding through the caller (AC 175's crash seam).
+            let conn = self
+                .store
+                .conn
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let _ = conn.execute_batch("ROLLBACK");
+        }
     }
 }
 
@@ -1201,6 +1268,88 @@ mod tests {
             result.is_ok(),
             "open must wait out a concurrent writer: {}",
             result.unwrap_err()
+        );
+    }
+
+    #[test]
+    fn convention_write_lock_makes_another_store_wait() {
+        // DL 2.4 — two stores on one file stand in for two processes. While
+        // one holds the convention-write lock, the other's
+        // begin_convention_write waits; dropping the guard releases it.
+        let (td, holder) = setup();
+        let waiter = LocalSqliteMemoryStore::new(td.path()).unwrap();
+        let guard = holder.begin_convention_write().unwrap();
+        std::thread::scope(|s| {
+            let acquirer = s.spawn(|| {
+                let result = waiter.begin_convention_write().map(drop);
+                (result, std::time::Instant::now())
+            });
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            let released_at = std::time::Instant::now();
+            drop(guard);
+            let (result, acquired_at) = acquirer.join().unwrap();
+            result.expect("the waiter gets the lock once it is released");
+            assert!(
+                acquired_at >= released_at,
+                "the waiter got the lock while the other store held it"
+            );
+        });
+    }
+
+    #[test]
+    fn convention_write_guard_commits_or_rolls_back() {
+        let (_td, store) = setup();
+        let f = sample_finding("guarded");
+        store
+            .dismiss(
+                &f,
+                "sha",
+                "main",
+                DismissalReason::FalsePositive,
+                None,
+                None,
+            )
+            .unwrap();
+        let h = crate::memory::finding_identity_hash(&f);
+        let block_id = h.to_hex()[..12].to_string();
+        let state = || match store.find_by_short_hash(&h.to_hex()).unwrap() {
+            ShortHashResolution::Exact(d) => d.promotion_state,
+            other => panic!("{other:?}"),
+        };
+        let set_local_only = || {
+            store
+                .conn
+                .lock()
+                .unwrap()
+                .execute(
+                    "UPDATE dismissals SET promotion_state = 'local_only'                      WHERE finding_identity_hash = ?1",
+                    [h.to_hex()],
+                )
+                .unwrap()
+        };
+
+        // A write made while the guard is held is part of its transaction:
+        // dropping the guard without a commit rolls it back.
+        let guard = store.begin_convention_write().unwrap();
+        set_local_only();
+        drop(guard);
+        assert_eq!(state(), PromotionState::Candidate);
+
+        set_local_only();
+        let promote = || {
+            store
+                .begin_convention_write()
+                .unwrap()
+                .commit_promote(&h, "text", &block_id, 1)
+                .unwrap()
+        };
+        assert_eq!(promote(), PromoteOutcome::Committed);
+        assert_eq!(state(), PromotionState::PromotedConvention);
+        // Promoted already: StateDrifted, rolled back, lock released.
+        assert_eq!(promote(), PromoteOutcome::StateDrifted);
+        assert!(
+            store.conn.lock().unwrap().is_autocommit(),
+            "no open transaction"
         );
     }
 }

@@ -260,6 +260,13 @@ fn tui_promote(
     hash: &FindingIdentityHash,
     body: &str,
 ) -> Result<String, String> {
+    // DL 2.4: the store's write lock, held from the state check through
+    // the rename to the commit, so a concurrent promote or demote (another
+    // process, or the CLI) waits instead of rendering from the same read.
+    let lock = store
+        .begin_convention_write()
+        .map_err(|e| format!("lock the dismissals store: {e}"))?;
+
     // 1. Resolve the row using the public short-hash API (the full
     //    64-hex always resolves as Exact or NotFound — the trait
     //    documents this contract).
@@ -321,7 +328,7 @@ fn tui_promote(
         body
     };
     let ts_ms = current_unix_millis();
-    let outcome = store
+    let outcome = lock
         .commit_promote(hash, convention_text_for_db, &block_id, ts_ms)
         .map_err(|e| format!("commit_promote: {e}"))?;
     match outcome {
@@ -346,6 +353,10 @@ fn tui_demote(
     repo_root: &Path,
     hash: &FindingIdentityHash,
 ) -> Result<(), String> {
+    // DL 2.4: the store's write lock, as in `tui_promote`.
+    let lock = store
+        .begin_convention_write()
+        .map_err(|e| format!("lock the dismissals store: {e}"))?;
     let dismissal = resolve_full_hash(store, hash)?;
     if dismissal.promotion_state != PromotionState::PromotedConvention {
         return Err(format!(
@@ -379,7 +390,7 @@ fn tui_demote(
     }
 
     let ts_ms = current_unix_millis();
-    let outcome = store
+    let outcome = lock
         .commit_demote(hash, ts_ms)
         .map_err(|e| format!("commit_demote: {e}"))?;
     match outcome {
@@ -634,6 +645,71 @@ mod tests {
 
         let err = tui_promote(&store, td.path(), &hash, "body").expect_err("should reject");
         assert!(err.contains("candidate"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn tui_concurrent_promotes_of_different_hashes_keep_both_blocks() {
+        // DL 2.4 — two promotes racing, as from two processes: each thread
+        // has its own store, so its own SQLite connection. Without
+        // serialization both read the same file, both write N+1 blocks,
+        // and the later rename deletes the other's block.
+        const TRIALS: usize = 20;
+        let mut failures = Vec::new();
+        for trial in 0..TRIALS {
+            let td = TempDir::new().unwrap();
+            let seeding = store_in(&td);
+            let a = seed(
+                &seeding,
+                &format!("first {trial}"),
+                PromotionState::LocalOnly,
+            );
+            let b = seed(
+                &seeding,
+                &format!("second {trial}"),
+                PromotionState::LocalOnly,
+            );
+            drop(seeding);
+            // Open both stores before the barrier, so no thread can fail
+            // before it and leave the other waiting forever.
+            let stores = [store_in(&td), store_in(&td)];
+            let barrier = std::sync::Barrier::new(2);
+            let results: Vec<Result<String, String>> = std::thread::scope(|s| {
+                let handles: Vec<_> = stores
+                    .into_iter()
+                    .zip([&a, &b])
+                    .map(|(store, h)| {
+                        let (root, barrier) = (td.path(), &barrier);
+                        s.spawn(move || {
+                            barrier.wait();
+                            tui_promote(&store, root, h, "body")
+                        })
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            });
+            for r in results {
+                if let Err(e) = r {
+                    failures.push(format!("trial {trial}: promote failed: {e}"));
+                }
+            }
+            let conv = std::fs::read_to_string(td.path().join(".quorum").join("conventions.md"))
+                .unwrap_or_default();
+            for h in [&a, &b] {
+                let short = &h.to_hex()[..12];
+                if !conv.contains(&format!("id={short}")) {
+                    failures.push(format!("trial {trial}: block {short} lost"));
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "{} of {TRIALS} trials: {failures:#?}",
+            {
+                let mut t: Vec<_> = failures.iter().map(|f| f.split(':').next()).collect();
+                t.dedup();
+                t.len()
+            }
+        );
     }
 
     #[test]

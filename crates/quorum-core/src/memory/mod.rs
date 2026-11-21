@@ -414,6 +414,21 @@ pub trait MemoryStore {
         ts_ms: i64,
     ) -> Result<DemoteOutcome, MemoryError>;
 
+    /// DL 2.4 — serialize one promote or demote against every other writer
+    /// of the store, in this process or another. Takes SQLite's write lock
+    /// (`BEGIN IMMEDIATE`, waiting up to the store's `busy_timeout`) and
+    /// holds it until the returned guard commits or is dropped. A caller
+    /// takes it before reading conventions.md and commits through it after
+    /// the rename, so a concurrent promote cannot render from the same
+    /// stale read and overwrite this one's block. The file is still
+    /// written before the SQLite commit (AC 175); dropping the guard
+    /// without committing rolls back.
+    ///
+    /// While the guard is alive, other calls on the same store run inside
+    /// its transaction: reads see it, and a method that opens its own
+    /// transaction fails. Hold one guard per store at a time, on one thread.
+    fn begin_convention_write(&self) -> Result<Box<dyn ConventionWrite + '_>, MemoryError>;
+
     /// Phase 1C Stage 4 — T4 prune: DELETE candidate dismissals whose
     /// `last_seen_at < older_than`. `state_transitions` rows for the
     /// deleted hashes are cascade-dropped by the FK. Audit-trail-silent
@@ -441,6 +456,30 @@ pub enum PromoteOutcome {
 pub enum DemoteOutcome {
     Committed,
     StateDrifted,
+}
+
+/// The store's write lock, held for one promote or demote; see
+/// [`MemoryStore::begin_convention_write`]. Dropping it without calling
+/// either method rolls the transaction back and releases the lock.
+pub trait ConventionWrite {
+    /// [`MemoryStore::commit_promote`]'s statements, run inside the held
+    /// lock. `Committed` commits and releases it; `StateDrifted` rolls
+    /// back.
+    fn commit_promote(
+        self: Box<Self>,
+        hash: &FindingIdentityHash,
+        convention_text: &str,
+        conventions_md_block_id: &str,
+        ts_ms: i64,
+    ) -> Result<PromoteOutcome, MemoryError>;
+
+    /// [`MemoryStore::commit_demote`]'s statements, run inside the held
+    /// lock, with the same commit and rollback rule.
+    fn commit_demote(
+        self: Box<Self>,
+        hash: &FindingIdentityHash,
+        ts_ms: i64,
+    ) -> Result<DemoteOutcome, MemoryError>;
 }
 
 /// Trait-layer validation of a free-text note. Returns `()` if the note

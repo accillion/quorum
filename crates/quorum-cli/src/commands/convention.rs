@@ -569,6 +569,13 @@ pub fn promote(
 
     // 2. Body resolution (--text / --from-editor / title-only).
     let body = resolve_body(&body_source, &row.title_snapshot, &root)?;
+    // DL 2.4: take the store's write lock before reading conventions.md and
+    // hold it through the rename to the commit, so a concurrent promote or
+    // demote waits instead of rendering from the same read. Taken after
+    // the body, which may wait on $EDITOR.
+    let lock = store
+        .begin_convention_write()
+        .map_err(|e| CliError::Io(format!("lock the dismissals store: {e}")))?;
 
     // 3. Pre-flight on conventions.md: refuse a broken structure before
     //    anything is written (a rewrite would delete the text the parser
@@ -625,7 +632,7 @@ pub fn promote(
         body.as_str()
     };
     let ts_ms = current_unix_millis();
-    let outcome = store
+    let outcome = lock
         .commit_promote(
             &row.finding_identity_hash,
             convention_text_for_db,
@@ -657,6 +664,11 @@ pub fn promote(
 pub fn demote(quorum_dir: Option<&PathBuf>, hash_prefix: &str) -> Result<Exit, CliError> {
     let root = resolve_quorum_root(quorum_dir)?;
     let store = open_store(&root)?;
+    // DL 2.4: the store's write lock, held from the state check through
+    // the rename to the commit, as in `promote`.
+    let lock = store
+        .begin_convention_write()
+        .map_err(|e| CliError::Io(format!("lock the dismissals store: {e}")))?;
     let row = resolve_short_hash(&store, hash_prefix)?;
 
     let hex = row.finding_identity_hash.to_hex();
@@ -700,7 +712,7 @@ pub fn demote(quorum_dir: Option<&PathBuf>, hash_prefix: &str) -> Result<Exit, C
     }
 
     let ts_ms = current_unix_millis();
-    let outcome = store
+    let outcome = lock
         .commit_demote(&row.finding_identity_hash, ts_ms)
         .map_err(|e| CliError::Io(format!("commit_demote: {e}")))?;
     match outcome {
@@ -837,4 +849,138 @@ fn preflight_dirty_warning(
 
 fn current_unix_millis() -> i64 {
     (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as i64
+}
+
+#[cfg(test)]
+mod tests {
+    //! The CLI orchestrators run in-process here: `tests/convention_write.rs`
+    //! drives the binary, but two `promote` processes started together are
+    //! too far apart (each first waits out the other's store open) to race
+    //! reliably. Threads calling `promote` each open their own store, so
+    //! each has its own SQLite connection, as two processes would.
+
+    use super::*;
+    use quorum_core::memory::identity::finding_identity_hash;
+    use quorum_core::memory::DismissalReason;
+    use quorum_core::review::{Finding, FindingSource, Severity};
+
+    fn seed_local_only(store: &LocalSqliteMemoryStore, title: &str) -> String {
+        let f = Finding {
+            severity: Severity::High,
+            title: title.to_string(),
+            body: format!("Body for {title}."),
+            source: FindingSource::Divergence,
+            supported_by: vec!["m".into()],
+            confidence: Some(0.9),
+        };
+        store
+            .dismiss(
+                &f,
+                "head",
+                "main",
+                DismissalReason::FalsePositive,
+                None,
+                None,
+            )
+            .unwrap();
+        let hex = finding_identity_hash(&f).to_hex();
+        let conn = rusqlite::Connection::open(store.path()).unwrap();
+        conn.execute(
+            "UPDATE dismissals SET promotion_state = 'local_only' WHERE finding_identity_hash = ?1",
+            [&hex],
+        )
+        .unwrap();
+        hex[..12].to_string()
+    }
+
+    #[test]
+    fn concurrent_promotes_of_different_hashes_keep_both_blocks() {
+        // DL 2.4. Without serialization both promotes read the same file,
+        // both write N+1 blocks, and the later rename deletes the other's
+        // block while both rows say promoted_convention.
+        const TRIALS: usize = 20;
+        let mut failures = Vec::new();
+        for trial in 0..TRIALS {
+            let td = tempfile::TempDir::new().unwrap();
+            let root = td.path().to_path_buf();
+            let store = LocalSqliteMemoryStore::new(&root).unwrap();
+            let shorts = [
+                seed_local_only(&store, &format!("first {trial}")),
+                seed_local_only(&store, &format!("second {trial}")),
+            ];
+            drop(store);
+            let barrier = std::sync::Barrier::new(2);
+            let results: Vec<Result<Exit, CliError>> = std::thread::scope(|s| {
+                let handles: Vec<_> = shorts
+                    .iter()
+                    .map(|short| {
+                        let (root, barrier) = (&root, &barrier);
+                        s.spawn(move || {
+                            barrier.wait();
+                            promote(Some(root), short, BodySource::Text("body".into()))
+                        })
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            });
+            for r in results {
+                if let Err(e) = r {
+                    failures.push(format!("trial {trial}: promote failed: {e}"));
+                }
+            }
+            let conv = std::fs::read_to_string(root.join(".quorum").join("conventions.md"))
+                .unwrap_or_default();
+            for short in &shorts {
+                if !conv.contains(&format!("id={short}")) {
+                    failures.push(format!("trial {trial}: block {short} lost"));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
+
+    #[test]
+    fn a_demote_racing_a_promote_keeps_the_promoted_block() {
+        // DL 2.4 — demote takes the same lock. Unserialized, both read
+        // [Y]; the promote writes [Y, X], the demote writes [], and X's
+        // block is lost behind a promoted_convention row.
+        const TRIALS: usize = 20;
+        let mut failures = Vec::new();
+        for trial in 0..TRIALS {
+            let td = tempfile::TempDir::new().unwrap();
+            let root = td.path().to_path_buf();
+            let store = LocalSqliteMemoryStore::new(&root).unwrap();
+            let x = seed_local_only(&store, &format!("promoted {trial}"));
+            let y = seed_local_only(&store, &format!("demoted {trial}"));
+            drop(store);
+            promote(Some(&root), &y, BodySource::Text("y".into())).unwrap();
+            let barrier = std::sync::Barrier::new(2);
+            let results: Vec<Result<Exit, CliError>> = std::thread::scope(|s| {
+                let (root, barrier, x, y) = (&root, &barrier, &x, &y);
+                let a = s.spawn(move || {
+                    barrier.wait();
+                    promote(Some(root), x, BodySource::Text("x".into()))
+                });
+                let b = s.spawn(move || {
+                    barrier.wait();
+                    demote(Some(root), y)
+                });
+                vec![a.join().unwrap(), b.join().unwrap()]
+            });
+            for r in results {
+                if let Err(e) = r {
+                    failures.push(format!("trial {trial}: failed: {e}"));
+                }
+            }
+            let conv = std::fs::read_to_string(root.join(".quorum").join("conventions.md"))
+                .unwrap_or_default();
+            if !conv.contains(&format!("id={x}")) {
+                failures.push(format!("trial {trial}: promoted block {x} lost"));
+            }
+            if conv.contains(&format!("id={y}")) {
+                failures.push(format!("trial {trial}: demoted block {y} kept"));
+            }
+        }
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
 }
