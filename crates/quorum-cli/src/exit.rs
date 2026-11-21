@@ -86,12 +86,17 @@ pub enum CliError {
     Git(String),
     #[error("keyring error: {0}")]
     Keyring(String),
+    /// The two-factor step of an interactive login stopped; the text says
+    /// why and what to do next.
+    #[error("{0}")]
+    SecondFactor(String),
 }
 
 impl CliError {
     pub fn exit(&self) -> Exit {
         use CliError::*;
         match self {
+            SecondFactor(_) => Exit::AuthRequired,
             NotAuthenticated | CreateUnauthorized | PollUnauthorized | LoginRejected(_) => {
                 Exit::AuthRequired
             }

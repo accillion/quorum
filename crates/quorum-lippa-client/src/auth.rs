@@ -75,6 +75,15 @@ pub async fn login_with_cookie(req: LoginRequest<'_>) -> Result<Secret, AuthErro
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| AuthError::Transport(e.to_string()))?;
+    login_on(&client, req).await
+}
+
+/// The login request on a caller's client. [`crate::SignIn`] passes one with
+/// a cookie jar, so the pending cookie of a two-factor challenge stays there.
+pub(crate) async fn login_on(
+    client: &reqwest::Client,
+    req: LoginRequest<'_>,
+) -> Result<Secret, AuthError> {
     let resp = client
         .post(format!("{}/api/v1/auth/login", req.base_url))
         .json(&serde_json::json!({ "email": req.email, "password": req.password }))
