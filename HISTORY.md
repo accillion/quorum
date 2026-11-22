@@ -4,22 +4,24 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
-## Phase 0.5.0 — the Consensus tier, and two fail-closed gaps ✦ TBD
+## Phase 0.5.0 — the Consensus tier, and two fail-closed gaps ✦ 2026-11-22
 
-**Spec:** none. The tier sends explicitly a field that was implicit before, and the default keeps the old behaviour, so it has no spec gate. The hook fixes close a PR #11 BACKLOG item on Rolf's ruling.
-**Status:** **Release prep in review (PR TBD), not tagged.** It is a minor bump because three public structs gain a field (below). Trusted Publishing only, no stored token.
+**Spec:** none. The tier sends explicitly a field that was implicit before, and the default keeps the old behaviour, so it has no spec gate. The hook fixes close a PR #11 BACKLOG item on Rolf's ruling. v0.4 Stages 2–4 are retargeted to 0.6.x.
+**Status:** **Closed at `v0.5.0`.** All three crates are on crates.io at 0.5.0. GitHub Release v0.5.0 is live with sigstore-attested assets. It is a minor bump because three public structs gain a field (below). Published through Trusted Publishing, with no stored token.
 
 **Public release:**
-- crates.io: `quorum-core 0.5.0`, `quorum-lippa-client 0.5.0`, `quorum-cli 0.5.0`. Links TBD.
-- GitHub Release: `v0.5.0`. Link TBD.
-- CI run: TBD.
-- Tag: TBD.
+- crates.io: [`quorum-core 0.5.0`](https://crates.io/crates/quorum-core/0.5.0), [`quorum-lippa-client 0.5.0`](https://crates.io/crates/quorum-lippa-client/0.5.0), [`quorum-cli 0.5.0`](https://crates.io/crates/quorum-cli/0.5.0).
+- GitHub Release: [`v0.5.0`](https://github.com/accillion/quorum/releases/tag/v0.5.0), 19 assets.
+- CI run: [`45039747819`](https://github.com/accillion/quorum/actions/runs/45039747819). All 10 jobs were green: `plan` → `build-local-artifacts` × 5 targets → `build-global-artifacts` → `host` → `custom-publish-crates / publish-crates` → `announce`. The run took 7 minutes, 15:42–15:49 UTC.
+
+Tag `v0.5.0` (tag object `459f738`) points at `530a5bf`, PR #16's merge.
 
 ### Commit graph
 
 Everything on `main` since `v0.4.1` (`9aae2a3`), first parent:
 
 ```
+530a5bf  Merge PR #16: release 0.5.0
 1c407b8  Merge PR #15: tier follow-ups (PR #14 merged, unreleased 0.5.0 entry, Lippa model check, gitignore)
 392f285  Merge PR #14: the Consensus tier; fail-closed blocks a missing binary and a failed merge-base
 47bd92c  Merge PR #13: v0.4.1 release docs
@@ -35,7 +37,7 @@ e5117cf  feat(archive): record the tier sent, and show it in the header
 b4f9d55  doc: the Consensus tier, the fail-closed closures, the API-break finding
 ```
 
-PR #15 is docs and `.gitignore` only. The release PR is two commits: `16e8149` (version bump), then the docs commit carrying this entry.
+PR #15 is docs and `.gitignore` only. PR #16 is two commits: `16e8149` (version bump), then `b5e2ecf` (the docs commit carrying this entry).
 
 Revert order: `ca9beaf`, `e5117cf` and `4be17ea` each revert alone and compile. `bda4ef3` reverts only after both `ca9beaf` and `e5117cf`, because both use `ConsensusTier`.
 
@@ -67,7 +69,13 @@ Revert order: `ca9beaf`, `e5117cf` and `4be17ea` each revert alone and compile. 
   - clippy `-D warnings` and fmt `--check` are clean on both.
   - `cargo publish --workspace --dry-run` (cargo 1.95) packaged and verified all three at 0.5.0: `quorum-core` 19 files, `quorum-lippa-client` 14, `quorum-cli` 47 (0.4.1's 44 plus the three `tier_*` test files). `quorum-cli` built against the unpublished 0.5.0 libraries.
   - Local `dist plan --tag v0.5.0` gave `macos-15`, `macos-15-intel`, `windows-2022`, `ubuntu-22.04` and `ubuntu-22.04-arm`, the set that ran green for 0.4.1.
-- At the tag: Trusted Publishing TBD; crates.io TBD; GitHub Release TBD; AC 93 (`cargo install quorum-cli --version 0.5.0 --locked`) TBD; AC 94 / AC 132 (checksum, `gh attestation verify`) TBD.
+- **Runners ✓.** All five `build-local-artifacts` jobs got a machine on the runners the local plan named.
+- **Trusted Publishing ✓.** `custom-publish-crates / publish-crates` ran `rust-lang/crates-io-auth-action@v1`, then `cargo publish` for `quorum-core`, `quorum-lippa-client` and `quorum-cli` in order, then the action's token-revoking post step. Every step succeeded.
+- **crates.io ✓.** The API shows `0.5.0`, not yanked, for all three crates: `quorum-core` at 15:48:15Z, `quorum-lippa-client` at 15:48:35Z and `quorum-cli` at 15:49:05Z.
+- **GitHub Release ✓.** `v0.5.0` is published, not a draft or prerelease, with 19 assets, the same set as 0.4.1 (including `dist-manifest.json`).
+- **AC 93 LIVE ✓.** In a scratch directory outside the repo, `cargo install quorum-cli --version 0.5.0 --locked --root <scratch>` downloaded `quorum-cli`, `quorum-core` and `quorum-lippa-client` 0.5.0 from crates.io. The binary printed `quorum 0.5.0 (unknown)`.
+- **AC 94 LIVE ✓.** The SHA256 of `quorum-cli-x86_64-unknown-linux-gnu.tar.xz` (3,441,340 bytes), `99445622e006862ca89dfcc3fa821298cd5ee7a607fe96083c41d0fe29e42595`, matches its `sha256.sum` entry.
+- **AC 132 LIVE ✓.** `gh attestation verify quorum-cli-x86_64-unknown-linux-gnu.tar.xz --owner accillion` exits 0. Its fields: SAN `https://github.com/accillion/quorum/.github/workflows/release.yml@refs/tags/v0.5.0`, issuer `https://token.actions.githubusercontent.com`, source digest `530a5bf937c6928e8465446c0022d8d551742739`, ref `refs/tags/v0.5.0`, predicate `https://slsa.dev/provenance/v1`. All five `build-local-artifacts` Attest steps succeeded.
 
 ---
 
@@ -127,7 +135,7 @@ PR #11 is six code commits, each separately revertable, then two docs commits (`
 
 ## Phase 0.4.0 — v0.4 Stage 1 plus SEC-1, DL Parts 1–2 and two-factor login ✦ 2026-11-21
 
-**Spec:** `specs/Quorum-v0_4-Spec-v0_1.md`, Stage 1 (ACs 176–194) plus AC 211a. SEC-1, DL Part 1, DL Part 2 and the two-factor login fix are bug fixes with no spec gate. Stages 2–4 are retargeted to 0.5.x.
+**Spec:** `specs/Quorum-v0_4-Spec-v0_1.md`, Stage 1 (ACs 176–194) plus AC 211a. SEC-1, DL Part 1, DL Part 2 and the two-factor login fix are bug fixes with no spec gate. Stages 2–4 are retargeted to 0.5.x (since retargeted again, to 0.6.x: 0.5.0 became the Consensus tier release).
 **Status:** **Closed at `v0.4.0`.** All three crates are on crates.io at 0.4.0. GitHub Release v0.4.0 is live with sigstore-attested assets. It is a minor bump because the library crates' public API breaks (below). This was the first live Trusted Publishing run, and it published all three crates with no stored token.
 
 **Public release:**

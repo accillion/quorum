@@ -15,6 +15,9 @@ bug fixes and crates.io Trusted Publishing. SEC-1 also delivered the
 `QUORUM_LIPPA_SESSION` / `QUORUM_LIPPA_BASE_URL` pairing that AC 240's last
 sentence names; the rest of AC 240 stays with Stage 4. Stages 2–4 are
 retargeted to 0.5.x.
+Release note 2026-11-22: 0.5.0 shipped the Consensus tier and two
+fail-closed hook fixes instead (no spec gate), so Stages 2–4 are
+retargeted again, to 0.6.x.
 
 ---
 

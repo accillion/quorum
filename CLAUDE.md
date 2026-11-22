@@ -168,25 +168,19 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **none. 0.4.1 shipped on 22 Nov 2026:** tag `v0.4.1` on
-`9aae2a3` (PR #12's merge), run 45018870330, all 10 jobs green. All
-three crates are on crates.io at 0.4.1 through Trusted Publishing. The
+**Active:** **none. 0.5.0 shipped on 22 Nov 2026:** tag `v0.5.0` on
+`530a5bf` (PR #16's merge), run 45039747819, all 10 jobs green. All
+three crates are on crates.io at 0.5.0 through Trusted Publishing. The
 GitHub Release is live, and its assets pass `gh attestation verify`.
-0.4.1 is PR #11 only: the hook hang / fail-open fixes and marker v2,
-with no library API breaks. Its rules are in SERVICES.md §3 and §7.
-The release docs merged as PR #13. 0.4.0 shipped on 21 Nov 2026
-(`024ed97`, run 44931991241).
-**Merged, unreleased: the consensus tier**, PR #14 (`392f285`). Quorum
-always sends `tier` (config key, default `high`, `--tier` flag),
-records it in archives and the header, and explains a tier 422. The
-same PR makes fail-closed block a missing binary and a failed
-new-branch merge-base (marker v3). Rules: SERVICES.md §3 and §7.
-Rolf's live gate passed (session `54b6d687-…`: archive `tier: high`,
-header `(tier: high)`). Its new public fields break the library API.
-**In review, not tagged: release prep for 0.5.0** on `release/v0.5.0`.
-The version bump (`16e8149`) plus HISTORY's 0.5.0 entry, whose tag,
-run and links are `TBD`. The tag waits for Rolf's merge and Part B.
-**Next: v0.4 Stages 2–4, retargeted to 0.5.x, not started.** Each
+0.5.0 is PR #14: Quorum always sends the Consensus `tier` (config key,
+default `high`, `--tier` flag), records it in archives and the header,
+and explains a tier 422. Fail-closed blocks a missing binary and a
+failed new-branch merge-base (marker v3). Rules: SERVICES.md §3 and
+§7. It is a minor bump because three library structs gain a public
+`tier` field. The release docs are in review on `doc/v0.5.0-released`.
+Earlier: 0.4.1 (`9aae2a3`, run 45018870330) and 0.4.0 (`024ed97`, run
+44931991241).
+**Next: v0.4 Stages 2–4, retargeted to 0.6.x, not started.** Each
 stage needs Rolf's go.
 
 0.4.0 shipped v0.4 Stage 1 (ACs 176–194) plus AC 211a, SEC-1 (PR #2),
@@ -199,16 +193,16 @@ Behavioural rules live in:
 - §5.1: deny list;
 - §6/§6.1 and DATABASE.md: the dismissals store and conventions writes.
 
-**v0.4 Stages 2–4 (0.5.x).** Spec: `specs/Quorum-v0_4-Spec-v0_1.md`
+**v0.4 Stages 2–4 (0.6.x).** Spec: `specs/Quorum-v0_4-Spec-v0_1.md`
 (AC range 176–241). The §5.3 budget *rebalance* (80/72/16/24/6 plus
 the review-policy section) is Stage 2's. Stage 1 shipped the
 derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 240, only the session/base-URL pairing is done.
 
 **Release engineering.**
-- **Trusted Publishing is proven live.** Runs 44931991241 (0.4.0) and
-  45018870330 (0.4.1) published all three crates through OIDC. Rolf
-  still has to delete the unused
+- **Trusted Publishing is proven live.** Runs 44931991241 (0.4.0),
+  45018870330 (0.4.1) and 45039747819 (0.5.0) published all three
+  crates through OIDC. Rolf still has to delete the unused
   `CARGO_REGISTRY_TOKEN` secret (BACKLOG).
 - **The first `v0.4.0` tag was deleted unconsumed.** It was on
   `1b361f1`, and its run (44924050931) failed because GitHub retired
@@ -218,13 +212,12 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 - **Before a tag, check the runners** with a local `dist plan`, since
   a PR plan run cannot prove a label can be scheduled. For `v0.4.1` it
   gave `macos-15`, `macos-15-intel`, `windows-2022`, `ubuntu-22.04` and
-  `ubuntu-22.04-arm`, and all five were scheduled. The local plan for
-  `v0.5.0` gives the same five.
+  `ubuntu-22.04-arm`, and all five were scheduled. For `v0.5.0` it gave
+  the same five, and all five were scheduled again.
 
-Repo state on `main` (`1c407b8`; code unchanged since `392f285`): 531
-tests pass, 1 ignored, on Linux, and 530 on Windows. The same holds on
-`release/v0.5.0`.
-clippy
+Repo state on `main` (`530a5bf`; code unchanged since `392f285` apart
+from the version): 531 tests pass, 1 ignored, on Linux, and 530 on
+Windows. clippy
 `-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
 Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 
