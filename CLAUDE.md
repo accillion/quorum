@@ -168,16 +168,14 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **none. 0.4.0 shipped on 21 Nov 2026:** tag `v0.4.0` on
-`024ed97`, run 44931991241, all 10 jobs green. All three crates are on
-crates.io at 0.4.0. The GitHub Release is live, and its assets pass
-`gh attestation verify`. The release docs merged as PR #10.
-The hook hang / fail-open fix merged as PR #11 (`8210640`). Its rules
-are in SERVICES.md §3 and §7.
-**In review, not tagged: release prep for 0.4.1** on `release/v0.4.1`.
-It contains PR #11 only, plus the version bump and HISTORY's 0.4.1
-entry, whose run id and links are `TBD`. It is a patch: there are no
-library API breaks. The tag waits for Rolf's go.
+**Active:** **none. 0.4.1 shipped on 22 Nov 2026:** tag `v0.4.1` on
+`9aae2a3` (PR #12's merge), run 45018870330, all 10 jobs green. All
+three crates are on crates.io at 0.4.1 through Trusted Publishing. The
+GitHub Release is live, and its assets pass `gh attestation verify`.
+0.4.1 is PR #11 only: the hook hang / fail-open fixes and marker v2,
+with no library API breaks. Its rules are in SERVICES.md §3 and §7.
+The release docs are in review on `doc/v0.4.1-released`. 0.4.0
+shipped on 21 Nov 2026 (`024ed97`, run 44931991241).
 **Next: v0.4 Stages 2–4, retargeted to 0.5.x, not started.** Each
 stage needs Rolf's go.
 
@@ -198,8 +196,9 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 240, only the session/base-URL pairing is done.
 
 **Release engineering.**
-- **Trusted Publishing is proven live.** Run 44931991241 published all
-  three crates through OIDC. Rolf still has to delete the unused
+- **Trusted Publishing is proven live.** Runs 44931991241 (0.4.0) and
+  45018870330 (0.4.1) published all three crates through OIDC. Rolf
+  still has to delete the unused
   `CARGO_REGISTRY_TOKEN` secret (BACKLOG).
 - **The first `v0.4.0` tag was deleted unconsumed.** It was on
   `1b361f1`, and its run (44924050931) failed because GitHub retired
@@ -207,14 +206,12 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
   PR #9 pins that target to `macos-15`.
 - **`ubuntu-22.04` is next to retire.** It is open in BACKLOG.
 - **Before a tag, check the runners** with a local `dist plan`, since
-  a PR plan run cannot prove a label can be scheduled.
+  a PR plan run cannot prove a label can be scheduled. For `v0.4.1` it
+  gave `macos-15`, `macos-15-intel`, `windows-2022`, `ubuntu-22.04` and
+  `ubuntu-22.04-arm`, and all five were scheduled.
 
-- **The local `dist plan` for `v0.4.1`** gives the runners that ran
-  green in 44931991241: `macos-15`, `macos-15-intel`, `windows-2022`,
-  `ubuntu-22.04` and `ubuntu-22.04-arm`.
-
-Repo state on `main` (`8210640`): 511 tests pass, 1 ignored, on Linux,
-and 510 on Windows. The same holds on `release/v0.4.1`. clippy
+Repo state on `main` (`9aae2a3`): 511 tests pass, 1 ignored, on Linux,
+and 510 on Windows. clippy
 `-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
 Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 
