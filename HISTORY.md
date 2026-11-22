@@ -7,23 +7,26 @@ Chronological log of closed milestones. Most-recent first.
 ## Phase 0.4.1 — hook fail-open and hang fixes ✦ 2026-11-22
 
 **Spec:** none. PR #11 is a bug fix with no spec gate. It fixes four November-audit hook defects, plus a fifth found while working out the upgrade path.
-**Status:** **Release prep in review (PR TBD), not tagged.** It is a patch bump: neither library crate's public API changes (below). Trusted Publishing only, no stored token.
+**Status:** **Closed at `v0.4.1`.** All three crates are on crates.io at 0.4.1. GitHub Release v0.4.1 is live with sigstore-attested assets. It is a patch bump: neither library crate's public API changes (below). Published through Trusted Publishing, with no stored token.
 
 **Public release:**
-- crates.io: `quorum-core 0.4.1`, `quorum-lippa-client 0.4.1`, `quorum-cli 0.4.1`. Links TBD.
-- GitHub Release: `v0.4.1`. Link TBD.
-- CI run: TBD.
+- crates.io: [`quorum-core 0.4.1`](https://crates.io/crates/quorum-core/0.4.1), [`quorum-lippa-client 0.4.1`](https://crates.io/crates/quorum-lippa-client/0.4.1), [`quorum-cli 0.4.1`](https://crates.io/crates/quorum-cli/0.4.1).
+- GitHub Release: [`v0.4.1`](https://github.com/accillion/quorum/releases/tag/v0.4.1), 19 assets.
+- CI run: [`45018870330`](https://github.com/accillion/quorum/actions/runs/45018870330). All 10 jobs were green: `plan` → `build-local-artifacts` × 5 targets → `build-global-artifacts` → `host` → `custom-publish-crates / publish-crates` → `announce`. The run took 10 minutes, 11:45–11:55 UTC.
+
+Tag `v0.4.1` (tag object `0bebd81`) points at `9aae2a3`, PR #12's merge.
 
 ### Commit graph
 
 Everything on `main` since `v0.4.0` (`024ed97`), first parent:
 
 ```
+9aae2a3  Merge PR #12: release 0.4.1
 8210640  Merge PR #11: hooks never hang, and never wave through a blocking verdict
 3a9741d  Merge PR #10: v0.4.0 release docs
 ```
 
-PR #11 is six code commits, each separately revertable, then two docs commits (`9f844d6`, `4b4672d`). The release PR is two commits: the version bump, then the docs commit carrying this entry.
+PR #11 is six code commits, each separately revertable, then two docs commits (`9f844d6`, `4b4672d`). PR #12 is two commits: `dc102aa` (version bump), then `867c91c` (the docs commit carrying this entry).
 
 ### What shipped
 
@@ -45,12 +48,13 @@ PR #11 is six code commits, each separately revertable, then two docs commits (`
 
 ### Live verification
 
-TBD at the tag.
-- Trusted Publishing: TBD.
-- crates.io: TBD.
-- GitHub Release: TBD.
-- AC 93 (`cargo install quorum-cli --version 0.4.1 --locked`): TBD.
-- AC 94 / AC 132 (checksum, `gh attestation verify`): TBD.
+- **Before the tag.** A local `dist plan --tag v0.4.1` gave the runners that ran green for 0.4.0: `macos-15`, `macos-15-intel`, `windows-2022`, `ubuntu-22.04` and `ubuntu-22.04-arm`. All five `build-local-artifacts` jobs got a machine.
+- **Trusted Publishing ✓.** `custom-publish-crates / publish-crates` ran `rust-lang/crates-io-auth-action@v1`, then `cargo publish` for `quorum-core`, `quorum-lippa-client` and `quorum-cli` in order, then the action's token-revoking post step. Every step succeeded.
+- **crates.io ✓.** The API shows `0.4.1`, not yanked, for all three crates: `quorum-core` at 11:54:17Z, `quorum-lippa-client` at 11:54:38Z and `quorum-cli` at 11:55:10Z.
+- **GitHub Release ✓.** `v0.4.1` is published, not a draft or prerelease, with 19 assets. That is 0.4.0's 18 plus `dist-manifest.json`, which 0.4.0's Release did not attach. `dist-workspace.toml` and `release.yml` are unchanged since `v0.4.0`. The cause was not investigated.
+- **AC 93 LIVE ✓.** In a scratch directory outside the repo, `cargo install quorum-cli --version 0.4.1 --locked --root <scratch>` downloaded `quorum-cli`, `quorum-core` and `quorum-lippa-client` 0.4.1 from crates.io. The binary printed `quorum 0.4.1 (unknown)`.
+- **AC 94 LIVE ✓.** The SHA256 of `quorum-cli-x86_64-unknown-linux-gnu.tar.xz` (3,435,340 bytes), `e7c8bfdce8f079cb0d80a2db66306902cf20695db8319026dfb4b8245d05879d`, matches its `sha256.sum` entry.
+- **AC 132 LIVE ✓.** `gh attestation verify quorum-cli-x86_64-unknown-linux-gnu.tar.xz --owner accillion` exits 0. Its fields: SAN `https://github.com/accillion/quorum/.github/workflows/release.yml@refs/tags/v0.4.1`, issuer `https://token.actions.githubusercontent.com`, source digest `9aae2a387b8279738cfb7318581f183178b5358d`, ref `refs/tags/v0.4.1`, predicate `https://slsa.dev/provenance/v1`. All five `build-local-artifacts` Attest steps succeeded.
 
 ---
 
