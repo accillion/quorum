@@ -6,6 +6,13 @@ Read against: `accillion/quorum` @ `main`, v0.3.3
 Source: external review of Quorum run locally against a TypeScript/eslint repo,
 in the context of an "AI review Step 2" CI programme (Codex step 1, Gemini step 2).
 
+Note 2026-11-22: §4 step 3 ("CI grade") was labelled "v0.5". It is now
+labelled "After `M-ConsensusFindings`", because it is gated on Lippa's
+finding schema (§3), not on a Quorum version. Quorum shipped 0.5.0
+without it (the Consensus tier), and v0.4 Stages 2–4 are retargeted to
+0.6.x. The "v0.5" in this plan's title is the original label. The plan
+body is otherwise unchanged.
+
 ---
 
 ## 1. Verdict
@@ -250,8 +257,8 @@ Contract notes:
    bundle never contained the file they point at.
 2. **Gate: Lippa `M-ConsensusFindings`.** Unblocks items 1 and 5 and Phase 1D
    identity hashes.
-3. **v0.5 — "CI grade".** Anchored findings end to end: widened `Finding`,
-   SARIF + JSON output, client-side anchor validation, a GitHub Action that
+3. **After `M-ConsensusFindings` — "CI grade".** Anchored findings end to
+   end: widened `Finding`, SARIF + JSON output, client-side anchor validation, a GitHub Action that
    posts inline. Starts the day the schema lands.
 4. **Parallel: Lippa `M-ExternalAuth` Phase 1.** Bearer tokens. Independent of
    the schema work. Until it lands, Quorum should not run in anyone's CI
