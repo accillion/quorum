@@ -176,6 +176,7 @@ fn dismissed_finding_is_filtered_out_on_subsequent_review() {
         base_url: "https://x".into(),
         summary_text: None,
         final_agreement_score: None,
+        tier: None,
     };
     let matched = filter_and_record(&mut review, &store, "S1");
     assert_eq!(matched.len(), 1);
@@ -211,6 +212,7 @@ fn record_seen_bumps_once_per_session_then_again_on_new_session() {
         base_url: "https://x".into(),
         summary_text: None,
         final_agreement_score: None,
+        tier: None,
     };
     filter_and_record(&mut review, &store, "S1");
 
@@ -251,6 +253,7 @@ fn permanent_dismissal_suppresses_indefinitely() {
         base_url: "https://x".into(),
         summary_text: None,
         final_agreement_score: None,
+        tier: None,
     };
     let matched = filter_and_record(&mut review, &store, "S");
     assert_eq!(matched.len(), 1);

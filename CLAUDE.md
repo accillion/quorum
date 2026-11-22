@@ -176,6 +176,15 @@ GitHub Release is live, and its assets pass `gh attestation verify`.
 with no library API breaks. Its rules are in SERVICES.md §3 and §7.
 The release docs are in review on `doc/v0.4.1-released`. 0.4.0
 shipped on 21 Nov 2026 (`024ed97`, run 44931991241).
+**In review, not merged: the consensus tier**, PR #14 on
+`feat/consensus-tier`. Quorum always sends `tier` (config key, default
+`high`, `--tier` flag), records it in archives and the header, and
+explains a tier 422. The same PR makes fail-closed block a missing
+binary and a failed new-branch merge-base (marker v3). Rules:
+SERVICES.md §3 and §7. Not mergeable until Rolf's live `quorum review`
+shows `tier: high`. Its new public fields break the library API, so the
+next release is probably 0.5.0 (BACKLOG, not decided). No version bump
+yet.
 **Next: v0.4 Stages 2–4, retargeted to 0.5.x, not started.** Each
 stage needs Rolf's go.
 
@@ -211,7 +220,8 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
   `ubuntu-22.04-arm`, and all five were scheduled.
 
 Repo state on `main` (`9aae2a3`): 511 tests pass, 1 ignored, on Linux,
-and 510 on Windows. clippy
+and 510 on Windows. On `feat/consensus-tier`: 531 / 1 on Linux and 530
+on Windows. clippy
 `-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
 Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 

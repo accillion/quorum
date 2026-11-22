@@ -5,6 +5,7 @@
 //! project_id = "<lippa project id>"
 //! base_url = "https://app.lippa.ai"
 //! remote_url = true   # optional; default true. If `false`, archive omits remote_url.
+//! tier = "high"       # optional; low | medium | high, default high. Always sent.
 //!
 //! [memory]                          # Phase 1C — all keys optional
 //! candidate_threshold = 3           # 2..=100; auto-promote N
@@ -26,6 +27,11 @@ pub struct QuorumConfig {
     pub base_url: String,
     #[serde(default = "default_true")]
     pub remote_url: bool,
+    /// The Consensus tier Quorum sends with every session. Absent means
+    /// [`ConsensusTier::High`]; Quorum still sends it explicitly, so a
+    /// change to Lippa's server-side default cannot change the panel.
+    #[serde(default)]
+    pub tier: ConsensusTier,
     /// Phase 1C — `[memory]` section. Absent in `config.toml` falls back
     /// to [`MemoryConfig::default`] (no warning, per spec §3.4).
     #[serde(default)]
@@ -35,6 +41,78 @@ pub struct QuorumConfig {
     /// precedent (AC 191).
     #[serde(default)]
     pub bundle: BundleConfig,
+}
+
+/// A Consensus tier: Lippa runs a fixed three-model panel per tier,
+/// defined on Lippa's side. Quorum sends the tier as the `tier` field of
+/// session create. Values are exact lowercase; anything else is refused
+/// at config load, listing [`ConsensusTier::ALLOWED`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConsensusTier {
+    Low,
+    Medium,
+    #[default]
+    High,
+}
+
+impl ConsensusTier {
+    /// The allowed values, as shown in error messages.
+    pub const ALLOWED: &'static str = "low, medium, high";
+
+    /// The wire and config spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ConsensusTier::Low => "low",
+            ConsensusTier::Medium => "medium",
+            ConsensusTier::High => "high",
+        }
+    }
+
+    /// Exact lowercase match; `None` for anything else.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "low" => Some(ConsensusTier::Low),
+            "medium" => Some(ConsensusTier::Medium),
+            "high" => Some(ConsensusTier::High),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for ConsensusTier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for ConsensusTier {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String> {
+        ConsensusTier::parse(s).ok_or_else(|| {
+            format!(
+                "{s:?} is not a Consensus tier; expected one of: {}",
+                ConsensusTier::ALLOWED
+            )
+        })
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ConsensusTier {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl serde::de::Visitor<'_> for V {
+            type Value = ConsensusTier;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "a Consensus tier, one of: {}", ConsensusTier::ALLOWED)
+            }
+            fn visit_str<E: serde::de::Error>(self, s: &str) -> Result<ConsensusTier, E> {
+                s.parse()
+                    .map_err(|m: String| E::custom(format!("tier = {m}")))
+            }
+        }
+        d.deserialize_str(V)
+    }
 }
 
 /// v0.4 §4.4 — `[bundle]` section keys. Ranges are hard: out-of-range
@@ -327,6 +405,7 @@ mod tests {
             project_id: "p_1".into(),
             base_url: "https://app.lippa.ai".into(),
             remote_url: true,
+            tier: ConsensusTier::default(),
             memory: MemoryConfig::default(),
             bundle: BundleConfig::default(),
         };
@@ -598,6 +677,7 @@ mod tests {
             project_id: "p_1".into(),
             base_url: "https://app.lippa.ai".into(),
             remote_url: true,
+            tier: ConsensusTier::default(),
             memory: MemoryConfig::default(),
             bundle: BundleConfig {
                 total_budget_kb: 300,
@@ -678,6 +758,7 @@ mod tests {
             project_id: "p".into(),
             base_url: "http://evil.example".into(),
             remote_url: true,
+            tier: ConsensusTier::default(),
             memory: MemoryConfig::default(),
             bundle: BundleConfig::default(),
         };
@@ -713,5 +794,65 @@ mod tests {
         // A pin that is not a URL is an error, never silently ignored.
         let err = check_session_pin("https://app.lippa.ai", Some("app.lippa.ai")).unwrap_err();
         assert!(err.contains(SESSION_PIN_ENV), "{err}");
+    }
+
+    // ===================== Consensus tier =====================
+
+    /// No `tier` key: the tier is `high`.
+    #[test]
+    fn tier_defaults_to_high_when_absent() {
+        let dir = tempdir().unwrap();
+        write_raw(
+            dir.path(),
+            "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\n",
+        );
+        assert_eq!(read(dir.path()).unwrap().tier, ConsensusTier::High);
+    }
+
+    /// Each of the three tiers parses to itself and round-trips through
+    /// `write`.
+    #[test]
+    fn each_tier_parses_and_round_trips() {
+        for (raw, want) in [
+            ("low", ConsensusTier::Low),
+            ("medium", ConsensusTier::Medium),
+            ("high", ConsensusTier::High),
+        ] {
+            let dir = tempdir().unwrap();
+            write_raw(
+                dir.path(),
+                &format!(
+                    "project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\ntier = \"{raw}\"\n"
+                ),
+            );
+            let cfg = read(dir.path()).unwrap();
+            assert_eq!(cfg.tier, want);
+            assert_eq!(cfg.tier.as_str(), raw);
+            write(dir.path(), &cfg).unwrap();
+            assert_eq!(read(dir.path()).unwrap().tier, want);
+        }
+    }
+
+    /// Anything else is refused at load, and the message lists the
+    /// allowed values. Case is not folded.
+    #[test]
+    fn an_invalid_tier_is_refused_with_the_allowed_list() {
+        for bad in ["\"bogus\"", "\"HIGH\"", "\" high\"", "\"\"", "3", "true"] {
+            let dir = tempdir().unwrap();
+            write_raw(
+                dir.path(),
+                &format!("project_id = \"p\"\nbase_url = \"https://app.lippa.ai\"\ntier = {bad}\n"),
+            );
+            match read(dir.path()) {
+                Err(ConfigError::Parse(e)) => {
+                    let m = e.to_string();
+                    assert!(
+                        m.contains("tier") && m.contains(ConsensusTier::ALLOWED),
+                        "tier = {bad}: message must name the key and list the tiers: {m}"
+                    );
+                }
+                other => panic!("tier = {bad}: expected a parse error, got {other:?}"),
+            }
+        }
     }
 }

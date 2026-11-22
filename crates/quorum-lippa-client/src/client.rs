@@ -131,6 +131,9 @@ impl LippaClient {
         if let Some(k) = req.idempotency_key {
             form = form.text("idempotency_key", k);
         }
+        if let Some(t) = req.tier {
+            form = form.text("tier", t);
+        }
 
         let url = format!("{}/api/v1/consensus/sessions", self.base_url);
         let req_builder = self.inner.post(&url).multipart(form);

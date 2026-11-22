@@ -1,6 +1,6 @@
 //! `quorum review` — the main pipeline.
 
-use crate::exit::{classify_http_status, CliError, Exit};
+use crate::exit::{classify_http_status, tier_rejection, CliError, Exit};
 use crate::render::{render_review_markdown_with_dismissed, warn_if_large};
 use quorum_core::archive::{
     archive_filename, build as build_archive, ArchiveInputs, SuppressionSummary,
@@ -66,6 +66,10 @@ pub struct ReviewOptions {
     /// `<push-start-ISO>.tuple-<N>.json`). When `None`, the Phase 1A
     /// `<started_at>.json` naming is used.
     pub archive_filename_override: Option<String>,
+    /// `quorum review --tier`: the Consensus tier for this run, over the
+    /// config's `tier`. Always `None` in hook mode, which reads the
+    /// config only.
+    pub tier_override: Option<quorum_core::config::ConsensusTier>,
 }
 
 pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliError> {
@@ -78,6 +82,9 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         Err(quorum_core::config::ConfigError::NotFound(_)) => return Err(CliError::NotLinked),
         Err(e) => return Err(CliError::Config(e.to_string())),
     };
+    // The flag wins over the config; the config's absent key is `high`.
+    let tier = opts.tier_override.unwrap_or(cfg.tier);
+    tracing::debug!(tier = tier.as_str(), "consensus tier");
 
     // v0.4 AC 194a — Lippa enforces no maximum prompt size (recon-v04-1).
     // An oversized bundle is not rejected: it reserves credits, runs, and
@@ -290,6 +297,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
             project_id: Some(cfg.project_id.clone()),
             debate_mode: "standard".into(),
             idempotency_key: None,
+            tier: Some(tier.as_str().to_string()),
         })
         .await
     {
@@ -299,6 +307,14 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         }
         Err(ClientError::Transport(m)) => return Err(CliError::Network(m)),
         Err(ClientError::HttpStatus(s, b)) => {
+            if s.as_u16() == 422 {
+                if let Some(detail) = tier_rejection(&b) {
+                    return Err(CliError::TierRejected {
+                        sent: tier.as_str().to_string(),
+                        detail,
+                    });
+                }
+            }
             return Err(classify_http_status(s.as_u16(), &b));
         }
         Err(e) => return Err(CliError::Network(e.to_string())),
@@ -328,6 +344,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     let mut review =
         review_from_json(&detail, &repo_meta).map_err(|e| CliError::Malformed(e.to_string()))?;
     review.elapsed = start_clock.elapsed();
+    review.tier = Some(tier);
 
     // ===== Dismissals filter site (Phase 1B Stage 1) =====
     //

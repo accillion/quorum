@@ -27,6 +27,7 @@ pub fn link_write(
         project_id,
         base_url,
         remote_url,
+        tier: quorum_core::config::ConsensusTier::default(),
         memory: MemoryConfig::default(),
         bundle: quorum_core::config::BundleConfig::default(),
     };

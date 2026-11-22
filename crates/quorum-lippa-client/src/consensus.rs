@@ -8,6 +8,11 @@ pub struct SessionCreateRequest {
     pub project_id: Option<String>,
     pub debate_mode: String, // "standard" | "document_critique" | "red_blue_team"
     pub idempotency_key: Option<String>,
+    /// Consensus tier, sent as the multipart field `tier`: `low`,
+    /// `medium` or `high`. Lippa answers any other value with 422. `None`
+    /// sends no field, and Lippa then uses its server-side default.
+    /// `quorum review` always sends one.
+    pub tier: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

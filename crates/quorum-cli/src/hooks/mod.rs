@@ -50,10 +50,14 @@ impl HookKind {
 
     /// Every template Quorum has shipped for this hook, current first.
     /// A managed hook whose content is none of these has local edits.
-    fn shipped_templates(self) -> [&'static str; 2] {
+    fn shipped_templates(self) -> [&'static str; 3] {
         match self {
-            HookKind::PreCommit => [PRE_COMMIT_TEMPLATE, legacy::PRE_COMMIT_V1],
-            HookKind::PrePush => [PRE_PUSH_TEMPLATE, legacy::PRE_PUSH_V1],
+            HookKind::PreCommit => [
+                PRE_COMMIT_TEMPLATE,
+                legacy::PRE_COMMIT_V2,
+                legacy::PRE_COMMIT_V1,
+            ],
+            HookKind::PrePush => [PRE_PUSH_TEMPLATE, legacy::PRE_PUSH_V2, legacy::PRE_PUSH_V1],
         }
     }
 
@@ -114,7 +118,7 @@ pub fn hook_path(start: &Path, kind: HookKind) -> Result<PathBuf, HooksError> {
 /// - If the file exists, the marker is present in the first 5 lines,
 ///   and the content is a template Quorum shipped for this hook (any
 ///   version) → overwrite, return `Overwritten`. This is both the
-///   idempotent re-install and the v1 → v2 upgrade.
+///   idempotent re-install and the v1 / v2 → v3 upgrade.
 /// - Marker present but the content differs → `LocallyModified`: the
 ///   user's edits are never overwritten.
 /// - Otherwise → `NotManaged` error (the user must remove the existing
@@ -406,6 +410,63 @@ mod tests {
                             "{kind:?} {version}, {op}: {result:?}, file intact: {intact}"
                         ));
                     }
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+
+    fn v2(kind: HookKind) -> &'static str {
+        match kind {
+            HookKind::PreCommit => legacy::PRE_COMMIT_V2,
+            HookKind::PrePush => legacy::PRE_PUSH_V2,
+        }
+    }
+
+    /// A 0.4.1 (v2) hook, LF or CRLF, upgrades to the current v3 template
+    /// with `quorum install`, and `quorum uninstall` removes it. An edited
+    /// v2 hook is refused by both and left as it was.
+    #[test]
+    fn an_unedited_v2_hook_upgrades_to_v3_and_an_edited_one_is_refused() {
+        let mut wrong = Vec::new();
+        for kind in BOTH {
+            let marker = format!("{HOOK_MARKER} v3 ({})", kind.file_name());
+            for body in [v2(kind).to_string(), v2(kind).replace('\n', "\r\n")] {
+                let td = init_repo();
+                let path = write_hook(&td, kind, &body);
+                let outcome = install(td.path(), kind);
+                let now = fs::read_to_string(&path).unwrap_or_default();
+                if !matches!(outcome, Ok(InstallOutcome::Overwritten(_)))
+                    || now != kind.template()
+                    || now.lines().nth(1) != Some(marker.as_str())
+                {
+                    wrong.push(format!(
+                        "{kind:?} v2 install: {outcome:?}, line 2 now {:?}",
+                        now.lines().nth(1)
+                    ));
+                }
+                let td = init_repo();
+                let path = write_hook(&td, kind, &body);
+                if !matches!(uninstall(td.path(), kind), Ok(UninstallOutcome::Removed(_)))
+                    || path.exists()
+                {
+                    wrong.push(format!("{kind:?} v2 uninstall: not removed"));
+                }
+            }
+            let edited = format!("{}\n# my team: also lint\n", v2(kind));
+            for op in ["install", "uninstall"] {
+                let td = init_repo();
+                let path = write_hook(&td, kind, &edited);
+                let result = if op == "install" {
+                    install(td.path(), kind).map(|_| ())
+                } else {
+                    uninstall(td.path(), kind).map(|_| ())
+                };
+                let intact = fs::read_to_string(&path).ok().as_deref() == Some(&edited);
+                if !matches!(result, Err(HooksError::LocallyModified(_))) || !intact {
+                    wrong.push(format!(
+                        "{kind:?} edited v2, {op}: {result:?}, intact {intact}"
+                    ));
                 }
             }
         }

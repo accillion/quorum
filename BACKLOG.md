@@ -28,12 +28,45 @@ here before.
   and error bodies are echoed in full in `CliError::HttpStatus`. Only the
   login 403 path caps its read (16 KiB). A hostile or broken endpoint can
   send an arbitrarily large body.
-- **Fail-closed does not cover two skips.** Under
-  `QUORUM_HOOK_POLICY=fail-closed`, two paths still exit 0: a missing
-  `quorum` binary ("binary not on PATH; skipping"), and a new-branch
-  pre-push tuple whose merge-base resolution errors, which is skipped
-  without counting toward the push's exit. Whether fail-closed should
-  block on either is a policy call; the fix left both as they were.
+- ~~**Fail-closed does not cover two skips.**~~ **CLOSED on
+  `feat/consensus-tier` (commit `4be17ea`, PR #14, in review).** Rolf ruled
+  both should block under fail-closed. (1) A missing `quorum` binary
+  now blocks under fail-closed with a one-line reason. Fail-open and
+  warn still skip with the note. This is hook marker v3; unedited v1 and
+  v2 hooks upgrade with `quorum install`. (2) A new-branch tuple whose
+  merge-base lookup errors counts as `ToolingError` (exit 2), keeping
+  its warning. A blocking verdict from another tuple still wins.
+  SERVICES.md §7.
+
+## Surfaced by the consensus-tier work (22 Nov 2026)
+
+- **For Rolf: the tier fields break the public API, so the next release
+  is probably 0.5.0 rather than 0.4.2.** Not decided here.
+  `git diff 9aae2a3` over both library crates adds a public field to
+  three structs whose fields are all public and that are not
+  `#[non_exhaustive]`. Any downstream struct literal stops compiling:
+  - `quorum_core::config::QuorumConfig` gains `tier: ConsensusTier`;
+  - `quorum_core::review::Review` gains `tier: Option<ConsensusTier>`;
+  - `quorum_lippa_client::SessionCreateRequest` gains
+    `tier: Option<String>`.
+
+  Additive only: the new `quorum_core::config::ConsensusTier` enum and
+  its `ALLOWED`, `as_str`, `parse`, `Display`, `FromStr` and
+  `Deserialize` impls. Under Cargo's 0.x rule a break bumps the minor
+  version, so these make it 0.5.0. Adding `#[non_exhaustive]` to these
+  structs would be its own one-time break; see the 0.4.0 item on
+  `#[non_exhaustive]` enums below.
+- **Archive `model_names` are vendor names, not models.**
+  `review_from_json` takes each model's `vendor` first ("claude",
+  "openai", "google"), and falls back to `display_name` and then `id`.
+  Every tier is three distinct vendors, so the archive shows the same
+  three names at every tier. `tier` now says which panel ran, but not
+  which model ids it used, and Lippa can change those. Recording
+  `models[].id` too is a separate change to the archive and the header.
+- **Lippa's detail response carries `tier`** (`routes/api_v1/consensus.py:622`,
+  `session.tier`). Quorum records the tier it *sent* and doesn't read it
+  back. A cross-check that warns when the two differ is possible, and
+  was not in scope.
 
 ---
 

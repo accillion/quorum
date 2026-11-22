@@ -25,6 +25,11 @@ pub struct Review {
     pub summary_text: Option<String>,
     /// Final agreement score (0..=1) from Lippa, or `None` when missing.
     pub final_agreement_score: Option<f64>,
+    /// The Consensus tier Quorum sent for this session. Set by the
+    /// caller, not by [`review_from_json`]. Recorded in the archive and
+    /// shown in the markdown header; `None` renders nothing and writes no
+    /// `tier` key. It is never part of a finding's identity.
+    pub tier: Option<crate::config::ConsensusTier>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -159,6 +164,7 @@ pub fn review_from_json(
         base_url: repo.base_url.clone(),
         summary_text,
         final_agreement_score,
+        tier: None,
     })
 }
 

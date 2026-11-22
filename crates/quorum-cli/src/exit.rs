@@ -94,6 +94,14 @@ pub enum CliError {
     /// why and what to do next.
     #[error("{0}")]
     SecondFactor(String),
+    /// Session create answered 422 and the body names `tier`. Exit 2, the
+    /// same as a config error: the fix is a config or flag value.
+    #[error(
+        "Lippa rejected the Consensus tier Quorum sent (tier = {sent:?}): {detail} \
+         Set `tier` in .quorum/config.toml, or pass --tier, to one of: {allowed}.",
+        allowed = quorum_core::config::ConsensusTier::ALLOWED
+    )]
+    TierRejected { sent: String, detail: String },
 }
 
 impl CliError {
@@ -152,6 +160,38 @@ fn render_http_status(status: u16, body_is_html: bool, body_preview: &str) -> St
         head
     } else {
         format!("{head}: {body_preview}")
+    }
+}
+
+/// Lippa's message when a 422 body names the `tier` field, else `None`.
+///
+/// Lippa raises `HTTPException(422, detail="tier must be one of: …")`,
+/// so the body is `{"detail": "<text>"}`. A FastAPI validation error has
+/// a list `detail` whose items carry a `loc` path, and an item whose
+/// `loc` contains `"tier"` counts too. A body that is not JSON, or does
+/// not name `tier`, returns `None` and keeps the generic HTTP message.
+pub(crate) fn tier_rejection(body: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    match v.get("detail")? {
+        serde_json::Value::String(s) if s.contains("tier") => Some(s.clone()),
+        serde_json::Value::Array(items) => {
+            let msgs: Vec<String> = items
+                .iter()
+                .filter(|it| {
+                    it.get("loc")
+                        .and_then(|l| l.as_array())
+                        .is_some_and(|l| l.iter().any(|p| p.as_str() == Some("tier")))
+                })
+                .map(|it| {
+                    it.get("msg")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("invalid value")
+                        .to_string()
+                })
+                .collect();
+            (!msgs.is_empty()).then(|| msgs.join("; "))
+        }
+        _ => None,
     }
 }
 
@@ -215,5 +255,47 @@ mod tests {
         // `é` sits at bytes 15..17, right after a 15-byte doctype.
         let msg = classify_http_status(502, "<!doctype html>é<body>x</body>").to_string();
         assert!(msg.contains("HTML page"));
+    }
+
+    /// Lippa's own tier 422 and a FastAPI validation item on `tier` are
+    /// recognised. Everything else falls through to the generic message.
+    #[test]
+    fn tier_rejection_recognises_only_bodies_naming_tier() {
+        assert_eq!(
+            tier_rejection(r#"{"detail":"tier must be one of: low, medium, high."}"#).as_deref(),
+            Some("tier must be one of: low, medium, high.")
+        );
+        assert_eq!(
+            tier_rejection(
+                r#"{"detail":[{"loc":["body","tier"],"msg":"bad tier"},{"loc":["body","x"],"msg":"no"}]}"#
+            )
+            .as_deref(),
+            Some("bad tier")
+        );
+        for other in [
+            "",
+            "not json",
+            "<html>422</html>",
+            r#"{"detail":"Prompt must be at least 20 characters."}"#,
+            r#"{"detail":[{"loc":["body","prompt"],"msg":"short"}]}"#,
+            r#"{"error":"tier"}"#,
+            r#"[1,2]"#,
+        ] {
+            assert_eq!(tier_rejection(other), None, "{other:?}");
+        }
+    }
+
+    #[test]
+    fn tier_rejected_is_a_tooling_error_naming_what_was_sent() {
+        let e = CliError::TierRejected {
+            sent: "medium".into(),
+            detail: "tier must be one of: low, medium, high.".into(),
+        };
+        assert_eq!(e.exit(), Exit::ToolingError);
+        let m = e.to_string();
+        assert!(
+            m.contains("tier = \"medium\"") && m.contains("low, medium, high"),
+            "{m}"
+        );
     }
 }
