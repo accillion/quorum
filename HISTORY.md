@@ -4,12 +4,26 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
-## Phase 0.5.0 (unreleased) — the Consensus tier, and two fail-closed gaps
+## Phase 0.5.0 — the Consensus tier, and two fail-closed gaps ✦ TBD
 
 **Spec:** none. The tier sends explicitly a field that was implicit before, and the default keeps the old behaviour, so it has no spec gate. The hook fixes close a PR #11 BACKLOG item on Rolf's ruling.
-**Status:** **Merged as PR #14 (`392f285`), not released.** There is no tag and no version bump: the workspace is still 0.4.1. It is headed for **0.5.0** because three public structs gain a field (below). Fill in the tag, run and links at release.
+**Status:** **Release prep in review (PR TBD), not tagged.** It is a minor bump because three public structs gain a field (below). Trusted Publishing only, no stored token.
+
+**Public release:**
+- crates.io: `quorum-core 0.5.0`, `quorum-lippa-client 0.5.0`, `quorum-cli 0.5.0`. Links TBD.
+- GitHub Release: `v0.5.0`. Link TBD.
+- CI run: TBD.
+- Tag: TBD.
 
 ### Commit graph
+
+Everything on `main` since `v0.4.1` (`9aae2a3`), first parent:
+
+```
+1c407b8  Merge PR #15: tier follow-ups (PR #14 merged, unreleased 0.5.0 entry, Lippa model check, gitignore)
+392f285  Merge PR #14: the Consensus tier; fail-closed blocks a missing binary and a failed merge-base
+47bd92c  Merge PR #13: v0.4.1 release docs
+```
 
 PR #14, rebased on `47bd92c`:
 
@@ -21,6 +35,8 @@ e5117cf  feat(archive): record the tier sent, and show it in the header
 b4f9d55  doc: the Consensus tier, the fail-closed closures, the API-break finding
 ```
 
+PR #15 is docs and `.gitignore` only. The release PR is two commits: `16e8149` (version bump), then the docs commit carrying this entry.
+
 Revert order: `ca9beaf`, `e5117cf` and `4be17ea` each revert alone and compile. `bda4ef3` reverts only after both `ca9beaf` and `e5117cf`, because both use `ConsensusTier`.
 
 ### What shipped
@@ -31,7 +47,7 @@ Revert order: `ca9beaf`, `e5117cf` and `4be17ea` each revert alone and compile. 
 
 ### Breaking changes
 
-**For library users.** These structs have all-public fields and are not `#[non_exhaustive]`, so a new field breaks any struct literal:
+**For library users.** Taken from `git diff v0.4.1` over both library crates' public items. These structs have all-public fields and are not `#[non_exhaustive]`, so a new field breaks any struct literal:
 - `quorum_core::config::QuorumConfig` has a new field, `tier: ConsensusTier` (`bda4ef3`).
 - `quorum_core::review::Review` has a new field, `tier: Option<ConsensusTier>` (`e5117cf`).
 - `quorum_lippa_client::SessionCreateRequest` has a new field, `tier: Option<String>` (`ca9beaf`).
@@ -40,13 +56,18 @@ Revert order: `ca9beaf`, `e5117cf` and `4be17ea` each revert alone and compile. 
 **For CLI users.**
 - **An invalid `tier` in `.quorum/config.toml` now exits 2.** 0.4.x ignored the unknown key. Case is not folded, so `"HIGH"` is refused.
 - **`quorum link` writes `tier = "high"`** into new configs.
-- **Fail-closed blocks a missing `quorum` binary** and a new-branch push whose merge base can't be computed. Installed hooks keep their template until `quorum install` is re-run.
+- **Fail-closed blocks a missing `quorum` binary** and a new-branch push whose merge base can't be computed. The missing-binary check lives in the hook template (marker v3). Installed hooks keep their template until `quorum install --hook=<kind>` is re-run, so a v2 hook from 0.4.1 still lets a missing binary through. The merge-base fix is in the binary and needs no re-install.
 
 ### Live verification
 
 - **Tier gate LIVE ✓** (before merge): Rolf, 22 Nov 2026, session `54b6d687-941a-4971-83ea-1a6415c5820f`. The archive had `tier = high` and the header `(tier: high)`. Lippa answered with `claude-opus-5-5`, `gemini-4-carbon` and `gpt-6.1-sol`. That is the high panel, except that Lippa `origin/main` binds the OpenAI seat to `gpt-6.2-sol`. That is a Lippa-side check, not a Quorum defect (BACKLOG).
 - Tests at `b4f9d55`, the same tree as `392f285`: Linux 531 passed, 1 ignored; Windows 530 passed. Both were 511 / 510 before. clippy `-D warnings` and fmt `--check` are clean on both.
-- Release verification (Trusted Publishing, crates.io, Release, AC 93/94/132): TBD at the tag.
+- **Release prep at `16e8149`.**
+  - Tests: Linux (Docker `rust:1.95-bookworm`) 531 passed, 1 ignored; Windows 530 passed.
+  - clippy `-D warnings` and fmt `--check` are clean on both.
+  - `cargo publish --workspace --dry-run` (cargo 1.95) packaged and verified all three at 0.5.0: `quorum-core` 19 files, `quorum-lippa-client` 14, `quorum-cli` 47 (0.4.1's 44 plus the three `tier_*` test files). `quorum-cli` built against the unpublished 0.5.0 libraries.
+  - Local `dist plan --tag v0.5.0` gave `macos-15`, `macos-15-intel`, `windows-2022`, `ubuntu-22.04` and `ubuntu-22.04-arm`, the set that ran green for 0.4.1.
+- At the tag: Trusted Publishing TBD; crates.io TBD; GitHub Release TBD; AC 93 (`cargo install quorum-cli --version 0.5.0 --locked`) TBD; AC 94 / AC 132 (checksum, `gh attestation verify`) TBD.
 
 ---
 
