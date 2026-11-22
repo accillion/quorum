@@ -31,6 +31,12 @@ pub fn install(repo_start: &Path, hook: &str) -> Result<Exit, CliError> {
             "existing hook at {} is not Quorum-managed; remove it manually first",
             p.display()
         ))),
+        Err(HooksError::LocallyModified(p)) => Err(CliError::Config(format!(
+            "existing hook at {} is Quorum-managed but has local edits; refusing to \
+             overwrite it. Move it aside, then re-run `quorum install --hook={hook}` \
+             and carry your edits over by hand",
+            p.display()
+        ))),
         Err(e) => Err(CliError::Io(e.to_string())),
     }
 }
@@ -55,6 +61,11 @@ pub fn uninstall(repo_start: &Path, hook: &str) -> Result<Exit, CliError> {
         ))),
         Err(HooksError::NotManaged(p)) => Err(CliError::Config(format!(
             "hook at {} is not Quorum-managed; refusing to remove",
+            p.display()
+        ))),
+        Err(HooksError::LocallyModified(p)) => Err(CliError::Config(format!(
+            "hook at {} is Quorum-managed but has local edits; refusing to remove it. \
+             Move it aside or delete it yourself",
             p.display()
         ))),
         Err(e) => Err(CliError::Io(e.to_string())),

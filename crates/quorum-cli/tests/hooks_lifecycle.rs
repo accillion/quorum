@@ -200,3 +200,33 @@ fn install_sets_mode_0755_on_unix() {
     let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o755);
 }
+
+/// A Quorum-managed hook the user has edited is neither overwritten by
+/// `install` nor deleted by `uninstall`: exit 2, a message that says it
+/// has local edits, and the file byte-for-byte as the user left it.
+#[test]
+fn install_and_uninstall_refuse_an_edited_managed_hook() {
+    for hook in ["pre-commit", "pre-push"] {
+        let td = init_repo();
+        quorum()
+            .current_dir(td.path())
+            .args(["install", &format!("--hook={hook}")])
+            .assert()
+            .success();
+        let path = hook_dir(td.path()).join(hook);
+        let mut edited = fs::read_to_string(&path).unwrap();
+        edited.push_str("\n# my team: also lint\nnpm run lint || exit 1\n");
+        fs::write(&path, &edited).unwrap();
+        for op in ["install", "uninstall"] {
+            let out = quorum()
+                .current_dir(td.path())
+                .args([op, &format!("--hook={hook}")])
+                .output()
+                .unwrap();
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(out.status.code(), Some(2), "{op} {hook}: {stderr}");
+            assert!(stderr.contains("local edits"), "{op} {hook}: {stderr}");
+            assert_eq!(fs::read_to_string(&path).unwrap(), edited, "{op} {hook}");
+        }
+    }
+}
