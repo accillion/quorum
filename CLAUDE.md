@@ -172,8 +172,8 @@ quorum/
 `024ed97`, run 44931991241, all 10 jobs green. All three crates are on
 crates.io at 0.4.0. The GitHub Release is live, and its assets pass
 `gh attestation verify`. The release docs merged as PR #10.
-**In review, not closed: the hook hang / fail-open bug fix** on
-`fix/hook-never-hang`. It fixes four November-audit defects in 6 code
+**In review, not closed: the hook hang / fail-open bug fix**, PR #11
+on `fix/hook-never-hang`. It fixes four November-audit defects in 6 code
 commits: the `Retry-After` clamp and the poll deadline, pre-push
 aggregation, fail-closed blocking any non-zero exit (marker v2),
 refusing edited hooks in install and uninstall, a TUI panic that hung,
