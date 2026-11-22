@@ -4,6 +4,52 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
+## Phase 0.5.0 (unreleased) — the Consensus tier, and two fail-closed gaps
+
+**Spec:** none. The tier sends explicitly a field that was implicit before, and the default keeps the old behaviour, so it has no spec gate. The hook fixes close a PR #11 BACKLOG item on Rolf's ruling.
+**Status:** **Merged as PR #14 (`392f285`), not released.** There is no tag and no version bump: the workspace is still 0.4.1. It is headed for **0.5.0** because three public structs gain a field (below). Fill in the tag, run and links at release.
+
+### Commit graph
+
+PR #14, rebased on `47bd92c`:
+
+```
+bda4ef3  feat(config): the Consensus tier, as a config key and a --tier flag
+ca9beaf  feat(review): always send the Consensus tier, and explain a tier 422
+e5117cf  feat(archive): record the tier sent, and show it in the header
+4be17ea  fix(hooks): fail-closed blocks a missing binary and a failed merge-base
+b4f9d55  doc: the Consensus tier, the fail-closed closures, the API-break finding
+```
+
+Revert order: `ca9beaf`, `e5117cf` and `4be17ea` each revert alone and compile. `bda4ef3` reverts only after both `ca9beaf` and `e5117cf`, because both use `ConsensusTier`.
+
+### What shipped
+
+- **Quorum always sends `tier` (`bda4ef3`, `ca9beaf`).** Lippa runs a fixed three-model panel per tier (`low`, `medium`, `high`). A create without `tier` gets the admin setting `CONSENSUS_TIER_DEFAULT`, so one Lippa setting could switch every review's models. `.quorum/config.toml` has a top-level `tier` key, `high` when absent. `quorum review --tier <low|medium|high>` overrides it for one run. Hooks read the config only, and `--tier` with `--hook-mode` is refused. Any other value is refused at load with exit 2, listing the three. A 422 whose body names `tier` says Lippa rejected the tier and shows what was sent. Rules: SERVICES.md §3.
+- **The tier is recorded, never identity (`e5117cf`).** The archive's last top-level key is `"tier"`, and the header reads `Reviewed by … (tier: high) in …`. A review with no tier writes no key and renders the 0.4.x header. Nothing reads archives back (Rolf's ruling: record on write, render when present). `finding_identity_hash` and `normalize_title` are untouched.
+- **Fail-closed blocks a missing binary and a failed merge-base (`4be17ea`).** Under `QUORUM_HOOK_POLICY=fail-closed`, a hook that can't find `quorum` blocks with one stderr line. Fail-open and warn still skip. The hook marker is **v3**, and the v2 (0.4.1) templates are kept verbatim in `hooks/legacy.rs`, so unedited v1 and v2 hooks upgrade and edited ones are refused. A new-branch pre-push tuple whose merge-base lookup errors counts as `ToolingError` (exit 2); it used to be skipped silently. A blocking verdict from another tuple still wins. Rules: SERVICES.md §7.
+
+### Breaking changes
+
+**For library users.** These structs have all-public fields and are not `#[non_exhaustive]`, so a new field breaks any struct literal:
+- `quorum_core::config::QuorumConfig` has a new field, `tier: ConsensusTier` (`bda4ef3`).
+- `quorum_core::review::Review` has a new field, `tier: Option<ConsensusTier>` (`e5117cf`).
+- `quorum_lippa_client::SessionCreateRequest` has a new field, `tier: Option<String>` (`ca9beaf`).
+- Additive only: the new `quorum_core::config::ConsensusTier` enum (`bda4ef3`).
+
+**For CLI users.**
+- **An invalid `tier` in `.quorum/config.toml` now exits 2.** 0.4.x ignored the unknown key. Case is not folded, so `"HIGH"` is refused.
+- **`quorum link` writes `tier = "high"`** into new configs.
+- **Fail-closed blocks a missing `quorum` binary** and a new-branch push whose merge base can't be computed. Installed hooks keep their template until `quorum install` is re-run.
+
+### Live verification
+
+- **Tier gate LIVE ✓** (before merge): Rolf, 22 Nov 2026, session `54b6d687-941a-4971-83ea-1a6415c5820f`. The archive had `tier = high` and the header `(tier: high)`. Lippa answered with `claude-opus-5-5`, `gemini-4-carbon` and `gpt-6.1-sol`. That is the high panel, except that Lippa `origin/main` binds the OpenAI seat to `gpt-6.2-sol`. That is a Lippa-side check, not a Quorum defect (BACKLOG).
+- Tests at `b4f9d55`, the same tree as `392f285`: Linux 531 passed, 1 ignored; Windows 530 passed. Both were 511 / 510 before. clippy `-D warnings` and fmt `--check` are clean on both.
+- Release verification (Trusted Publishing, crates.io, Release, AC 93/94/132): TBD at the tag.
+
+---
+
 ## Phase 0.4.1 — hook fail-open and hang fixes ✦ 2026-11-22
 
 **Spec:** none. PR #11 is a bug fix with no spec gate. It fixes four November-audit hook defects, plus a fifth found while working out the upgrade path.
