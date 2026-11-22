@@ -32,6 +32,7 @@ async fn create_session_happy_path_returns_id() {
             project_id: None,
             debate_mode: "standard".into(),
             idempotency_key: None,
+            tier: Some("high".into()),
         })
         .await
         .expect("create succeeds");
@@ -54,6 +55,7 @@ async fn create_401_maps_to_login_required() {
             project_id: None,
             debate_mode: "standard".into(),
             idempotency_key: None,
+            tier: Some("high".into()),
         })
         .await
         .expect_err("401 → LoginRequired");

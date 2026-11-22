@@ -1,6 +1,6 @@
 //! `quorum review` — the main pipeline.
 
-use crate::exit::{classify_http_status, CliError, Exit};
+use crate::exit::{classify_http_status, tier_rejection, CliError, Exit};
 use crate::render::{render_review_markdown_with_dismissed, warn_if_large};
 use quorum_core::archive::{
     archive_filename, build as build_archive, ArchiveInputs, SuppressionSummary,
@@ -297,6 +297,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
             project_id: Some(cfg.project_id.clone()),
             debate_mode: "standard".into(),
             idempotency_key: None,
+            tier: Some(tier.as_str().to_string()),
         })
         .await
     {
@@ -306,6 +307,14 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         }
         Err(ClientError::Transport(m)) => return Err(CliError::Network(m)),
         Err(ClientError::HttpStatus(s, b)) => {
+            if s.as_u16() == 422 {
+                if let Some(detail) = tier_rejection(&b) {
+                    return Err(CliError::TierRejected {
+                        sent: tier.as_str().to_string(),
+                        detail,
+                    });
+                }
+            }
             return Err(classify_http_status(s.as_u16(), &b));
         }
         Err(e) => return Err(CliError::Network(e.to_string())),
