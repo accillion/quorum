@@ -8,8 +8,10 @@
 //!
 //! - `pre-push` reads Git's stdin ref tuples and loops:
 //!   one Lippa session per non-skipped tuple, each with
-//!   `DiffSource::CommitRange { base, head }`. The push's overall
-//!   exit code is the maximum severity across all tuples.
+//!   `DiffSource::CommitRange { base, head }`. A tuple that errors is
+//!   warned about and the loop goes on. The push's overall exit code
+//!   comes from [`aggregate_push_exits`]: a blocking verdict (exit 1)
+//!   always wins, which is not the numeric maximum.
 //!
 //! Stdin parsing per D4/D5 preflight adjudication:
 //!   * branch deletion detected via `local_ref == "(delete)"` (literal),
@@ -145,7 +147,12 @@ pub async fn run_pre_commit(
 }
 
 /// `quorum review --hook-mode=pre-push` entry. Reads stdin tuples,
-/// loops one review per non-skipped tuple, aggregates exit codes.
+/// loops one review per non-skipped tuple, aggregates exit codes with
+/// [`aggregate_push_exits`].
+///
+/// A tuple whose review errors prints a one-line stderr warning naming
+/// its ref and counts as that error's exit (`AuthRequired` for an auth
+/// error, `ToolingError` otherwise). The loop always reviews the rest.
 ///
 /// The shared push-start ISO is computed once before the loop. Per
 /// spec §4.5.5 / §4.10.2 P28 each tuple lands at
@@ -161,7 +168,7 @@ pub async fn run_pre_push<R: Read>(
         return Ok(Exit::Ok);
     }
     let push_iso = push_start_iso(time::OffsetDateTime::now_utc());
-    let mut max_exit = Exit::Ok;
+    let mut exits = Vec::with_capacity(tuples.len());
 
     for (i, t) in tuples.iter().enumerate() {
         let tuple_n = i + 1;
@@ -215,7 +222,7 @@ pub async fn run_pre_push<R: Read>(
             TupleAction::Range { base, head } => DiffSource::CommitRange { base, head },
         };
 
-        let exit = run_review(
+        let exit = match run_review(
             repo_start,
             ReviewOptions {
                 json_to_stdout: false,
@@ -227,10 +234,41 @@ pub async fn run_pre_push<R: Read>(
                 archive_filename_override: Some(archive_name),
             },
         )
-        .await?;
-        max_exit = max_exit.max(exit);
+        .await
+        {
+            Ok(exit) => exit,
+            Err(e) => {
+                let exit = e.exit();
+                let why = e.to_string().lines().collect::<Vec<_>>().join(" ");
+                eprintln!(
+                    "quorum: pre-push review of {} failed (exit {}): {why}",
+                    t.local_ref, exit as u8
+                );
+                exit
+            }
+        };
+        exits.push(exit);
     }
-    Ok(max_exit)
+    Ok(aggregate_push_exits(exits))
+}
+
+/// Combine the per-tuple exits of one push into the hook's exit.
+///
+/// `HighSeverity` if any tuple returned it. Otherwise the highest of the
+/// rest, in the order `AuthRequired` > `ToolingError` > `Ok`. This is
+/// not the numeric maximum ([`Exit::max`]) and deliberately departs from
+/// spec §4.5.5's literal "max severity": the fail-open template blocks
+/// only on exit 1, so a high-severity tuple next to a transient 502 must
+/// still block the push. SERVICES.md records the rule.
+pub fn aggregate_push_exits(exits: impl IntoIterator<Item = Exit>) -> Exit {
+    let mut rest = Exit::Ok;
+    for exit in exits {
+        if exit == Exit::HighSeverity {
+            return Exit::HighSeverity;
+        }
+        rest = rest.max(exit);
+    }
+    rest
 }
 
 /// Attempt to compute the merge-base between `local_sha` and
@@ -367,5 +405,25 @@ mod tests {
         let t = time::OffsetDateTime::from_unix_timestamp(1_715_350_981).unwrap();
         let s = push_start_iso(t);
         assert!(!s.contains(':'));
+    }
+
+    /// A blocking verdict wins in any position; the rest rank
+    /// `AuthRequired` > `ToolingError` > `Ok`.
+    #[test]
+    fn aggregate_push_exits_keeps_a_blocking_verdict_on_top() {
+        use Exit::*;
+        for (exits, want) in [
+            (vec![], Ok),
+            (vec![Ok, Ok], Ok),
+            (vec![HighSeverity, ToolingError], HighSeverity),
+            (vec![ToolingError, HighSeverity], HighSeverity),
+            (vec![AuthRequired, HighSeverity, ToolingError], HighSeverity),
+            (vec![ToolingError, Ok], ToolingError),
+            (vec![Ok, ToolingError], ToolingError),
+            (vec![AuthRequired, ToolingError], AuthRequired),
+            (vec![ToolingError, AuthRequired], AuthRequired),
+        ] {
+            assert_eq!(aggregate_push_exits(exits.clone()), want, "{exits:?}");
+        }
     }
 }
