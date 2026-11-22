@@ -171,8 +171,15 @@ quorum/
 **Active:** **none. 0.4.0 shipped on 21 Nov 2026:** tag `v0.4.0` on
 `024ed97`, run 44931991241, all 10 jobs green. All three crates are on
 crates.io at 0.4.0. The GitHub Release is live, and its assets pass
-`gh attestation verify`. The release docs (HISTORY's 0.4.0 entry filled
-in, BACKLOG closures) are in review as PR #10 on `doc/v0.4.0-released`.
+`gh attestation verify`. The release docs merged as PR #10.
+**In review, not closed: the hook hang / fail-open bug fix** on
+`fix/hook-never-hang`. It fixes four November-audit defects in 6 code
+commits: the `Retry-After` clamp and the poll deadline, pre-push
+aggregation, fail-closed blocking any non-zero exit (marker v2),
+refusing edited hooks in install and uninstall, a TUI panic that hung,
+and archive failure keeping the exit code. Rules are in SERVICES.md §3
+and §7. It goes into the next release's HISTORY entry. Mark it closed
+when the PR merges.
 **Next: v0.4 Stages 2–4, retargeted to 0.5.x, not started.** Each
 stage needs Rolf's go.
 
@@ -204,8 +211,9 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 - **Before a tag, check the runners** with a local `dist plan`, since
   a PR plan run cannot prove a label can be scheduled.
 
-Repo state on `main` (`024ed97`): 494 tests pass, 1 ignored, on Linux,
-and 493 on Windows. No Rust code has changed since `1b361f1`. clippy
+Repo state on `main` (`3a9741d`): 494 tests pass, 1 ignored, on Linux,
+and 493 on Windows. No Rust code has changed since `1b361f1`. On the fix
+branch, the counts are 511 / 1 on Linux and 510 on Windows. clippy
 `-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
 Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 

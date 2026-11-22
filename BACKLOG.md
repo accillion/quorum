@@ -5,6 +5,38 @@ Group by next-target version. Most-recent first.
 
 ---
 
+## Surfaced by the hook hang and fail-open fix (22 Nov 2026)
+
+The November audit's hook findings that the fix PR (branch
+`fix/hook-never-hang`, in review) does not address. They had no entry
+here before.
+
+- **5xx is treated as progress.** `poll_status` maps every 5xx and 429
+  to `SessionStatus::InProgress`. A Lippa that answers 500 to every poll
+  keeps the loop going for the full 5-minute deadline, now bounded but
+  still the whole budget, and a hook holds the commit or push that long.
+- **One dropped packet aborts a run.** A transport error on a single
+  `/status` poll returns `CliError::Network` at once, with no retry, so a
+  converging session is abandoned (its credits already reserved) over
+  one lost request.
+- **The session id is never printed.** On a poll timeout, a network
+  error or a terminal state, nothing names the Consensus session id, so
+  the user cannot find the session in Lippa, cancel it, or fetch its
+  result later.
+- **Response bodies are unbounded.** `create_session`, `poll_status`,
+  `fetch_detail` and `whoami` read the whole body with `text()`/`json()`,
+  and error bodies are echoed in full in `CliError::HttpStatus`. Only the
+  login 403 path caps its read (16 KiB). A hostile or broken endpoint can
+  send an arbitrarily large body.
+- **Fail-closed does not cover two skips.** Under
+  `QUORUM_HOOK_POLICY=fail-closed`, two paths still exit 0: a missing
+  `quorum` binary ("binary not on PATH; skipping"), and a new-branch
+  pre-push tuple whose merge-base resolution errors, which is skipped
+  without counting toward the push's exit. Whether fail-closed should
+  block on either is a policy call; the fix left both as they were.
+
+---
+
 ## Surfaced by the 0.4.0 release and its prep (21 Nov 2026)
 
 - **For Rolf: delete the `CARGO_REGISTRY_TOKEN` repository secret.**
