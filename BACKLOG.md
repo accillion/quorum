@@ -7,8 +7,8 @@ Group by next-target version. Most-recent first.
 
 ## Surfaced by the hook hang and fail-open fix (22 Nov 2026)
 
-The November audit's hook findings that the fix PR (branch
-`fix/hook-never-hang`, in review) does not address. They had no entry
+The November audit's hook findings that the fix PR (PR #11, merged as
+`8210640`, ships in 0.4.1) does not address. They had no entry
 here before.
 
 - **5xx is treated as progress.** `poll_status` maps every 5xx and 429
