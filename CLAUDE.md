@@ -172,14 +172,12 @@ quorum/
 `024ed97`, run 44931991241, all 10 jobs green. All three crates are on
 crates.io at 0.4.0. The GitHub Release is live, and its assets pass
 `gh attestation verify`. The release docs merged as PR #10.
-**In review, not closed: the hook hang / fail-open bug fix**, PR #11
-on `fix/hook-never-hang`. It fixes four November-audit defects in 6 code
-commits: the `Retry-After` clamp and the poll deadline, pre-push
-aggregation, fail-closed blocking any non-zero exit (marker v2),
-refusing edited hooks in install and uninstall, a TUI panic that hung,
-and archive failure keeping the exit code. Rules are in SERVICES.md §3
-and §7. It goes into the next release's HISTORY entry. Mark it closed
-when the PR merges.
+The hook hang / fail-open fix merged as PR #11 (`8210640`). Its rules
+are in SERVICES.md §3 and §7.
+**In review, not tagged: release prep for 0.4.1** on `release/v0.4.1`.
+It contains PR #11 only, plus the version bump and HISTORY's 0.4.1
+entry, whose run id and links are `TBD`. It is a patch: there are no
+library API breaks. The tag waits for Rolf's go.
 **Next: v0.4 Stages 2–4, retargeted to 0.5.x, not started.** Each
 stage needs Rolf's go.
 
@@ -211,9 +209,12 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 - **Before a tag, check the runners** with a local `dist plan`, since
   a PR plan run cannot prove a label can be scheduled.
 
-Repo state on `main` (`3a9741d`): 494 tests pass, 1 ignored, on Linux,
-and 493 on Windows. No Rust code has changed since `1b361f1`. On the fix
-branch, the counts are 511 / 1 on Linux and 510 on Windows. clippy
+- **The local `dist plan` for `v0.4.1`** gives the runners that ran
+  green in 44931991241: `macos-15`, `macos-15-intel`, `windows-2022`,
+  `ubuntu-22.04` and `ubuntu-22.04-arm`.
+
+Repo state on `main` (`8210640`): 511 tests pass, 1 ignored, on Linux,
+and 510 on Windows. The same holds on `release/v0.4.1`. clippy
 `-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
 Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 

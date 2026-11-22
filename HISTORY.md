@@ -4,6 +4,56 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
+## Phase 0.4.1 — hook fail-open and hang fixes ✦ 2026-11-22
+
+**Spec:** none. PR #11 is a bug fix with no spec gate. It fixes four November-audit hook defects, plus a fifth found while working out the upgrade path.
+**Status:** **Release prep in review (PR TBD), not tagged.** It is a patch bump: neither library crate's public API changes (below). Trusted Publishing only, no stored token.
+
+**Public release:**
+- crates.io: `quorum-core 0.4.1`, `quorum-lippa-client 0.4.1`, `quorum-cli 0.4.1`. Links TBD.
+- GitHub Release: `v0.4.1`. Link TBD.
+- CI run: TBD.
+
+### Commit graph
+
+Everything on `main` since `v0.4.0` (`024ed97`), first parent:
+
+```
+8210640  Merge PR #11: hooks never hang, and never wave through a blocking verdict
+3a9741d  Merge PR #10: v0.4.0 release docs
+```
+
+PR #11 is six code commits, each separately revertable, then two docs commits (`9f844d6`, `4b4672d`). The release PR is two commits: the version bump, then the docs commit carrying this entry.
+
+### What shipped
+
+- **`Retry-After` can't stall a run past its deadline (`b766c5e`).** `next_poll_delay` clamps `Retry-After` to `max_delay`, and the poll loop (`poll_until_converged`) caps every sleep at the time left before the 300 s deadline. A `429` with `Retry-After: 100000000` used to make `git push` sleep for years. Rules: SERVICES.md §3.
+- **Pre-push reviews every tuple, and a blocking verdict wins (`c369182`).** One tuple's error no longer discards the others: it prints a one-line warning naming its ref and counts as that error's exit. The new `aggregate_push_exits` returns exit 1 if any tuple did, then ranks the rest `AuthRequired` > `ToolingError` > `Ok`. Under the old numeric max, a high-severity tuple next to a transient 502 exited 2 and fail-open let the push through. Rules: SERVICES.md §7.
+- **Fail-closed blocks on any non-zero exit; hook marker v2 (`616439c`).** Under `QUORUM_HOOK_POLICY=fail-closed` both templates blocked only on exit 2 or 3, so a panic (101) or a signal death (128+N) went through. They now block on any non-zero exit. Fail-open and warn are unchanged. The marker line is now `# quorum-managed-hook v2 (<kind>)`.
+- **Install and uninstall never destroy an edited hook (`d1fd5dc`).** Both go through `refuse_unless_unedited`. A managed hook is replaced or removed only when it is exactly a template Quorum shipped for that hook (v2, or v1 kept verbatim in `hooks/legacy.rs`), LF or CRLF. An edited one gets exit 2 and is left untouched. There is no override.
+- **A TUI panic with a live session exits instead of hanging (`4a73089`).** `restore_panic_hook` no longer re-enters its own mutex during an unwind, and the installed hook falls back to printing the panic message itself.
+- **A failed archive write can't discard a verdict (`e2c6383`).** The exit code is settled before `.quorum/reviews/` is written. A write failure warns with the path and keeps the review's exit, so high-severity findings still block under fail-open.
+
+### Breaking changes
+
+**For library users: none.** `git diff v0.4.0` over both library crates: `quorum-core` is unchanged. In `quorum-lippa-client`, only the body of `client::next_poll_delay` changed. Its signature is the same, but a `Retry-After` above `max` now returns `max`, where it used to be returned unclamped. AC 29's "waits exactly N seconds" holds only for N ≤ `max_delay` (8 s by default).
+
+**For CLI users.**
+- **Installed hooks keep their old template until re-installed.** Quorum never rewrites `.git/hooks` on its own. A v1 hook from 0.4.0 or earlier still lets a crash through under fail-closed. Re-run `quorum install --hook=<kind>` to upgrade an unedited one. README "Upgrading an installed hook" gives the check.
+- **`quorum install` / `quorum uninstall` refuse an edited managed hook** with exit 2. They used to overwrite or delete it and exit 0.
+- **Fail-closed now blocks a crash** (any non-zero exit), not only exits 2 and 3.
+
+### Live verification
+
+TBD at the tag.
+- Trusted Publishing: TBD.
+- crates.io: TBD.
+- GitHub Release: TBD.
+- AC 93 (`cargo install quorum-cli --version 0.4.1 --locked`): TBD.
+- AC 94 / AC 132 (checksum, `gh attestation verify`): TBD.
+
+---
+
 ## Phase 0.4.0 — v0.4 Stage 1 plus SEC-1, DL Parts 1–2 and two-factor login ✦ 2026-11-21
 
 **Spec:** `specs/Quorum-v0_4-Spec-v0_1.md`, Stage 1 (ACs 176–194) plus AC 211a. SEC-1, DL Part 1, DL Part 2 and the two-factor login fix are bug fixes with no spec gate. Stages 2–4 are retargeted to 0.5.x.
