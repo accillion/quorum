@@ -67,6 +67,10 @@ pub struct SuppressionSummary {
 ///   - session_id
 ///   - started_at
 ///   - summary_text (optional)
+///   - suppressed_findings[]
+///   - tier (optional): the Consensus tier sent. Absent when
+///     `review.tier` is `None`, as in every archive written before it
+///     existed; `schema_version` stays 2 because the key is additive.
 pub fn build(review: &Review, inp: &ArchiveInputs) -> Vec<u8> {
     use serde_json::json;
     let started_at = inp
@@ -135,6 +139,9 @@ pub fn build(review: &Review, inp: &ArchiveInputs) -> Vec<u8> {
         "suppressed_findings".into(),
         serde_json::Value::Array(suppressed_json),
     );
+    if let Some(t) = review.tier {
+        top.insert("tier".into(), json!(t.as_str()));
+    }
 
     write_ordered(
         &serde_json::Value::Object(top),
@@ -152,6 +159,7 @@ pub fn build(review: &Review, inp: &ArchiveInputs) -> Vec<u8> {
             "started_at",
             "summary_text",
             "suppressed_findings",
+            "tier",
         ],
     )
 }
@@ -298,6 +306,7 @@ mod tests {
             base_url: "https://app.lippa.ai".into(),
             summary_text: Some("Brief.".into()),
             final_agreement_score: Some(0.92),
+            tier: None,
         }
     }
 
@@ -336,5 +345,30 @@ mod tests {
         let name = archive_filename(dt);
         assert!(name.ends_with(".json"));
         assert!(!name.contains(':'));
+    }
+
+    /// A review with a tier writes it as the last top-level key; with
+    /// none, the archive has no `tier` key, which is the shape every
+    /// archive written before the tier existed has.
+    #[test]
+    fn tier_is_written_when_set_and_absent_otherwise() {
+        let inp = fixture_inputs();
+        let mut r = fixture_review();
+        let none: serde_json::Value = serde_json::from_slice(&build(&r, &inp)).unwrap();
+        assert!(none.get("tier").is_none(), "{none}");
+
+        r.tier = Some(crate::config::ConsensusTier::Medium);
+        let buf = build(&r, &inp);
+        let s = String::from_utf8(buf.clone()).unwrap();
+        let with: serde_json::Value = serde_json::from_slice(&buf).unwrap();
+        assert_eq!(with["tier"], "medium");
+        assert!(
+            s.trim_end().ends_with("\"tier\": \"medium\"\n}"),
+            "tier must be the last key: {s}"
+        );
+        // Every other key is unchanged by the tier.
+        let mut without = with.clone();
+        without.as_object_mut().unwrap().remove("tier");
+        assert_eq!(without, none);
     }
 }

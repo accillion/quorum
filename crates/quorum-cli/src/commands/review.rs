@@ -344,6 +344,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     let mut review =
         review_from_json(&detail, &repo_meta).map_err(|e| CliError::Malformed(e.to_string()))?;
     review.elapsed = start_clock.elapsed();
+    review.tier = Some(tier);
 
     // ===== Dismissals filter site (Phase 1B Stage 1) =====
     //

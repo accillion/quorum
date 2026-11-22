@@ -19,6 +19,10 @@ pub fn render_review_markdown_with_dismissed(review: &Review, dismissals_applied
     } else {
         review.model_names.join(", ")
     };
+    let tier = match review.tier {
+        Some(t) => format!(" (tier: {t})"),
+        None => String::new(),
+    };
     let dismiss_suffix = if dismissals_applied > 0 {
         // Spec wording: "<N> findings shown, <M> dismissed". N is the
         // post-filter count (what the user sees rendered below).
@@ -31,7 +35,7 @@ pub fn render_review_markdown_with_dismissed(review: &Review, dismissals_applied
         String::new()
     };
     out.push_str(&format!(
-        "Reviewed by {models} in {:.1}s{dismiss_suffix}\n",
+        "Reviewed by {models}{tier} in {:.1}s{dismiss_suffix}\n",
         review.elapsed.as_secs_f64()
     ));
     if let Some(score) = review.final_agreement_score {
@@ -109,6 +113,7 @@ mod tests {
             base_url: "https://x".into(),
             summary_text: None,
             final_agreement_score: None,
+            tier: None,
         }
     }
 
@@ -156,5 +161,24 @@ mod tests {
         let md = render_review_markdown_with_dismissed(&r, 5);
         let header = md.lines().nth(1).unwrap();
         assert!(header.contains("2 findings shown, 5 dismissed"));
+    }
+
+    /// The tier sits beside the model list. A review with no tier, as
+    /// every archive before the tier existed has, renders the 0.4.0
+    /// header byte for byte.
+    #[test]
+    fn header_shows_the_tier_beside_the_models_only_when_set() {
+        let mut r = review_with(vec![dummy_finding(Severity::Low, "x")]);
+        let md = render_review_markdown_with_dismissed(&r, 2);
+        assert_eq!(
+            md.lines().nth(1).unwrap(),
+            "Reviewed by claude-sonnet, gpt-4o in 12.5s · 1 findings shown, 2 dismissed"
+        );
+        r.tier = Some(quorum_core::config::ConsensusTier::High);
+        let md = render_review_markdown_with_dismissed(&r, 2);
+        assert_eq!(
+            md.lines().nth(1).unwrap(),
+            "Reviewed by claude-sonnet, gpt-4o (tier: high) in 12.5s · 1 findings shown, 2 dismissed"
+        );
     }
 }
