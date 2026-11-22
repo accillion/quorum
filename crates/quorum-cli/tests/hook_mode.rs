@@ -214,3 +214,194 @@ fn ac192_out_of_range_bundle_config_exits_2() {
             predicate::str::contains("total_budget_kb").and(predicate::str::contains("100..=1024")),
         );
 }
+
+// ============ Pre-push aggregation: a blocking verdict always wins ============
+//
+// The fail-open hook template blocks only on exit 1. One tuple's error
+// must not discard another tuple's high-severity verdict, and must not
+// stop the remaining tuples from being reviewed.
+
+const SESSIONS: &str = "/api/v1/consensus/sessions";
+
+/// What the mock Lippa answers for one tuple's review.
+#[derive(Clone, Copy, Debug)]
+enum Verdict {
+    /// Converges with one divergence finding: high severity, exit 1.
+    High,
+    /// Converges with no findings: exit 0.
+    Clean,
+    /// Session create answers 502: a tooling error, exit 2.
+    BadGateway,
+    /// Session create answers 401: an auth error, exit 3.
+    Unauthorized,
+}
+
+/// A linked repo whose `main` branch has one commit, plus two side
+/// branches `a` and `b` off it. Each adds a file carrying its own marker,
+/// so a mock can tell the two tuples' bundles apart. Returns the repo and
+/// the pre-push stdin pushing `a` then `b`.
+fn two_branch_repo(base_url: &str) -> (TempDir, String) {
+    use std::path::Path;
+    let td = TempDir::new().unwrap();
+    let repo = git2::Repository::init(td.path()).unwrap();
+    let sig = git2::Signature::now("t", "t@e").unwrap();
+    let mut idx = repo.index().unwrap();
+    std::fs::write(td.path().join("lib.rs"), "pub fn a() {}\n").unwrap();
+    idx.add_path(Path::new("lib.rs")).unwrap();
+    let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+    let base = repo
+        .commit(Some("HEAD"), &sig, &sig, "base", &tree, &[])
+        .unwrap();
+    let base_commit = repo.find_commit(base).unwrap();
+    let mut stdin = String::new();
+    for (branch, file) in [("a", "alpha.txt"), ("b", "bravo.txt")] {
+        let blob = repo
+            .blob(format!("{} marker\n", marker(branch)).as_bytes())
+            .unwrap();
+        let mut tb = repo.treebuilder(Some(&tree)).unwrap();
+        tb.insert(file, blob, 0o100644).unwrap();
+        let t = repo.find_tree(tb.write().unwrap()).unwrap();
+        let tip = repo
+            .commit(
+                Some(&format!("refs/heads/{branch}")),
+                &sig,
+                &sig,
+                branch,
+                &t,
+                &[&base_commit],
+            )
+            .unwrap();
+        stdin.push_str(&format!(
+            "refs/heads/{branch} {tip} refs/heads/{branch} {base}\n"
+        ));
+    }
+    let qd = td.path().join(".quorum");
+    std::fs::create_dir_all(&qd).unwrap();
+    std::fs::write(
+        qd.join("config.toml"),
+        format!("project_id = \"p_1\"\nbase_url = \"{base_url}\"\n"),
+    )
+    .unwrap();
+    (td, stdin)
+}
+
+fn marker(branch: &str) -> String {
+    format!("QUORUM_TUPLE_MARKER_{}", branch.to_uppercase())
+}
+
+/// Mock Lippa's answer for the tuple pushing `branch`. The returned
+/// session-create mock expects exactly one hit: asserting it proves the
+/// tuple was attempted. The other mocks only need to outlive the run.
+fn mock_tuple(
+    server: &mut mockito::Server,
+    branch: &str,
+    verdict: Verdict,
+) -> (mockito::Mock, Vec<mockito::Mock>) {
+    let sess = format!("sess_{branch}");
+    let create = server
+        .mock("POST", SESSIONS)
+        .match_body(mockito::Matcher::Regex(marker(branch)));
+    let create = match verdict {
+        Verdict::High | Verdict::Clean => create.with_status(201).with_body(format!(
+            r#"{{"id":"{sess}","status":"pending","credits_reserved":3,"credits_remaining":197}}"#
+        )),
+        Verdict::BadGateway => create.with_status(502).with_body("bad gateway"),
+        Verdict::Unauthorized => create
+            .with_status(401)
+            .with_body(r#"{"detail":"unauthorized"}"#),
+    }
+    .expect(1)
+    .create();
+    let mut rest = Vec::new();
+    if matches!(verdict, Verdict::High | Verdict::Clean) {
+        rest.push(
+            server
+                .mock("GET", format!("{SESSIONS}/{sess}/status").as_str())
+                .with_status(200)
+                .with_body(r#"{"status":"converged","rounds_completed":3,"rounds_total":3,"models_active":3,"models_dropped":0,"elapsed_seconds":4.0,"follow_up_questions":null}"#)
+                .create(),
+        );
+        let divergence = if matches!(verdict, Verdict::High) {
+            r#"[{"claim_text":"Hard-coded credential in alpha","confidence":0.9,"supported_by":["m1"]}]"#
+        } else {
+            "[]"
+        };
+        rest.push(
+            server
+                .mock("GET", format!("{SESSIONS}/{sess}").as_str())
+                .with_status(200)
+                .with_body(format!(
+                    r#"{{"id":"{sess}","status":"converged","summary_text":"x","agreement":[],"divergence":{divergence},"assumptions":[],"models":[]}}"#
+                ))
+                .create(),
+        );
+    }
+    (create, rest)
+}
+
+/// Push `a` then `b` through `--hook-mode=pre-push` with the given
+/// verdicts. Asserts both tuples were attempted; returns the exit code
+/// and stderr.
+fn push_two(first: Verdict, second: Verdict) -> (Option<i32>, String) {
+    let mut server = mockito::Server::new();
+    let (create_a, _keep_a) = mock_tuple(&mut server, "a", first);
+    let (create_b, _keep_b) = mock_tuple(&mut server, "b", second);
+    let (td, stdin) = two_branch_repo(&server.url());
+    let cfg = TempDir::new().unwrap();
+    let out = quorum()
+        .current_dir(td.path())
+        .env("APPDATA", cfg.path())
+        .env("XDG_CONFIG_HOME", cfg.path())
+        .env_remove("QUORUM_LIPPA_EMAIL")
+        .env_remove("QUORUM_LIPPA_PASSWORD")
+        .env("QUORUM_LIPPA_SESSION", "SESSION-CANARY")
+        .env("QUORUM_LIPPA_BASE_URL", server.url())
+        .args(["review", "--hook-mode=pre-push"])
+        .write_stdin(stdin)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    println!(
+        "{first:?} + {second:?}: exit {:?}\n{stderr}",
+        out.status.code()
+    );
+    create_a.assert();
+    create_b.assert();
+    (out.status.code(), stderr)
+}
+
+/// The ref named in a failed tuple's one-line warning.
+fn warned_about(stderr: &str, branch: &str) -> bool {
+    stderr
+        .lines()
+        .any(|l| l.contains("failed") && l.contains(&format!("refs/heads/{branch}")))
+}
+
+#[test]
+fn pre_push_high_findings_then_error_blocks_with_exit_1() {
+    let (code, stderr) = push_two(Verdict::High, Verdict::BadGateway);
+    assert_eq!(code, Some(1), "high-severity verdict must win");
+    assert!(warned_about(&stderr, "b"), "no warning naming refs/heads/b");
+}
+
+#[test]
+fn pre_push_error_then_high_findings_blocks_with_exit_1() {
+    let (code, stderr) = push_two(Verdict::BadGateway, Verdict::High);
+    assert_eq!(code, Some(1), "high-severity verdict must win");
+    assert!(warned_about(&stderr, "a"), "no warning naming refs/heads/a");
+}
+
+#[test]
+fn pre_push_error_then_clean_exits_2() {
+    let (code, stderr) = push_two(Verdict::BadGateway, Verdict::Clean);
+    assert_eq!(code, Some(2));
+    assert!(warned_about(&stderr, "a"), "no warning naming refs/heads/a");
+}
+
+#[test]
+fn pre_push_auth_then_error_exits_3() {
+    let (code, stderr) = push_two(Verdict::Unauthorized, Verdict::BadGateway);
+    assert_eq!(code, Some(3), "auth outranks a tooling error");
+    assert!(warned_about(&stderr, "a"), "no warning naming refs/heads/a");
+    assert!(warned_about(&stderr, "b"), "no warning naming refs/heads/b");
+}

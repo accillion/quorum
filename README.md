@@ -127,15 +127,34 @@ quorum uninstall --hook=pre-commit  # idempotent; refuses non-Quorum hooks
 ```
 
 Hook templates are POSIX `#!/bin/sh`, marked with
-`# quorum-managed-hook v1` in the first 5 lines. Re-running `install`
-overwrites a Quorum-managed file idempotently; refuses to overwrite
-a hook of unknown provenance.
+`# quorum-managed-hook v2` in the first 5 lines. Re-running `install`
+replaces a hook only while it is an unedited Quorum template, and
+`uninstall` removes only such a hook. Both refuse, with exit 2 and the
+file untouched, a hook of unknown provenance or a Quorum hook you have
+edited. There is no override: move the file aside yourself.
 
 Hook policy via `QUORUM_HOOK_POLICY` env var:
 - `fail-open` (default): only exit 1 (high-severity findings) blocks
   the commit / push. Auth and tooling failures fail open.
-- `fail-closed`: also block on exit 2 (tooling) and exit 3 (auth).
+- `fail-closed`: block on **any** non-zero exit: tooling (2), auth (3),
+  and a crash (a panic is 101, a signal death 128+N).
 - `warn`: nothing blocks regardless of exit code.
+
+**Upgrading an installed hook.** Quorum never rewrites `.git/hooks` on
+its own, so a hook installed by Quorum 0.4.0 or earlier keeps the v1
+template, whose
+`fail-closed` lets a crash through. Check with
+`sed -n 2p .git/hooks/pre-commit`. To upgrade, re-run the install for
+each hook you use:
+
+```bash
+quorum install --hook=pre-commit
+quorum install --hook=pre-push
+```
+
+An unedited v1 hook is replaced with v2. If you edited the hook, the
+install refuses and says so. Move the file aside, re-run the install,
+and carry your edits over by hand.
 
 Bypass for one operation: `env QUORUM_SKIP=1 git commit ...` or
 `env QUORUM_SKIP=1 git push ...`.

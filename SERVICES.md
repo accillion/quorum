@@ -197,9 +197,17 @@ discovery is off.
 - 401 on `/status` polls → `SessionStatus::Unauthorized` so callers can
   emit poll-401 messaging distinctly.
 - `Retry-After` on 429/503 overrides the 1s→8s ±25%-jitter schedule for
-  one tick (`PollOptions::default()` + `next_poll_delay`).
+  one tick (`PollOptions::default()` + `next_poll_delay`), **clamped to
+  `max_delay` (8 s)**. The header comes from whoever answered (Lippa, a
+  proxy, a captive portal), so it never sets a longer sleep. AC 29's
+  "waits exactly N seconds" holds for N ≤ 8; above that the wait is 8 s.
 - Overall polling timeout: 5 minutes. Beyond that the caller surfaces
-  `PollTimeout` with the last observed status.
+  `PollTimeout` with the last observed status. The deadline holds
+  while sleeping too: the CLI's `poll_until_converged` caps every sleep
+  at the time left before it, so the deadline check always runs. (A
+  `Retry-After: 100000000` once made `git push` sleep for years.) One
+  in-flight request can still overrun the deadline by up to the 30 s
+  request timeout.
 - Terminal status taxonomy: `converged` → fetch detail; `failed` /
   `cancelled` / `error` → return typed terminal error with reason; any
   unrecognized status → `Error("unknown_status:<s>")`.
@@ -495,9 +503,21 @@ String::new()` fixtures cannot exercise this path.
   the literal `.git/` directory — correct under worktrees and
   custom `--git-dir`. We never use `path().parent()` inference.
 - **Idempotency marker** is `# quorum-managed-hook`, scanned in
-  the first 5 lines of an existing hook. Found → overwrite
-  (idempotent re-install). Not found → exit 2; the user must
-  remove the foreign hook manually.
+  the first 5 lines of an existing hook. Not found → exit 2; the user
+  must remove the foreign hook manually. The marker line carries a
+  version: `v2` since the fail-closed fix below, `v1` before.
+- **Install and uninstall never destroy an edited hook.** A managed
+  hook is overwritten by `install` or removed by `uninstall` only when
+  its content is exactly a template Quorum shipped for that hook, LF or
+  CRLF: the current v2, or v1, kept verbatim in `hooks/legacy.rs` (never
+  edit those bytes). That makes `quorum install --hook=<type>` both the
+  idempotent re-install and the v1 → v2 upgrade. A marker with any other
+  content means local edits: both commands exit 2 with a message saying
+  so and leave the file untouched. There is no `--force`, the same rule
+  as the conventions write paths (§6.1). The gate is one function,
+  `hooks::refuse_unless_unedited`. Quorum never rewrites
+  `.git/hooks` on its own; installed hooks change only when the user
+  runs `quorum install`.
 - **Unix mode** is `0o755` via `std::os::unix::fs::PermissionsExt`.
   On Windows the inheriting ACL of `.git/hooks/` governs execution;
   Git for Windows runs hooks via `sh.exe` regardless of NTFS
@@ -509,7 +529,12 @@ String::new()` fixtures cannot exercise this path.
   `QUORUM_HOOK_POLICY ∈ {fail-open, fail-closed, warn}`:
   - `fail-open` (default): only exit 1 (high-severity findings)
     blocks.
-  - `fail-closed`: exit 2 (tooling) and exit 3 (auth) also block.
+  - `fail-closed`: **any non-zero exit** blocks: tooling (2), auth
+    (3), and a crash, i.e. a panic (101) or a signal death (128+N).
+    The v1 template blocked only on 2 and 3, so a crash went through.
+    This also blocks network errors, which the CLI reports as exit 2;
+    the Phase 1B spec's §4.11 table saying fail-closed passes them is
+    superseded.
   - `warn`: nothing blocks regardless of exit code.
   Bypass for one operation: `env QUORUM_SKIP=1 git commit ...`
   or `env QUORUM_SKIP=1 git push ...`.
@@ -540,8 +565,28 @@ String::new()` fixtures cannot exercise this path.
   `.quorum/reviews/<push-start-ISO>.tuple-<N>.json` per non-skipped
   tuple (1-indexed `N`, shared `push-start-ISO` across one push).
   All other invocation modes use the Phase 1A `<ISO>.json` shape.
-  Push's overall exit code is `Exit::max` across all per-tuple
-  exits (spec §4.5.5: max severity across tuples).
+- **Pre-push aggregation: a blocking verdict always wins.** Every
+  non-skipped tuple is reviewed. A tuple whose review errors prints one
+  stderr line naming its local ref (`quorum: pre-push review of <ref>
+  failed (exit N): …`), counts as that error's exit (`AuthRequired` for
+  an auth error, `ToolingError` otherwise), and the loop goes on. The
+  push's exit (`hook_mode::aggregate_push_exits`) is `HighSeverity` if
+  any tuple returned it; otherwise the highest of the rest, in the order
+  `AuthRequired` > `ToolingError` > `Ok`. This deliberately departs
+  from spec §4.5.5's literal "max severity". The numeric maximum
+  (`Exit::max`, 0 < 1 < 2 < 3) ranks a transient 502 above
+  high-severity findings, and the fail-open template blocks only on 1,
+  so the push went through. The hard constraint is that a blocking
+  verdict blocks. `Exit::max` itself is unchanged and ranks only the
+  non-blocking rest.
+- **A failed archive write never changes the exit code.** `quorum
+  review` settles its exit (1 on high-severity findings, else 0) before
+  writing `.quorum/reviews/<name>.json`. If the write fails (full disk,
+  read-only mount, `reviews` not a directory) it prints `warning: could
+  not write the review archive <path>: <error>` and the exit stays the
+  review's, in every mode. `--json` still prints the buffer to stdout.
+  As exit 2, the failure would let high-severity findings through the
+  fail-open template.
 - **No-auth in hook mode.** Under `--hook-mode=*`, the absence of
   any auth (no keyring entry AND no `QUORUM_LIPPA_SESSION`) is NOT
   a hard error — emits stderr `quorum: not authenticated — hook

@@ -20,9 +20,13 @@ impl Exit {
         ExitCode::from(self as u8)
     }
 
-    /// Pick the "more severe" of two exits per the stable taxonomy.
-    /// Used by the pre-push aggregator to combine per-tuple results
-    /// (spec §4.5.5: overall exit is the max severity across tuples).
+    /// Pick the numerically larger of two exits (0 < 1 < 2 < 3).
+    ///
+    /// Not a severity order for hook aggregation: it ranks a tooling
+    /// error (2) above high-severity findings (1), and the fail-open
+    /// template blocks only on 1. The pre-push loop combines tuples with
+    /// `commands::hook_mode::aggregate_push_exits`, which keeps exit 1
+    /// on top and uses this only to rank the non-blocking rest.
     pub fn max(self, other: Exit) -> Exit {
         // Severity order matches the numeric variant values: 0 < 1 < 2 < 3.
         if (other as u8) > (self as u8) {

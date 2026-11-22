@@ -16,7 +16,9 @@
 //! also install a panic hook at setup that calls the same restore
 //! before unwinding, so a panic anywhere inside the loop still surfaces
 //! a cooked terminal to the user. The hook is restored on Drop so test
-//! harnesses aren't left with a poisoned global.
+//! harnesses aren't left with a poisoned global, except during an
+//! unwind: `set_hook` panics on a panicking thread, so a Drop that runs
+//! mid-panic leaves the hook in place and the process exits as it would.
 
 pub mod dismiss_prompt;
 pub mod panels;
@@ -33,7 +35,7 @@ use crossterm::terminal::{
 };
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError, TryLockError};
 
 use quorum_core::archive::SuppressionSummary;
 use quorum_core::conventions::{
@@ -497,16 +499,34 @@ fn install_panic_hook() {
         let _ = disable_raw_mode();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
         let _ = io::stdout().flush();
-        let guard = PRIOR_HOOK.lock().unwrap();
-        if let Some(prev) = guard.as_ref() {
-            prev(info);
+        // `try_lock`, never `lock`: a panic must not wait on the slot.
+        // If it is busy, or the prior hook is already out of it, print
+        // the panic message ourselves.
+        let guard = match PRIOR_HOOK.try_lock() {
+            Ok(g) => Some(g),
+            Err(TryLockError::Poisoned(p)) => Some(p.into_inner()),
+            Err(TryLockError::WouldBlock) => None,
+        };
+        match guard.as_deref().and_then(Option::as_ref) {
+            Some(prev) => prev(info),
+            None => eprintln!("{info}"),
         }
     }));
 }
 
 fn restore_panic_hook() {
-    let mut slot = PRIOR_HOOK.lock().unwrap();
-    if let Some(prev) = slot.take() {
+    // During an unwind, leave our hook in place: `set_hook` panics on a
+    // panicking thread, and the process is on its way out anyway.
+    if std::thread::panicking() {
+        return;
+    }
+    // Take the prior hook out and release the lock before `set_hook`, so
+    // nothing on this thread can need the slot while it is held.
+    let prev = PRIOR_HOOK
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take();
+    if let Some(prev) = prev {
         std::panic::set_hook(prev);
     }
 }
@@ -931,5 +951,75 @@ mod tests {
             }
             other => panic!("expected Exact, got {other:?}"),
         }
+    }
+
+    /// Set by the parent test to turn [`panic_with_a_live_session_child`]
+    /// into the child half.
+    const PANIC_CHILD_ENV: &str = "QUORUM_TEST_TUI_PANIC_CHILD";
+    const PANIC_PROBE: &str = "tui panic probe";
+
+    /// Child half of [`a_panic_with_a_live_session_exits_instead_of_hanging`].
+    /// A no-op unless the parent set [`PANIC_CHILD_ENV`].
+    ///
+    /// The guard is `TuiSession`'s panic-hook half: the same install at
+    /// setup and the same restore in `Drop`, without the terminal, which
+    /// a test process does not have.
+    #[test]
+    fn panic_with_a_live_session_child() {
+        if std::env::var_os(PANIC_CHILD_ENV).is_none() {
+            return;
+        }
+        struct HookGuard;
+        impl Drop for HookGuard {
+            fn drop(&mut self) {
+                restore_panic_hook();
+            }
+        }
+        install_panic_hook();
+        let _guard = HookGuard;
+        panic!("{PANIC_PROBE}");
+    }
+
+    /// A panic while a TUI session is alive ends the process. It used to
+    /// hang: `Drop` ran `restore_panic_hook` during the unwind, which held
+    /// the `PRIOR_HOOK` lock across `set_hook`; `set_hook` panics on a
+    /// panicking thread, and the installed hook then locked the same mutex
+    /// on the same thread. Run in a child process so a hang fails this
+    /// test instead of wedging the harness.
+    #[test]
+    fn a_panic_with_a_live_session_exits_instead_of_hanging() {
+        use std::process::{Command, Stdio};
+        use std::time::{Duration, Instant};
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tui::tests::panic_with_a_live_session_child",
+                "--nocapture",
+            ])
+            .env(PANIC_CHILD_ENV, "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("child still running 10 s after a panic with a live TUI session: hung");
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        let mut stderr = String::new();
+        std::io::Read::read_to_string(&mut child.stderr.take().unwrap(), &mut stderr).unwrap();
+        assert!(!status.success(), "child exited 0 after a panic");
+        assert!(
+            stderr.contains(PANIC_PROBE),
+            "panic message missing from stderr: {stderr}"
+        );
     }
 }

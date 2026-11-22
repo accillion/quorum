@@ -110,17 +110,20 @@ async fn poll_429_with_retry_after_honored_in_delay_computation() {
     let _m = server
         .mock("GET", "/api/v1/consensus/sessions/sess/status")
         .with_status(429)
-        .with_header("Retry-After", "13")
+        .with_header("Retry-After", "5")
         .with_body("")
         .create_async()
         .await;
     let client = cookie_client(server.url());
     let (status, hints) = client.poll_status(&SessionId("sess".into())).await.unwrap();
     assert_eq!(status, SessionStatus::InProgress);
-    assert_eq!(hints.retry_after, Some(Duration::from_secs(13)));
+    assert_eq!(hints.retry_after, Some(Duration::from_secs(5)));
+    // Within `max_delay` (8s) the hint is used exactly. Above it, it is
+    // clamped to `max_delay`; `next_delay_clamps_retry_after_to_max`
+    // covers that.
     let opts = PollOptions::default();
     let delay = next_poll_delay(opts.initial_delay, opts.max_delay, hints.retry_after, 0.5);
-    assert_eq!(delay, Duration::from_secs(13));
+    assert_eq!(delay, Duration::from_secs(5));
 }
 
 #[tokio::test]

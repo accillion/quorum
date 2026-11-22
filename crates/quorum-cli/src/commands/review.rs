@@ -13,9 +13,10 @@ use quorum_core::memory::{
     finding_identity_hash, FindingIdentityHash, LocalSqliteMemoryStore, MemoryStore,
 };
 use quorum_core::review::{review_from_json, Finding, RepoMetadata};
+use quorum_lippa_client::client::{next_poll_delay, PollOptions};
 use quorum_lippa_client::keyring::Storage;
 use quorum_lippa_client::{
-    keyring, AuthMethod, ClientError, LippaClient, SessionCreateRequest, SessionStatus,
+    keyring, AuthMethod, ClientError, LippaClient, SessionCreateRequest, SessionId, SessionStatus,
 };
 use std::path::Path;
 use std::time::Instant;
@@ -303,61 +304,8 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         Err(e) => return Err(CliError::Network(e.to_string())),
     };
 
-    // Polling loop.
-    let poll_opts = quorum_lippa_client::client::PollOptions::default();
-    let mut base = poll_opts.initial_delay;
-    let mut last_status_label = "pending".to_string();
-    let deadline = Instant::now() + poll_opts.overall_timeout;
-    let session_status = loop {
-        let elapsed_left = deadline.saturating_duration_since(Instant::now());
-        if elapsed_left.is_zero() {
-            return Err(CliError::PollTimeout(last_status_label));
-        }
-        let (status, hints) = match client.poll_status(&session_id).await {
-            Ok(t) => t,
-            Err(ClientError::Auth(_)) => return Err(CliError::PollUnauthorized),
-            Err(ClientError::Transport(m)) => return Err(CliError::Network(m)),
-            Err(ClientError::HttpStatus(s, b)) => return Err(classify_http_status(s.as_u16(), &b)),
-            Err(e) => return Err(CliError::Network(e.to_string())),
-        };
-        match &status {
-            SessionStatus::InProgress => {}
-            SessionStatus::Converged => break status,
-            SessionStatus::Failed(s) => {
-                return Err(CliError::ConsensusTerminal {
-                    state: "failed".into(),
-                    detail: s.clone(),
-                });
-            }
-            SessionStatus::Cancelled => {
-                return Err(CliError::ConsensusTerminal {
-                    state: "cancelled".into(),
-                    detail: String::new(),
-                });
-            }
-            SessionStatus::Error(s) => {
-                return Err(CliError::ConsensusTerminal {
-                    state: "error".into(),
-                    detail: s.clone(),
-                });
-            }
-            SessionStatus::Unauthorized => return Err(CliError::PollUnauthorized),
-        }
-        last_status_label = match &status {
-            SessionStatus::InProgress => "running".into(),
-            other => format!("{other:?}"),
-        };
-        let next = quorum_lippa_client::client::next_poll_delay(
-            base,
-            poll_opts.max_delay,
-            hints.retry_after,
-            rand::random::<f32>(),
-        );
-        tokio::time::sleep(next).await;
-        base = (base * 2).min(poll_opts.max_delay);
-    };
+    poll_until_converged(&client, &session_id, &PollOptions::default()).await?;
 
-    let _ = session_status;
     let detail = match client.fetch_detail(&session_id).await {
         Ok(v) => v,
         Err(ClientError::Auth(_)) => return Err(CliError::PollUnauthorized),
@@ -487,6 +435,16 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         }
     }
 
+    // The verdict is settled before the archive write, and nothing after
+    // it can change the exit code. A failed write (full disk, read-only
+    // mount) only warns: as exit 2 it would let high-severity findings
+    // through the fail-open hook template.
+    let exit = if review.has_high_severity() {
+        Exit::HighSeverity
+    } else {
+        Exit::Ok
+    };
+
     // ===== Archive =====
     let archive_inputs = ArchiveInputs {
         started_at,
@@ -506,15 +464,21 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     };
     let buf = build_archive(&review, &archive_inputs);
     let reviews_dir = workdir.join(".quorum").join("reviews");
-    std::fs::create_dir_all(&reviews_dir).map_err(|e| CliError::Io(e.to_string()))?;
     let filename = opts
         .archive_filename_override
         .clone()
         .unwrap_or_else(|| archive_filename(started_at));
     let archive_path = reviews_dir.join(&filename);
-    std::fs::write(&archive_path, &buf).map_err(|e| CliError::Io(e.to_string()))?;
-    if opts.hook_mode == HookMode::None && !opts.tui {
-        println!("\n## Archive\nJSON archive written to .quorum/reviews/{filename}");
+    match std::fs::create_dir_all(&reviews_dir).and_then(|()| std::fs::write(&archive_path, &buf)) {
+        Ok(()) => {
+            if opts.hook_mode == HookMode::None && !opts.tui {
+                println!("\n## Archive\nJSON archive written to .quorum/reviews/{filename}");
+            }
+        }
+        Err(e) => eprintln!(
+            "warning: could not write the review archive {}: {e}; the exit code is unchanged",
+            archive_path.display()
+        ),
     }
 
     if opts.json_to_stdout {
@@ -529,11 +493,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         }
     }
 
-    if review.has_high_severity() {
-        Ok(Exit::HighSeverity)
-    } else {
-        Ok(Exit::Ok)
-    }
+    Ok(exit)
 }
 
 /// Drop findings whose identity hash matches an active dismissal; emit a
@@ -600,4 +560,155 @@ fn apply_dismissals_filter(
 
     let n = summaries.len() as u32;
     (summaries, n)
+}
+
+/// Poll `session_id` until it converges. A terminal state, a poll error,
+/// or running out of `poll_opts.overall_timeout` ends the run with an
+/// error.
+///
+/// Every sleep is capped at the time left before the deadline, so the
+/// deadline check at the top of the loop always runs. Without the cap a
+/// long delay overruns it: a `Retry-After: 100000000` once had `git push`
+/// sleeping for years, which no shell-level fail-open can rescue because
+/// the process never exits. `next_poll_delay` separately clamps
+/// `Retry-After` to `max_delay`.
+async fn poll_until_converged(
+    client: &LippaClient,
+    session_id: &SessionId,
+    poll_opts: &PollOptions,
+) -> Result<(), CliError> {
+    let mut base = poll_opts.initial_delay;
+    let mut last_status_label = "pending".to_string();
+    let deadline = Instant::now() + poll_opts.overall_timeout;
+    loop {
+        let elapsed_left = deadline.saturating_duration_since(Instant::now());
+        if elapsed_left.is_zero() {
+            return Err(CliError::PollTimeout(last_status_label));
+        }
+        let (status, hints) = match client.poll_status(session_id).await {
+            Ok(t) => t,
+            Err(ClientError::Auth(_)) => return Err(CliError::PollUnauthorized),
+            Err(ClientError::Transport(m)) => return Err(CliError::Network(m)),
+            Err(ClientError::HttpStatus(s, b)) => return Err(classify_http_status(s.as_u16(), &b)),
+            Err(e) => return Err(CliError::Network(e.to_string())),
+        };
+        match &status {
+            SessionStatus::InProgress => {}
+            SessionStatus::Converged => return Ok(()),
+            SessionStatus::Failed(s) => {
+                return Err(CliError::ConsensusTerminal {
+                    state: "failed".into(),
+                    detail: s.clone(),
+                });
+            }
+            SessionStatus::Cancelled => {
+                return Err(CliError::ConsensusTerminal {
+                    state: "cancelled".into(),
+                    detail: String::new(),
+                });
+            }
+            SessionStatus::Error(s) => {
+                return Err(CliError::ConsensusTerminal {
+                    state: "error".into(),
+                    detail: s.clone(),
+                });
+            }
+            SessionStatus::Unauthorized => return Err(CliError::PollUnauthorized),
+        }
+        last_status_label = match &status {
+            SessionStatus::InProgress => "running".into(),
+            other => format!("{other:?}"),
+        };
+        let next = next_poll_delay(
+            base,
+            poll_opts.max_delay,
+            hints.retry_after,
+            rand::random::<f32>(),
+        );
+        let left = deadline.saturating_duration_since(Instant::now());
+        tokio::time::sleep(next.min(left)).await;
+        base = (base * 2).min(poll_opts.max_delay);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quorum_lippa_client::Secret;
+    use std::time::Duration;
+
+    const STATUS: &str = "/api/v1/consensus/sessions/sess/status";
+
+    fn client_for(server: &mockito::Server) -> LippaClient {
+        LippaClient::new(server.url(), AuthMethod::Cookie(Secret::new("mock".into()))).unwrap()
+    }
+
+    /// A `429` whose `Retry-After` is three years cannot stall the run:
+    /// the poll loop still ends with the poll-timeout error, close to its
+    /// deadline. The test's own timeout turns an overrun into a failure
+    /// instead of a hung `cargo test`.
+    #[tokio::test]
+    async fn retry_after_cannot_carry_the_poll_loop_past_its_deadline() {
+        let mut server = mockito::Server::new_async().await;
+        let status = server
+            .mock("GET", STATUS)
+            .with_status(429)
+            .with_header("Retry-After", "100000000")
+            .expect_at_least(1)
+            .create_async()
+            .await;
+        let client = client_for(&server);
+        let opts = PollOptions {
+            overall_timeout: Duration::from_secs(1),
+            ..PollOptions::default()
+        };
+        let started = Instant::now();
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(10),
+            poll_until_converged(&client, &SessionId("sess".into()), &opts),
+        )
+        .await;
+        let took = started.elapsed();
+        let result = outcome.unwrap_or_else(|_| {
+            panic!("poll loop overran its 1 s deadline: still sleeping after {took:?}")
+        });
+        assert!(
+            matches!(result, Err(CliError::PollTimeout(_))),
+            "expected the poll-timeout error, got {result:?}"
+        );
+        assert!(
+            took < Duration::from_secs(3),
+            "poll timeout took {took:?} against a 1 s deadline"
+        );
+        status.assert_async().await;
+    }
+
+    /// `Retry-After` is clamped to `max_delay`, so polling continues at the
+    /// capped cadence instead of sleeping out the rest of the deadline
+    /// after the first `429`.
+    #[tokio::test]
+    async fn retry_after_is_clamped_to_max_delay_between_polls() {
+        let mut server = mockito::Server::new_async().await;
+        let status = server
+            .mock("GET", STATUS)
+            .with_status(429)
+            .with_header("Retry-After", "100000000")
+            .expect_at_least(3)
+            .create_async()
+            .await;
+        let client = client_for(&server);
+        let opts = PollOptions {
+            initial_delay: Duration::from_millis(50),
+            max_delay: Duration::from_millis(100),
+            overall_timeout: Duration::from_millis(1500),
+        };
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(10),
+            poll_until_converged(&client, &SessionId("sess".into()), &opts),
+        )
+        .await
+        .expect("poll loop overran its 1.5 s deadline");
+        assert!(matches!(outcome, Err(CliError::PollTimeout(_))));
+        status.assert_async().await;
+    }
 }
