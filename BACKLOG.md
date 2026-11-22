@@ -5,6 +5,20 @@ Group by next-target version. Most-recent first.
 
 ---
 
+## Surfaced after the 0.5.0 release (22 Nov 2026)
+
+- **`quorum install` ignores `core.hooksPath`.** Install always writes
+  `.git/hooks/<kind>`: `hook_path` in `crates/quorum-cli/src/hooks/mod.rs`
+  resolves `repo.path().join("hooks")` and never reads the config. In a
+  repo that sets `core.hooksPath` (Lippa uses `.githooks`), Git never
+  runs that file. Install still prints `wrote …` and exits 0, so the
+  user believes the gate is on when it is not. Uninstall has the same
+  blind spot. It looks in `.git/hooks/`, reports `hook already absent`
+  or removes a file Git was not running, and leaves alone anything in
+  the configured directory. Options: (a) install into the configured
+  path, or (b) refuse with a message that names it. **Undecided. Needs
+  Rolf's ruling before implementation.**
+
 ## Surfaced by the hook hang and fail-open fix (22 Nov 2026)
 
 The November audit's hook findings that the fix PR (PR #11, merged as
