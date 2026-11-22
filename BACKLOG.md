@@ -28,8 +28,9 @@ here before.
   and error bodies are echoed in full in `CliError::HttpStatus`. Only the
   login 403 path caps its read (16 KiB). A hostile or broken endpoint can
   send an arbitrarily large body.
-- ~~**Fail-closed does not cover two skips.**~~ **CLOSED on
-  `feat/consensus-tier` (commit `4be17ea`, PR #14, in review).** Rolf ruled
+- ~~**Fail-closed does not cover two skips.**~~ **CLOSED by PR #14**
+  (commit `4be17ea`, merged as `392f285`; unreleased, headed for
+  0.5.0). Rolf ruled
   both should block under fail-closed. (1) A missing `quorum` binary
   now blocks under fail-closed with a one-line reason. Fail-open and
   warn still skip with the note. This is hook marker v3; unedited v1 and
@@ -40,8 +41,29 @@ here before.
 
 ## Surfaced by the consensus-tier work (22 Nov 2026)
 
-- **For Rolf: the tier fields break the public API, so the next release
-  is probably 0.5.0 rather than 0.4.2.** Not decided here.
+- **Lippa check (not a Quorum defect): the high tier ran `gpt-6.1-sol`,
+  not `gpt-6.2-sol`.** Rolf's gate review after PR #14 merged was
+  session `54b6d687-941a-4971-83ea-1a6415c5820f`. Quorum sent
+  `tier = high`, the archive and header recorded `high`, and Lippa
+  answered with `claude-opus-5-5`, `gemini-4-carbon` and `gpt-6.1-sol`.
+  The recon of Lippa `origin/main` (`d9469920f`, 21 Nov) has the high
+  OpenAI seat as `EFFORT_TIER_SOL`, which `model_bindings.py:1411`
+  moved from `gpt-6.1-sol` to `gpt-6.2-sol` (M-GPT62 PR 2a, migration
+  505). Quorum doesn't choose models; it sends only the tier. So the
+  question is on Lippa's side:
+  - Is the deployed revision behind `d9469920f`, so it predates
+    M-GPT62?
+  - Or did migration 505 not run, or does the high seat's
+    `consensus_model_profiles` row still point at `gpt-6.1-sol`?
+  - Or did the `gpt-6.2-sol` seat time out, so that the run-time
+    failover answered? Failover goes to the low tier's OpenAI model,
+    `gpt-6-luna`, not `gpt-6.1-sol`, so this seems unlikely.
+
+  The session detail's `models[]` and the seat's "answered by backup
+  model" flag would settle the last one. Track it in the Lippa repo.
+- **The tier fields break the public API, so the next release is
+  0.5.0.** Rolf headed the unreleased HISTORY entry for 0.5.0
+  (22 Nov 2026). No version bump has been made yet.
   `git diff 9aae2a3` over both library crates adds a public field to
   three structs whose fields are all public and that are not
   `#[non_exhaustive]`. Any downstream struct literal stops compiling:

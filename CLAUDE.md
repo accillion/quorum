@@ -174,17 +174,17 @@ three crates are on crates.io at 0.4.1 through Trusted Publishing. The
 GitHub Release is live, and its assets pass `gh attestation verify`.
 0.4.1 is PR #11 only: the hook hang / fail-open fixes and marker v2,
 with no library API breaks. Its rules are in SERVICES.md §3 and §7.
-The release docs are in review on `doc/v0.4.1-released`. 0.4.0
-shipped on 21 Nov 2026 (`024ed97`, run 44931991241).
-**In review, not merged: the consensus tier**, PR #14 on
-`feat/consensus-tier`. Quorum always sends `tier` (config key, default
-`high`, `--tier` flag), records it in archives and the header, and
-explains a tier 422. The same PR makes fail-closed block a missing
-binary and a failed new-branch merge-base (marker v3). Rules:
-SERVICES.md §3 and §7. Not mergeable until Rolf's live `quorum review`
-shows `tier: high`. Its new public fields break the library API, so the
-next release is probably 0.5.0 (BACKLOG, not decided). No version bump
-yet.
+The release docs merged as PR #13. 0.4.0 shipped on 21 Nov 2026
+(`024ed97`, run 44931991241).
+**Merged, unreleased: the consensus tier**, PR #14 (`392f285`). Quorum
+always sends `tier` (config key, default `high`, `--tier` flag),
+records it in archives and the header, and explains a tier 422. The
+same PR makes fail-closed block a missing binary and a failed
+new-branch merge-base (marker v3). Rules: SERVICES.md §3 and §7.
+Rolf's live gate passed (session `54b6d687-…`: archive `tier: high`,
+header `(tier: high)`). Its new public fields break the library API,
+so it is headed for **0.5.0**. HISTORY has an unreleased entry, and
+there is no version bump yet.
 **Next: v0.4 Stages 2–4, retargeted to 0.5.x, not started.** Each
 stage needs Rolf's go.
 
@@ -219,9 +219,9 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
   gave `macos-15`, `macos-15-intel`, `windows-2022`, `ubuntu-22.04` and
   `ubuntu-22.04-arm`, and all five were scheduled.
 
-Repo state on `main` (`9aae2a3`): 511 tests pass, 1 ignored, on Linux,
-and 510 on Windows. On `feat/consensus-tier`: 531 / 1 on Linux and 530
-on Windows. clippy
+Repo state on `main` (`392f285`, the same code as PR #14's head
+`b4f9d55`): 531 tests pass, 1 ignored, on Linux, and 530 on Windows.
+clippy
 `-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
 Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 

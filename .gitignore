@@ -13,6 +13,10 @@ prompts/
 # explicitly when they want to share project bindings or shared
 # review conventions with teammates.
 .quorum/reviews/
+# The dismissals store (and its -wal/-shm files) holds free-text dismissal
+# notes and is never shared. Quorum appends this line itself on first use
+# (quorum-core memory/gitignore.rs) when it is missing.
+.quorum/dismissals.sqlite*
 
 # OS
 .DS_Store
