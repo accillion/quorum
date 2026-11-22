@@ -212,10 +212,15 @@ pub async fn run_pre_push<R: Read>(
                         }
                     }
                     Err(e) => {
+                        // Not a silent skip: the tuple was not reviewed,
+                        // so it counts as a tooling error. Fail-closed
+                        // blocks on it; a blocking verdict elsewhere
+                        // still wins in `aggregate_push_exits`.
                         eprintln!(
-                            "quorum: new-branch base resolution failed for {}: {e}; skipping",
+                            "quorum: new-branch base resolution failed for {}: {e}; not reviewed (exit 2)",
                             t.remote_ref
                         );
+                        exits.push(Exit::ToolingError);
                         continue;
                     }
                 }

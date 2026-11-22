@@ -405,3 +405,74 @@ fn pre_push_auth_then_error_exits_3() {
     assert!(warned_about(&stderr, "a"), "no warning naming refs/heads/a");
     assert!(warned_about(&stderr, "b"), "no warning naming refs/heads/b");
 }
+
+// ===== A new-branch tuple whose merge-base lookup fails is a tooling error =====
+
+/// Push `a` (reviewed by the mock with `verdict`) plus a new-branch tuple
+/// `refs/heads/ghost` whose merge-base against `origin/HEAD` fails: its
+/// local sha names no object. Returns the exit code and stderr.
+fn push_with_failing_new_branch(verdict: Verdict) -> (Option<i32>, String) {
+    let mut server = mockito::Server::new();
+    let (create_a, _keep_a) = mock_tuple(&mut server, "a", verdict);
+    let (td, stdin) = two_branch_repo(&server.url());
+    let repo = git2::Repository::open(td.path()).unwrap();
+    let base = repo.head().unwrap().target().unwrap();
+    repo.reference("refs/remotes/origin/HEAD", base, true, "test")
+        .unwrap();
+    let tuple_a = stdin.lines().next().unwrap();
+    let stdin = format!(
+        "{tuple_a}\nrefs/heads/ghost {missing} refs/heads/ghost {zeros}\n",
+        missing = "1".repeat(40),
+        zeros = "0".repeat(40)
+    );
+    let cfg = TempDir::new().unwrap();
+    let out = quorum()
+        .current_dir(td.path())
+        .env("APPDATA", cfg.path())
+        .env("XDG_CONFIG_HOME", cfg.path())
+        .env_remove("QUORUM_LIPPA_EMAIL")
+        .env_remove("QUORUM_LIPPA_PASSWORD")
+        .env("QUORUM_LIPPA_SESSION", "SESSION-CANARY")
+        .env("QUORUM_LIPPA_BASE_URL", server.url())
+        .args(["review", "--hook-mode=pre-push"])
+        .write_stdin(stdin)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    println!(
+        "ghost + {verdict:?}: exit {:?}\n{stderr}",
+        out.status.code()
+    );
+    create_a.assert();
+    (out.status.code(), stderr)
+}
+
+fn warned_merge_base(stderr: &str) -> bool {
+    stderr
+        .lines()
+        .any(|l| l.contains("new-branch base resolution failed") && l.contains("refs/heads/ghost"))
+}
+
+/// The failed lookup is no longer skipped silently: it counts as a
+/// tooling error (exit 2), with its warning kept. Fail-closed then
+/// blocks the push; fail-open lets it through.
+#[test]
+fn a_failed_new_branch_merge_base_plus_an_ok_tuple_exits_2() {
+    let (code, stderr) = push_with_failing_new_branch(Verdict::Clean);
+    assert_eq!(code, Some(2), "a failed merge-base is a tooling error");
+    assert!(
+        warned_merge_base(&stderr),
+        "no warning naming refs/heads/ghost"
+    );
+}
+
+/// A blocking verdict from another tuple still wins.
+#[test]
+fn a_failed_new_branch_merge_base_plus_a_high_tuple_exits_1() {
+    let (code, stderr) = push_with_failing_new_branch(Verdict::High);
+    assert_eq!(code, Some(1), "high-severity verdict must win");
+    assert!(
+        warned_merge_base(&stderr),
+        "no warning naming refs/heads/ghost"
+    );
+}
