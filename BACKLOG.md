@@ -29,8 +29,7 @@ here before.
   login 403 path caps its read (16 KiB). A hostile or broken endpoint can
   send an arbitrarily large body.
 - ~~**Fail-closed does not cover two skips.**~~ **CLOSED by PR #14**
-  (commit `4be17ea`, merged as `392f285`; unreleased, headed for
-  0.5.0). Rolf ruled
+  (commit `4be17ea`, merged as `392f285`; shipped in 0.5.0). Rolf ruled
   both should block under fail-closed. (1) A missing `quorum` binary
   now blocks under fail-closed with a one-line reason. Fail-open and
   warn still skip with the note. This is hook marker v3; unedited v1 and
@@ -61,9 +60,10 @@ here before.
 
   The session detail's `models[]` and the seat's "answered by backup
   model" flag would settle the last one. Track it in the Lippa repo.
-- **The tier fields break the public API, so the next release is
-  0.5.0.** Rolf headed the unreleased HISTORY entry for 0.5.0
-  (22 Nov 2026). No version bump has been made yet.
+- ~~**The tier fields break the public API, so the next release is
+  0.5.0.**~~ **CLOSED by the 0.5.0 release** (tag `v0.5.0` on
+  `530a5bf`, run 45039747819). HISTORY's Phase 0.5.0 entry lists the
+  breaks. The analysis is kept below for the record.
   `git diff 9aae2a3` over both library crates adds a public field to
   three structs whose fields are all public and that are not
   `#[non_exhaustive]`. Any downstream struct literal stops compiling:
