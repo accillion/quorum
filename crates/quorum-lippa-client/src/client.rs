@@ -312,7 +312,10 @@ pub struct RetryHints {
 /// the max delay, and an optional `Retry-After` hint.
 ///
 /// `Retry-After`, when present, *replaces* the schedule for one tick
-/// (AC 29). Otherwise: `base * (0.75 + rand * 0.5)` to apply ±25% jitter.
+/// (AC 29), clamped to `max`: the header comes from whoever answered
+/// (Lippa, a proxy, a captive portal), so it never sets a sleep longer
+/// than the schedule's own ceiling. Otherwise: `base * (0.75 + rand *
+/// 0.5)` to apply ±25% jitter.
 pub fn next_poll_delay(
     base: Duration,
     max: Duration,
@@ -320,7 +323,7 @@ pub fn next_poll_delay(
     jitter_unit: f32,
 ) -> Duration {
     if let Some(ra) = retry_after {
-        return ra;
+        return ra.min(max);
     }
     let next_base = (base * 2).min(max);
     let factor = 0.75 + jitter_unit.clamp(0.0, 1.0) * 0.5;
@@ -333,13 +336,15 @@ mod tests {
 
     #[test]
     fn next_delay_honors_retry_after() {
+        // Within `max`, Retry-After replaces backoff and jitter exactly:
+        // the schedule alone would give 2s ±25% here.
         let d = next_poll_delay(
             Duration::from_secs(1),
             Duration::from_secs(8),
-            Some(Duration::from_secs(13)),
-            0.5,
+            Some(Duration::from_secs(5)),
+            0.9,
         );
-        assert_eq!(d, Duration::from_secs(13));
+        assert_eq!(d, Duration::from_secs(5));
     }
 
     #[test]
@@ -355,5 +360,21 @@ mod tests {
         let d = next_poll_delay(Duration::from_secs(16), Duration::from_secs(8), None, 1.0);
         // Cap is 8s; jitter factor at unit=1 → 1.25; result <= 10s.
         assert!(d <= Duration::from_secs_f32(10.5));
+    }
+
+    /// A `Retry-After` above `max` (from Lippa, a proxy or a captive
+    /// portal) is clamped to `max`; it never sets the delay on its own.
+    #[test]
+    fn next_delay_clamps_retry_after_to_max() {
+        let max = Duration::from_secs(8);
+        for ra in [9, 13, 100_000_000] {
+            let d = next_poll_delay(
+                Duration::from_secs(1),
+                max,
+                Some(Duration::from_secs(ra)),
+                0.5,
+            );
+            assert_eq!(d, max, "Retry-After: {ra}");
+        }
     }
 }
