@@ -66,6 +66,10 @@ pub struct ReviewOptions {
     /// `<push-start-ISO>.tuple-<N>.json`). When `None`, the Phase 1A
     /// `<started_at>.json` naming is used.
     pub archive_filename_override: Option<String>,
+    /// `quorum review --tier`: the Consensus tier for this run, over the
+    /// config's `tier`. Always `None` in hook mode, which reads the
+    /// config only.
+    pub tier_override: Option<quorum_core::config::ConsensusTier>,
 }
 
 pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliError> {
@@ -78,6 +82,9 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         Err(quorum_core::config::ConfigError::NotFound(_)) => return Err(CliError::NotLinked),
         Err(e) => return Err(CliError::Config(e.to_string())),
     };
+    // The flag wins over the config; the config's absent key is `high`.
+    let tier = opts.tier_override.unwrap_or(cfg.tier);
+    tracing::debug!(tier = tier.as_str(), "consensus tier");
 
     // v0.4 AC 194a — Lippa enforces no maximum prompt size (recon-v04-1).
     // An oversized bundle is not rejected: it reserves credits, runs, and

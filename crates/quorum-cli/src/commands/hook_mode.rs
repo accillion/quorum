@@ -141,6 +141,7 @@ pub async fn run_pre_commit(
             tui: false,
             hook_mode: HookMode::PreCommit,
             archive_filename_override: None,
+            tier_override: None,
         },
     )
     .await
@@ -232,6 +233,7 @@ pub async fn run_pre_push<R: Read>(
                 tui: false,
                 hook_mode: HookMode::PrePush,
                 archive_filename_override: Some(archive_name),
+                tier_override: None,
             },
         )
         .await

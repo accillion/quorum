@@ -200,6 +200,11 @@ struct ReviewArgs {
     /// `quorum install --hook=<type>`.
     #[arg(long, value_name = "KIND")]
     hook_mode: Option<String>,
+    /// Consensus tier for this run: `low`, `medium` or `high`. Overrides
+    /// `tier` in `.quorum/config.toml` (default `high`). Hook mode reads
+    /// the config only, so this flag is refused with `--hook-mode`.
+    #[arg(long, value_name = "TIER", conflicts_with = "hook_mode")]
+    tier: Option<quorum_core::config::ConsensusTier>,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -330,6 +335,7 @@ async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
                     tui: args.tui,
                     hook_mode: commands::review::HookMode::None,
                     archive_filename_override: None,
+                    tier_override: args.tier,
                 },
             )
             .await
