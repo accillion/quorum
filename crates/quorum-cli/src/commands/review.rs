@@ -435,6 +435,16 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         }
     }
 
+    // The verdict is settled before the archive write, and nothing after
+    // it can change the exit code. A failed write (full disk, read-only
+    // mount) only warns: as exit 2 it would let high-severity findings
+    // through the fail-open hook template.
+    let exit = if review.has_high_severity() {
+        Exit::HighSeverity
+    } else {
+        Exit::Ok
+    };
+
     // ===== Archive =====
     let archive_inputs = ArchiveInputs {
         started_at,
@@ -454,15 +464,21 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     };
     let buf = build_archive(&review, &archive_inputs);
     let reviews_dir = workdir.join(".quorum").join("reviews");
-    std::fs::create_dir_all(&reviews_dir).map_err(|e| CliError::Io(e.to_string()))?;
     let filename = opts
         .archive_filename_override
         .clone()
         .unwrap_or_else(|| archive_filename(started_at));
     let archive_path = reviews_dir.join(&filename);
-    std::fs::write(&archive_path, &buf).map_err(|e| CliError::Io(e.to_string()))?;
-    if opts.hook_mode == HookMode::None && !opts.tui {
-        println!("\n## Archive\nJSON archive written to .quorum/reviews/{filename}");
+    match std::fs::create_dir_all(&reviews_dir).and_then(|()| std::fs::write(&archive_path, &buf)) {
+        Ok(()) => {
+            if opts.hook_mode == HookMode::None && !opts.tui {
+                println!("\n## Archive\nJSON archive written to .quorum/reviews/{filename}");
+            }
+        }
+        Err(e) => eprintln!(
+            "warning: could not write the review archive {}: {e}; the exit code is unchanged",
+            archive_path.display()
+        ),
     }
 
     if opts.json_to_stdout {
@@ -477,11 +493,7 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
         }
     }
 
-    if review.has_high_severity() {
-        Ok(Exit::HighSeverity)
-    } else {
-        Ok(Exit::Ok)
-    }
+    Ok(exit)
 }
 
 /// Drop findings whose identity hash matches an active dismissal; emit a
