@@ -188,9 +188,33 @@ discovery is off.
   message, exit 3, on both login paths.
 - `POST /api/v1/consensus/sessions` body: `multipart/form-data` (NOT
   JSON). Fields: `prompt` (≥20 chars), `debate_mode` (default
-  `"standard"`), `project_id?`, `idempotency_key?`. Phase 1A does NOT
-  send `model_roles` (preflight D1: it's display metadata, not a
-  selector).
+  `"standard"`), `project_id?`, `idempotency_key?`, `tier?`. Phase 1A
+  does NOT send `model_roles` (preflight D1: it's display metadata, not
+  a selector).
+- **Quorum always sends `tier`.** Lippa runs a fixed three-model panel
+  per tier (`low`, `medium`, `high`), defined on Lippa's side. A create
+  without `tier` gets the admin setting `CONSENSUS_TIER_DEFAULT`, so
+  leaving it out would let one Lippa setting silently switch every
+  review's models. `quorum review` resolves the tier as `--tier`, else
+  the `tier` key in `.quorum/config.toml`, else **`high`**, and sends it
+  on every create, hooks included. Hook mode reads the config only;
+  `--tier` with `--hook-mode` is refused. A config value other than the
+  three is a config error at load (exit 2) that lists them.
+  `SessionCreateRequest.tier` is `Option<String>` because the client
+  can't name `quorum-core`'s `ConsensusTier`. `None` sends no field,
+  and only library callers can choose it.
+- **A 422 that names `tier`** (Lippa's `{"detail": "tier must be one
+  of: …"}`, or a validation item whose `loc` contains `"tier"`) is
+  `CliError::TierRejected`, exit 2. Its message says Lippa rejected the
+  tier and shows what Quorum sent. Any other 422 body keeps the generic
+  HTTP-status message.
+- **The tier is recorded, never identity.** `Review.tier` holds the
+  tier sent. The archive writes it as the last top-level key, `"tier"`,
+  and the markdown header shows it beside the models as
+  `(tier: high)`. With no tier (every archive before it existed) there
+  is no key and the header is unchanged. Nothing reads archives back.
+  `finding_identity_hash` and `normalize_title` never see the tier
+  (v0.4 Stage 4, AC 226).
 - 409 duplicate idempotency-key responses return `existing_session_id`,
   which the client treats as a successful create.
 - 401 on the create call → `AuthError::LoginRequired` ("create-401").
@@ -505,13 +529,14 @@ String::new()` fixtures cannot exercise this path.
 - **Idempotency marker** is `# quorum-managed-hook`, scanned in
   the first 5 lines of an existing hook. Not found → exit 2; the user
   must remove the foreign hook manually. The marker line carries a
-  version: `v2` since the fail-closed fix below, `v1` before.
+  version: `v3` since fail-closed covers a missing binary (below), `v2`
+  in 0.4.1, `v1` before.
 - **Install and uninstall never destroy an edited hook.** A managed
   hook is overwritten by `install` or removed by `uninstall` only when
   its content is exactly a template Quorum shipped for that hook, LF or
-  CRLF: the current v2, or v1, kept verbatim in `hooks/legacy.rs` (never
-  edit those bytes). That makes `quorum install --hook=<type>` both the
-  idempotent re-install and the v1 → v2 upgrade. A marker with any other
+  CRLF: the current v3, or v2 or v1, kept verbatim in `hooks/legacy.rs`
+  (never edit those bytes). That makes `quorum install --hook=<type>`
+  both the idempotent re-install and the v1 / v2 → v3 upgrade. A marker with any other
   content means local edits: both commands exit 2 with a message saying
   so and leave the file untouched. There is no `--force`, the same rule
   as the conventions write paths (§6.1). The gate is one function,
@@ -523,9 +548,12 @@ String::new()` fixtures cannot exercise this path.
   Git for Windows runs hooks via `sh.exe` regardless of NTFS
   executable bit.
 - **Templates** are POSIX `#!/bin/sh`. Both consume `QUORUM_SKIP=1`
-  (echo "skipped" + exit 0) and `command -v quorum` (echo "binary
-  not on PATH; skipping" + exit 0, fail-open) before invoking
-  `quorum review --hook-mode=<type>`. Both honor
+  (echo "skipped" + exit 0) and a missing binary (`command -v quorum`
+  fails) before invoking `quorum review --hook-mode=<type>`. Under
+  `fail-closed` a missing binary blocks, with one stderr line, `binary
+  not on PATH; commit blocked (fail-closed)` plus the bypass. Under
+  `fail-open` and `warn` it prints "binary not on PATH; skipping" and
+  exits 0. Both honor
   `QUORUM_HOOK_POLICY ∈ {fail-open, fail-closed, warn}`:
   - `fail-open` (default): only exit 1 (high-severity findings)
     blocks.
@@ -556,7 +584,12 @@ String::new()` fixtures cannot exercise this path.
   - `remote_sha` all zeros (40 `0`s) → NewBranch. Base resolved via
     `merge_base(local_sha, refs/remotes/origin/HEAD)`. If unresolvable
     (no upstream HEAD), review the tip commit only via
-    `<head>^..<head>` with stderr note.
+    `<head>^..<head>` with stderr note. If the lookup itself errors
+    (`origin/HEAD` exists but the merge base can't be computed), the
+    tuple is not reviewed: a stderr warning `new-branch base resolution
+    failed for <ref>: …; not reviewed (exit 2)`, and it counts as
+    `ToolingError` in the aggregation below. It used to be skipped
+    without counting.
   - Otherwise → standard/force-push: `DiffSource::CommitRange {
     base: remote_sha, head: local_sha }`. Git's range semantics
     handle force-push correctly; no special marker in the stdin

@@ -101,7 +101,25 @@ quorum review --json           # same buffer to stdout AND to disk (byte-identic
 quorum review --tui            # interactive TUI: navigate, dismiss with reason, undo (Phase 1B)
 quorum review --range HEAD~3..HEAD   # review a commit range instead of staged diff
 quorum review --no-expire      # dismissals from this session do not auto-expire (default: 365d)
+quorum review --tier low       # one cheaper review at the low tier, without editing config
 ```
+
+**Consensus tier.** Each review runs on a fixed panel of models per tier,
+defined by Lippa. Pick the tier with a top-level key in
+`.quorum/config.toml`:
+
+```toml
+tier = "high"   # low | medium | high; default high when the key is absent
+```
+
+Quorum always sends the tier, so a change to Lippa's server-side default
+never switches your reviews' models. `quorum review --tier
+<low|medium|high>` overrides the config for one run. Hooks read the
+config only and take no flag. Any other value is refused with exit 2,
+and the message lists the three tiers. The tier sent is shown in the
+markdown header (`Reviewed by … (tier: high) in …`) and recorded as
+`tier` in each `.quorum/reviews/*.json` archive. Archives written by
+0.4.1 or earlier have no `tier` key.
 
 The TUI surfaces findings in a list + body pane with a status bar.
 Keys: `j`/`k` navigate, `g`/`G` jump to first/last, `PgDn`/`PgUp`
@@ -127,7 +145,7 @@ quorum uninstall --hook=pre-commit  # idempotent; refuses non-Quorum hooks
 ```
 
 Hook templates are POSIX `#!/bin/sh`, marked with
-`# quorum-managed-hook v2` in the first 5 lines. Re-running `install`
+`# quorum-managed-hook v3` in the first 5 lines. Re-running `install`
 replaces a hook only while it is an unedited Quorum template, and
 `uninstall` removes only such a hook. Both refuse, with exit 2 and the
 file untouched, a hook of unknown provenance or a Quorum hook you have
@@ -135,15 +153,19 @@ edited. There is no override: move the file aside yourself.
 
 Hook policy via `QUORUM_HOOK_POLICY` env var:
 - `fail-open` (default): only exit 1 (high-severity findings) blocks
-  the commit / push. Auth and tooling failures fail open.
+  the commit / push. Auth and tooling failures fail open, and so does a
+  missing `quorum` binary (`binary not on PATH; skipping`).
 - `fail-closed`: block on **any** non-zero exit: tooling (2), auth (3),
-  and a crash (a panic is 101, a signal death 128+N).
+  and a crash (a panic is 101, a signal death 128+N). Also block when
+  `quorum` is not on `PATH`, with a one-line message saying so. A
+  pre-push of a new branch whose merge base with `origin/HEAD` can't be
+  computed counts as a tooling error (exit 2), so it blocks too.
 - `warn`: nothing blocks regardless of exit code.
 
 **Upgrading an installed hook.** Quorum never rewrites `.git/hooks` on
-its own, so a hook installed by Quorum 0.4.0 or earlier keeps the v1
-template, whose
-`fail-closed` lets a crash through. Check with
+its own, so an installed hook keeps the template it was installed with.
+A v1 hook (0.4.0 or earlier) lets a crash through under `fail-closed`.
+A v2 hook (0.4.1) lets a missing binary through. Check with
 `sed -n 2p .git/hooks/pre-commit`. To upgrade, re-run the install for
 each hook you use:
 
@@ -152,7 +174,7 @@ quorum install --hook=pre-commit
 quorum install --hook=pre-push
 ```
 
-An unedited v1 hook is replaced with v2. If you edited the hook, the
+An unedited v1 or v2 hook is replaced with v3. If you edited the hook, the
 install refuses and says so. Move the file aside, re-run the install,
 and carry your edits over by hand.
 
