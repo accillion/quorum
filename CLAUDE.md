@@ -205,8 +205,8 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 - **Trusted Publishing is proven live.** Runs 44931991241 (0.4.0),
   45018870330 (0.4.1), 45039747819 (0.5.0) and 45245754747 (0.5.1)
   published all three
-  crates through OIDC. Rolf still has to delete the unused
-  `CARGO_REGISTRY_TOKEN` secret (BACKLOG).
+  crates through OIDC. No `CARGO_REGISTRY_TOKEN` secret remains at
+  repo or org level (Rolf, 22 Nov; BACKLOG closed).
 - **The first `v0.4.0` tag was deleted unconsumed.** It was on
   `1b361f1`, and its run (44924050931) failed because GitHub retired
   cargo-dist's default `macos-14` runner for aarch64-apple-darwin.

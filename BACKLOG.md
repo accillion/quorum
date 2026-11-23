@@ -135,7 +135,13 @@ here before.
 
 ## Surfaced by the 0.4.0 release and its prep (21 Nov 2026)
 
-- **For Rolf: delete the `CARGO_REGISTRY_TOKEN` repository secret.**
+- ~~**For Rolf: delete the `CARGO_REGISTRY_TOKEN` repository secret.**~~
+  **CLOSED** (Rolf, 22 Nov 2026): no such secret exists at repo or org
+  level, and the repo has no environments. On 23 Nov `gh secret list`
+  showed no repo secrets and the environments API returned 0; listing
+  org secrets needs an org admin, so that level rests on Rolf's check.
+  Publishing is Trusted Publishing only (runs 44931991241 through
+  45245754747). The original entry follows.
   Nothing uses it now. The three `CARGO_REGISTRY_TOKEN` env lines in
   `publish-crates.yml` read the auth step's output
   (`steps.auth.outputs.token`), and Trusted Publishing published all of
