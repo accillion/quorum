@@ -4,23 +4,24 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
-## Phase 0.5.1 — pre-push coverage (v0.6 spec AC 277a) ✦ TBD
+## Phase 0.5.1 — pre-push coverage (v0.6 spec AC 277a) ✦ 2026-11-23
 
 **Spec:** `specs/Quorum-v0_6-Spec-v1_0.md` (locked 23 Nov 2026, committed byte for byte in PR #19), AC 277a. Rolf ruled on 23 Nov that it ships early as 0.5.1 (spec §0, §3); Stage 6 only re-verifies its tests.
-**Status:** **Release prep in review on `release/v0.5.1`.** Not tagged yet. A patch release: no public item of `quorum-core` or `quorum-lippa-client` changes.
+**Status:** **Closed at `v0.5.1`.** All three crates are on crates.io at 0.5.1. GitHub Release v0.5.1 is live with sigstore-attested assets. A patch release: no public item of `quorum-core` or `quorum-lippa-client` changes. Published through Trusted Publishing, with no stored token.
 
 **Public release:**
-- crates.io: `quorum-core 0.5.1`, `quorum-lippa-client 0.5.1`, `quorum-cli 0.5.1`: TBD (links once published).
-- GitHub Release: `v0.5.1`: TBD.
-- CI run: TBD.
+- crates.io: [`quorum-core 0.5.1`](https://crates.io/crates/quorum-core/0.5.1), [`quorum-lippa-client 0.5.1`](https://crates.io/crates/quorum-lippa-client/0.5.1), [`quorum-cli 0.5.1`](https://crates.io/crates/quorum-cli/0.5.1).
+- GitHub Release: [`v0.5.1`](https://github.com/accillion/quorum/releases/tag/v0.5.1), 19 assets.
+- CI run: [`45245754747`](https://github.com/accillion/quorum/actions/runs/45245754747). All 10 jobs were green: `plan` → `build-local-artifacts` × 5 targets → `build-global-artifacts` → `host` → `custom-publish-crates / publish-crates` → `announce`. The run took 7 minutes, 19:08–19:15 UTC.
 
-Tag `v0.5.1`: TBD, on the release PR's merge commit.
+Tag `v0.5.1` (tag object `fc7e9e8`) points at `22c1847`, PR #20's merge.
 
 ### Commit graph
 
 Everything on `main` since `v0.5.0` (`530a5bf`), first parent:
 
 ```
+22c1847  Merge PR #20: release 0.5.1
 92ddbac  Merge PR #19: 0.5.1 pre-push coverage (v0.6 spec AC 277a)
 92457a4  Merge PR #18: BACKLOG core.hooksPath gap
 063ec0a  Merge PR #17: v0.5.0 release docs
@@ -36,7 +37,7 @@ dee6fa4  fix(hooks): pre-push passes the remote name; marker v4
 a56dc35  doc: 0.5.1 pre-push coverage (AC 277a)
 ```
 
-PR #17 and PR #18 are docs only. The release PR, on `92ddbac`: `c5d6c08` (a test pinning the new-branch tie-break by lowest ref name), `9131b45` (version bump), then the docs commit carrying this entry.
+PR #17 and PR #18 are docs only. PR #20, on `92ddbac`: `c5d6c08` (a test pinning the new-branch tie-break by lowest ref name), `9131b45` (version bump), then `2b87498` (the docs commit carrying this entry).
 
 Revert order: `12a88c9` and `6e6c48b` each revert alone and pass the suite. `dee6fa4` reverts only after both, because they use its `PushDestination`. Reverting `12a88c9` restores tip-only new-branch review (spec §12). Checked on Linux: 4 alone, 3 alone, and 4 → 3 → 2 (back to the 531-test baseline) all apply cleanly and pass; 2 alone conflicts.
 
@@ -68,7 +69,13 @@ Rules: SERVICES.md §7 ("Pre-push coverage") and §8.
   - clippy `-D warnings` and fmt `--check` are clean on both.
   - `cargo publish --workspace --dry-run` (cargo 1.95) packaged and verified all three at 0.5.1: `quorum-core` 19 files, `quorum-lippa-client` 14, `quorum-cli` 52 (0.5.0's 47 plus `commands/push_coverage.rs`, `tests/support/mod.rs` and three `pre_push_*` test files). `quorum-cli` built against the unpublished 0.5.1 libraries.
   - Local `dist plan --tag v0.5.1` (cargo-dist 0.31.0) gave `macos-15`, `macos-15-intel`, `windows-2022`, `ubuntu-22.04` and `ubuntu-22.04-arm`, the set that ran green for 0.5.0.
-- Live run, publish and Release checks: TBD (Part B).
+- **Runners ✓.** All five `build-local-artifacts` jobs got a machine on the runners the local plan named: `windows-2022`, `ubuntu-22.04`, `macos-15`, `ubuntu-22.04-arm` and `macos-15-intel`.
+- **Trusted Publishing ✓.** `custom-publish-crates / publish-crates` ran `rust-lang/crates-io-auth-action@v1`, then `cargo publish` for `quorum-core`, `quorum-lippa-client` and `quorum-cli` in order, then the action's token-revoking post step. Every step succeeded.
+- **crates.io ✓.** The API shows `0.5.1`, not yanked, for all three crates: `quorum-core` at 19:14:34Z, `quorum-lippa-client` at 19:14:51Z and `quorum-cli` at 19:15:16Z.
+- **GitHub Release ✓.** `v0.5.1` is published (19:13:35Z), not a draft or prerelease, with 19 assets whose names match 0.5.0's.
+- **AC 93 LIVE ✓.** In a scratch directory outside the repo, `cargo install quorum-cli --version 0.5.1 --locked --root <scratch>` downloaded `quorum-cli`, `quorum-core` and `quorum-lippa-client` 0.5.1 from crates.io. The binary printed `quorum 0.5.1 (unknown)`.
+- **AC 94 LIVE ✓.** The SHA256 of `quorum-cli-x86_64-unknown-linux-gnu.tar.xz` (3,466,488 bytes), `e225ca5ffcdc04053d0d899f1ca7bd8835847dc5e6449b2571816aa4fb97bc15`, matches its `sha256.sum` entry.
+- **AC 132 LIVE ✓.** `gh attestation verify quorum-cli-x86_64-unknown-linux-gnu.tar.xz --owner accillion` exits 0. Its fields: SAN `https://github.com/accillion/quorum/.github/workflows/release.yml@refs/tags/v0.5.1`, issuer `https://token.actions.githubusercontent.com`, source digest `22c18475a64a7b4017ad02ad798ac0c809684a48`, ref `refs/tags/v0.5.1`, predicate `https://slsa.dev/provenance/v1`.
 
 ---
 

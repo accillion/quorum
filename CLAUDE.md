@@ -168,21 +168,20 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **0.5.1 release prep, in review on `release/v0.5.1`.** Not
-tagged: Rolf merges the PR, then sends Part B (tag, watch, verify).
-0.5.1 is PR #19 (merged as `92ddbac`): pre-push coverage, v0.6 spec AC
-277a. Never tip-only; the destination remote, not `origin`; tracking
-refs verified with `git ls-remote`; hook marker v4, so users re-run
-`quorum install --hook=pre-push`. A patch bump: no library API change.
-HISTORY.md's 0.5.1 entry has TBDs for the tag, run and links. Rules in
+**Active:** **none. 0.5.1 shipped on 23 Nov 2026:** tag `v0.5.1` on
+`22c1847` (PR #20's merge), run 45245754747, all 10 jobs green. All
+three crates are on crates.io at 0.5.1 through Trusted Publishing. The
+GitHub Release is live, and its assets pass `gh attestation verify`.
+The release docs are in review on `doc/v0.5.1-released`. 0.5.1 is
+PR #19: pre-push coverage, v0.6 spec AC 277a. Never tip-only; the
+destination remote, not `origin`; tracking refs verified with `git
+ls-remote`; hook marker v4, so users re-run `quorum install
+--hook=pre-push`. A patch bump: no library API change. Rules in
 SERVICES.md §7 ("Pre-push coverage"). The locked v0.6 spec is
 `specs/Quorum-v0_6-Spec-v1_0.md`.
-**Last shipped: 0.5.0 on 22 Nov 2026:** tag `v0.5.0` on `530a5bf`
-(PR #16's merge), run 45039747819, all 10 jobs green, crates.io and
-an attested GitHub Release. It sends the Consensus `tier` (SERVICES.md
-§3) and fail-closed blocks a missing binary (marker v3). Earlier:
-0.4.1 (`9aae2a3`, run 45018870330) and 0.4.0 (`024ed97`, run
-44931991241).
+Earlier: 0.5.0 (`530a5bf`, run 45039747819; the Consensus `tier`,
+SERVICES.md §3), 0.4.1 (`9aae2a3`, run 45018870330) and 0.4.0
+(`024ed97`, run 44931991241).
 **Next: v0.4 Stages 2–4, retargeted to 0.6.x, not started.** Each
 stage needs Rolf's go.
 
@@ -204,7 +203,8 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 
 **Release engineering.**
 - **Trusted Publishing is proven live.** Runs 44931991241 (0.4.0),
-  45018870330 (0.4.1) and 45039747819 (0.5.0) published all three
+  45018870330 (0.4.1), 45039747819 (0.5.0) and 45245754747 (0.5.1)
+  published all three
   crates through OIDC. Rolf still has to delete the unused
   `CARGO_REGISTRY_TOKEN` secret (BACKLOG).
 - **The first `v0.4.0` tag was deleted unconsumed.** It was on
@@ -215,12 +215,11 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 - **Before a tag, check the runners** with a local `dist plan`, since
   a PR plan run cannot prove a label can be scheduled. For `v0.4.1` it
   gave `macos-15`, `macos-15-intel`, `windows-2022`, `ubuntu-22.04` and
-  `ubuntu-22.04-arm`, and all five were scheduled. For `v0.5.0` it gave
-  the same five, and all five were scheduled again.
+  `ubuntu-22.04-arm`, and all five were scheduled. For `v0.5.0` and
+  `v0.5.1` it gave the same five, and all five were scheduled again.
 
-Repo state on `main` (`530a5bf`; code unchanged since `392f285` apart
-from the version): 531 tests pass, 1 ignored, on Linux, and 530 on
-Windows. clippy
+Repo state on `main` (`22c1847`, tagged `v0.5.1`): 559 tests pass, 1
+ignored, on Linux, and 558 on Windows. clippy
 `-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
 Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 
