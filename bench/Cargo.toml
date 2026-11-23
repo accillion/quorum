@@ -1,0 +1,41 @@
+[package]
+name = "quorum-bench"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Quorum benchmark harness (v0.6 Stage 1). Not shipped: no published crate depends on it."
+publish = false
+
+# Never built or released by cargo-dist (AC 247).
+[package.metadata.dist]
+dist = false
+
+[[bin]]
+name = "quorum-bench"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = "0.8"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "process", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+sha2 = "0.10"
+rand = "0.8"
+time = { version = "0.3", features = ["formatting", "macros"] }
+git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
+# Bench-only additions, ruled at Gate A: the loopback recording proxy
+# (hyper with its tokio adapter and body helpers) and the AC 247 archive.
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+flate2 = "1"
+tar = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+mockito = "1"

@@ -30,5 +30,11 @@ Thumbs.db
 # Local dev credentials, never commit
 .env
 
+# Benchmark harness (v0.6 Stage 1, AC 247): materialized repos, raw run
+# outputs and vendor keys stay local.
+bench/.cache/
+bench/runs/
+bench/.env.local
+
 # CarryForward / cross-project spec drops (not Quorum content)
 packages/
