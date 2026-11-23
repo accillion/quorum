@@ -168,12 +168,14 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **0.5.1, pre-push coverage (v0.6 spec AC 277a), in review
-on `fix/push-coverage`.** Never tip-only; the destination remote, not
-`origin`; tracking refs verified with `git ls-remote`; hook marker v4.
-No library API change and no release in that PR: Rolf merges it, then
-sends the release prompt. HISTORY.md has the unreleased 0.5.1 entry;
-rules in SERVICES.md §7 ("Pre-push coverage"). The locked v0.6 spec is
+**Active:** **0.5.1 release prep, in review on `release/v0.5.1`.** Not
+tagged: Rolf merges the PR, then sends Part B (tag, watch, verify).
+0.5.1 is PR #19 (merged as `92ddbac`): pre-push coverage, v0.6 spec AC
+277a. Never tip-only; the destination remote, not `origin`; tracking
+refs verified with `git ls-remote`; hook marker v4, so users re-run
+`quorum install --hook=pre-push`. A patch bump: no library API change.
+HISTORY.md's 0.5.1 entry has TBDs for the tag, run and links. Rules in
+SERVICES.md §7 ("Pre-push coverage"). The locked v0.6 spec is
 `specs/Quorum-v0_6-Spec-v1_0.md`.
 **Last shipped: 0.5.0 on 22 Nov 2026:** tag `v0.5.0` on `530a5bf`
 (PR #16's merge), run 45039747819, all 10 jobs green, crates.io and
