@@ -20,5 +20,6 @@ pub mod quorum_run;
 pub mod runid;
 pub mod scrub;
 pub mod secret;
+pub mod stats;
 pub mod vendors;
 pub mod verify;
