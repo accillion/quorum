@@ -47,6 +47,23 @@ enum Cmd {
     },
     /// Print a fresh run id.
     NewRunId,
+    /// The paid pilot run (1b). Both caps are required (AC 250).
+    Run {
+        /// Lippa credits cap.
+        #[arg(long)]
+        max_credits: u64,
+        /// USD cap for direct, extraction, clustering and judge calls.
+        #[arg(long)]
+        max_usd: String,
+        /// The `quorum` binary built from bench.toml's pinned commit.
+        #[arg(long)]
+        quorum_bin: PathBuf,
+        #[arg(long)]
+        case: Option<String>,
+        /// Required: the run spends money.
+        #[arg(long)]
+        confirm_paid: bool,
+    },
 }
 
 fn repo_root(arg: Option<PathBuf>) -> Result<PathBuf, String> {
@@ -149,6 +166,27 @@ fn run(cli: Cli) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
             println!("{}  {sha}", out.display());
             Ok(())
+        }
+        Cmd::Run {
+            max_credits,
+            max_usd,
+            quorum_bin,
+            case,
+            confirm_paid,
+        } => {
+            let max_usd_micros = quorum_bench::budget::parse_usd(&max_usd)?;
+            let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+            rt.block_on(quorum_bench::commands::cmd_run(
+                &root,
+                &keys,
+                quorum_bench::commands::RunOpts {
+                    max_credits,
+                    max_usd_micros,
+                    quorum_bin,
+                    case,
+                    confirm_paid,
+                },
+            ))
         }
         Cmd::NewRunId => {
             println!("{}", runid::new_run_id(time::OffsetDateTime::now_utc()));
