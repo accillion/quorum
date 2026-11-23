@@ -64,6 +64,23 @@ enum Cmd {
         #[arg(long)]
         confirm_paid: bool,
     },
+    /// (Re)build the blind human queue of a finished run.
+    Queue {
+        #[arg(long)]
+        run: String,
+    },
+    /// Decide the queued items one at a time, blind to arm and model.
+    Adjudicate {
+        #[arg(long)]
+        run: String,
+    },
+    /// Score a finished, fully adjudicated run and compute C1 and C2.
+    Results {
+        #[arg(long)]
+        run: String,
+        #[arg(long, default_value_t = quorum_bench::stats::DEFAULT_DRAWS)]
+        draws: usize,
+    },
 }
 
 fn repo_root(arg: Option<PathBuf>) -> Result<PathBuf, String> {
@@ -188,6 +205,20 @@ fn run(cli: Cli) -> Result<(), String> {
                 },
             ))
         }
+        Cmd::Queue { run } => quorum_bench::commands::cmd_queue(&root, &run),
+        Cmd::Adjudicate { run } => {
+            let dir = bench.join("runs").join(&run);
+            let stdin = std::io::stdin();
+            let left = quorum_bench::adjudicate::run_session(
+                &dir,
+                &mut stdin.lock(),
+                &mut std::io::stdout(),
+            )
+            .map_err(|e| e.to_string())?;
+            println!("\n{left} item(s) left");
+            Ok(())
+        }
+        Cmd::Results { run, draws } => quorum_bench::commands::cmd_results(&root, &run, draws),
         Cmd::NewRunId => {
             println!("{}", runid::new_run_id(time::OffsetDateTime::now_utc()));
             Ok(())

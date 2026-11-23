@@ -24,6 +24,10 @@ pub struct SavedState {
     pub uncontrolled: Vec<(String, u32)>,
     #[serde(default)]
     pub c2_excluded: Vec<(String, u32, String)>,
+    #[serde(default)]
+    pub extractions: Vec<crate::pipeline::Extraction>,
+    #[serde(default)]
+    pub clusterings: Vec<crate::pipeline::Clustering>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -3,6 +3,7 @@
 //! depends on it. It drives the installed `quorum` binary and never links
 //! Quorum's libraries.
 
+pub mod adjudicate;
 pub mod archive;
 pub mod budget;
 pub mod calls;
