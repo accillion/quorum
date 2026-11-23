@@ -529,14 +529,16 @@ String::new()` fixtures cannot exercise this path.
 - **Idempotency marker** is `# quorum-managed-hook`, scanned in
   the first 5 lines of an existing hook. Not found → exit 2; the user
   must remove the foreign hook manually. The marker line carries a
-  version: `v3` since fail-closed covers a missing binary (below), `v2`
-  in 0.4.1, `v1` before.
+  version: `v4` since the pre-push hook passes Git's remote name and
+  URL (below), `v3` in 0.5.0 (fail-closed covers a missing binary),
+  `v2` in 0.4.1, `v1` before. Both templates carry the same version.
 - **Install and uninstall never destroy an edited hook.** A managed
   hook is overwritten by `install` or removed by `uninstall` only when
   its content is exactly a template Quorum shipped for that hook, LF or
-  CRLF: the current v3, or v2 or v1, kept verbatim in `hooks/legacy.rs`
-  (never edit those bytes). That makes `quorum install --hook=<type>`
-  both the idempotent re-install and the v1 / v2 → v3 upgrade. A marker with any other
+  CRLF: the current v4, or v3, v2 or v1, kept verbatim in
+  `hooks/legacy.rs` (never edit those bytes). That makes `quorum install
+  --hook=<type>` both the idempotent re-install and the v1 / v2 / v3 →
+  v4 upgrade. A marker with any other
   content means local edits: both commands exit 2 with a message saying
   so and leave the file untouched. There is no `--force`, the same rule
   as the conventions write paths (§6.1). The gate is one function,
@@ -549,7 +551,10 @@ String::new()` fixtures cannot exercise this path.
   executable bit.
 - **Templates** are POSIX `#!/bin/sh`. Both consume `QUORUM_SKIP=1`
   (echo "skipped" + exit 0) and a missing binary (`command -v quorum`
-  fails) before invoking `quorum review --hook-mode=<type>`. Under
+  fails) before invoking `quorum review --hook-mode=<type>`. The v4
+  pre-push template invokes `quorum review --hook-mode=pre-push
+  --remote="$1" --url="$2"`, forwarding the remote name and URL Git
+  passes every pre-push hook; both flags require `--hook-mode`. Under
   `fail-closed` a missing binary blocks, with one stderr line, `binary
   not on PATH; commit blocked (fail-closed)` plus the bypass. Under
   `fail-open` and `warn` it prints "binary not on PATH; skipping" and
@@ -581,19 +586,61 @@ String::new()` fixtures cannot exercise this path.
     `quorum: tag push detected; skipping review (code review not
     applicable to refs/tags/*)`. Tag pushes carry no commit-range
     semantics for review.
-  - `remote_sha` all zeros (40 `0`s) → NewBranch. Base resolved via
-    `merge_base(local_sha, refs/remotes/origin/HEAD)`. If unresolvable
-    (no upstream HEAD), review the tip commit only via
-    `<head>^..<head>` with stderr note. If the lookup itself errors
-    (`origin/HEAD` exists but the merge base can't be computed), the
+  - `remote_sha` all zeros (40 `0`s) → NewBranch, planned by the
+    coverage rule below. If the pushed commit itself can't be read, the
     tuple is not reviewed: a stderr warning `new-branch base resolution
     failed for <ref>: …; not reviewed (exit 2)`, and it counts as
-    `ToolingError` in the aggregation below. It used to be skipped
-    without counting.
-  - Otherwise → standard/force-push: `DiffSource::CommitRange {
-    base: remote_sha, head: local_sha }`. Git's range semantics
-    handle force-push correctly; no special marker in the stdin
-    shape.
+    `ToolingError` in the aggregation below.
+  - Otherwise → an existing ref, by the coverage rule below. Force
+    pushes carry no special marker in the stdin shape.
+- **Pre-push coverage (v0.6 spec AC 277a, 0.5.1).** For each pushed
+  ref, Quorum never returns a pass unless it reviewed at least the net
+  tree change the destination remote lacks. Over-review is allowed;
+  under-review never passes. Never the tip commit only.
+  - **Destination.** `PushDestination` comes from `--remote` / `--url`:
+    a remote name; a URL push when `$1` equals `$2` (Git passes the URL
+    twice when the push names no remote); or not passed, from a v1–v3
+    hook. The URL is never kept or printed. An old hook is treated as a
+    remote with no verified tracking refs, with the stderr line
+    "reinstall the hook (`quorum install --hook=pre-push`) for exact
+    coverage". Quorum never guesses `origin`.
+  - **Existing ref** (`remote_sha` not all zeros). If `remote_sha` is
+    not in the local object store, the ref is not reviewed: one stderr
+    line says to run `git fetch <remote>` (the name, never a URL), exit
+    2. Identical trees pass with a note and no Lippa session.
+    Otherwise the exact tree delta `remote_sha` → `local_sha` is
+    reviewed (`DiffSource::CommitRange`). That covers fast-forwards
+    (merged-in upstream changes are over-reviewed), force pushes after
+    a rebase, and rewinds (reverted code shows as removed).
+  - **New branch** (`push_coverage::plan_new_branch`). Tracking refs
+    are the direct local refs matching a destination of the remote's
+    fetch refspecs (`remote.<name>.fetch`), not `refs/remotes/<name>/*`,
+    so remote `a` never borrows remote `a/b`'s refs. A tracking ref is
+    **verified** only if it equals the tip `git ls-remote <remote>`
+    reports for the remote ref it maps from. That is the `git` CLI, not
+    libgit2, so credential helpers apply; it runs with
+    `GIT_TERMINAL_PROMPT=0`, stdin closed, stderr discarded (it may
+    quote a URL with credentials), and is killed after 15 s. Any
+    failure means nothing is verified. **Eligible** refs are verified
+    refs with exactly one merge-base with `local_sha`. The symbolic
+    `refs/remotes/<name>/HEAD`'s target wins if eligible, else the
+    fewest commits from merge-base to `local_sha`, ties by the lowest
+    ref name. With an eligible ref the merge-base tree → `local_sha`
+    tree is reviewed, and identical trees pass with no Lippa session.
+    With none (old hook, URL push, no tracking refs, stale or
+    unverifiable refs, orphan branch, shallow clone, criss-cross
+    merge-bases) the full tree of `local_sha` is reviewed against the
+    empty tree (`ReviewDiff::NewBranchFullTree`), with a stderr notice
+    naming the reason.
+  - **A truncated full-tree review exits 2** before any Lippa session:
+    "new-branch review exceeded the bundle budget; push a smaller
+    branch or review it with `quorum review --range <base>..<head>`".
+    Every other truncated review keeps 0.5.0 behaviour until v0.6 AC
+    272.
+  - **Three accepted limits.** Tag pushes are not reviewed. Content
+    added and removed again inside the pushed commits is never reviewed
+    (net-tree semantics). Fail-open lets an exit 2 (`error`) through,
+    with a warning, by the user's choice of policy.
 - **Per-tuple archive naming.** Pre-push writes
   `.quorum/reviews/<push-start-ISO>.tuple-<N>.json` per non-skipped
   tuple (1-indexed `N`, shared `push-start-ISO` across one push).
@@ -642,6 +689,13 @@ String::new()` fixtures cannot exercise this path.
     branch names, tags, or arbitrary rev expressions (`HEAD~3`,
     `origin/main`, …). Diff is computed via `diff_tree_to_tree`;
     file blobs come from the `head` tree.
+- **The pre-push new-branch full tree is not a `DiffSource`.**
+  `CommitRange` needs a base *commit*, and 0.5.1 changes no library
+  API, so `quorum-cli` builds that diff itself
+  (`push_coverage::full_tree_diff`: `diff_tree_to_tree(None, head)`,
+  the same context, submodule, binary and hunk-count rules) and the
+  CLI-local `ReviewDiff` carries it. Folding it into core is a BACKLOG
+  item for 0.6.
 - **Symmetric-difference (`base...head`) is rejected** by the CLI
   `--range` parser. The bundle pipeline diffs `head` content against
   `base` tree; the spread-three-dot form is not a single base

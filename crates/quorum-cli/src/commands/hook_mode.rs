@@ -18,14 +18,16 @@
 //!     NOT via zero-sha. Skipped with stderr note.
 //!   * tag push detected via `local_ref` prefix `refs/tags/`. Skipped
 //!     with stderr note (no commit-range semantics for tags).
-//!   * new branch detected via `remote_sha` all-zeros. Base resolved
-//!     via merge-base against `origin/HEAD`; falls back to tip-only
-//!     review with stderr note.
+//!   * new branch detected via `remote_sha` all-zeros. Reviewed from the
+//!     merge-base with a verified tracking ref of the destination remote,
+//!     else as its full tree, never tip-only (v0.6 spec AC 277a step 2;
+//!     see [`super::push_coverage`]).
 //!   * standard / force-push: `DiffSource::CommitRange { base:
 //!     remote_sha, head: local_sha }`. Git's range semantics handle
 //!     force-push correctly.
 
-use crate::commands::review::{run as run_review, HookMode, ReviewOptions};
+use crate::commands::push_coverage::{plan_new_branch, NewBranchPlan};
+use crate::commands::review::{run as run_review, HookMode, ReviewDiff, ReviewOptions};
 use crate::exit::{CliError, Exit};
 use quorum_core::git::DiffSource;
 use quorum_lippa_client::keyring::Storage;
@@ -74,12 +76,38 @@ pub enum TupleAction {
     SkipDeletion,
     /// `local_ref` starts with `refs/tags/` — D5 addendum.
     SkipTag,
-    /// Remote-sha all zeros — new branch push. Base resolved at run
-    /// time via merge-base; if unresolvable, the loop reviews the
-    /// tip commit only with a stderr note.
+    /// Remote-sha all zeros — new branch push. Planned at run time by
+    /// [`super::push_coverage::plan_new_branch`]: a verified merge-base,
+    /// else the full tree; never the tip commit only.
     NewBranch,
     /// Standard / force-push: `base..head` revision range.
     Range { base: String, head: String },
+}
+
+/// Where a push is going, from the `$1` / `$2` Git passes the pre-push
+/// hook (v0.6 spec AC 277a). The v4 template forwards them as `--remote`
+/// and `--url`. The URL itself is never kept: it may carry credentials.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PushDestination {
+    /// A configured remote, by name.
+    Named(String),
+    /// `$1` equals `$2`: the push named a URL, not a remote. A URL push
+    /// has no tracking refs.
+    Url,
+    /// No remote argument: a v1–v3 hook, which never passed one. Quorum
+    /// never guesses `origin` for it.
+    NotPassed,
+}
+
+impl PushDestination {
+    pub fn from_args(remote: Option<String>, url: Option<String>) -> Self {
+        match remote {
+            None => PushDestination::NotPassed,
+            Some(r) if r.is_empty() => PushDestination::NotPassed,
+            Some(r) if url.as_deref() == Some(r.as_str()) => PushDestination::Url,
+            Some(r) => PushDestination::Named(r),
+        }
+    }
 }
 
 /// Parse stdin (newline-delimited, four space-separated fields per
@@ -136,7 +164,7 @@ pub async fn run_pre_commit(
         ReviewOptions {
             json_to_stdout: json,
             no_keyring_storage,
-            diff_source: DiffSource::StagedIndex,
+            diff_source: ReviewDiff::Source(DiffSource::StagedIndex),
             no_expire: false,
             tui: false,
             hook_mode: HookMode::PreCommit,
@@ -145,6 +173,51 @@ pub async fn run_pre_commit(
         },
     )
     .await
+}
+
+/// AC 277a step 1: what to do with a ref the remote already has
+/// (`remote_sha` not all-zero), before any Lippa session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExistingRef {
+    /// Review the exact tree delta, `remote_sha` → `local_sha`.
+    Review,
+    /// Both commits have the same tree: the remote gains nothing.
+    TreeUnchanged,
+    /// `remote_sha` is not in the local object store, so the delta
+    /// cannot be computed.
+    RemoteMissing,
+}
+
+fn check_existing_ref(repo_start: &Path, remote_sha: &str, local_sha: &str) -> ExistingRef {
+    let Ok(repo) = git2::Repository::discover(repo_start) else {
+        // The review pipeline reports the missing repository itself.
+        return ExistingRef::Review;
+    };
+    let tree = |sha: &str| {
+        git2::Oid::from_str(sha)
+            .ok()
+            .and_then(|oid| repo.find_commit(oid).ok())
+            .map(|c| c.tree_id())
+    };
+    match (tree(remote_sha), tree(local_sha)) {
+        (None, _) => ExistingRef::RemoteMissing,
+        (Some(remote), Some(local)) if remote == local => ExistingRef::TreeUnchanged,
+        _ => ExistingRef::Review,
+    }
+}
+
+/// The remote to name in a `git fetch <remote>` hint. A URL is never
+/// printed: it may carry credentials.
+fn fetch_hint(dest: &PushDestination) -> &str {
+    match dest {
+        PushDestination::Named(name) => name,
+        PushDestination::Url | PushDestination::NotPassed => "<remote>",
+    }
+}
+
+/// The first 12 hex digits of a sha, for messages.
+fn short_sha(sha: &str) -> &str {
+    sha.get(..12).unwrap_or(sha)
 }
 
 /// `quorum review --hook-mode=pre-push` entry. Reads stdin tuples,
@@ -161,6 +234,7 @@ pub async fn run_pre_commit(
 pub async fn run_pre_push<R: Read>(
     repo_start: &Path,
     stdin: R,
+    dest: &PushDestination,
     no_keyring_storage: Option<Storage>,
 ) -> Result<Exit, CliError> {
     let tuples = parse_tuples(stdin);
@@ -189,27 +263,46 @@ pub async fn run_pre_push<R: Read>(
                 continue;
             }
             TupleAction::NewBranch => {
-                // Spec §4.5.5: resolve base via merge-base against
-                // origin/HEAD. If unresolvable, review the tip commit
-                // only with a stderr note. We compute the base lazily
-                // inside the review pipeline: pass the head as both
-                // base and head and let the pipeline handle the
-                // empty-range case OR resolve here and pass the
-                // computed base. The simpler path is to compute now.
-                match resolve_new_branch_base(repo_start, &t.local_sha) {
-                    Ok(Some(base)) => DiffSource::CommitRange {
-                        base,
-                        head: t.local_sha.clone(),
-                    },
-                    Ok(None) => {
+                // AC 277a step 2: review what the destination remote
+                // lacks, never the tip commit only.
+                match plan_new_branch(repo_start, &t.local_sha, dest) {
+                    Ok(NewBranchPlan::MergeBase { base, tracking_ref }) => {
                         eprintln!(
-                            "quorum: new-branch push for {}: no upstream HEAD; reviewing the tip commit only",
+                            "quorum: new branch {}: reviewing from its merge-base with {tracking_ref}",
                             t.remote_ref
                         );
                         DiffSource::CommitRange {
-                            base: format!("{}^", t.local_sha),
+                            base,
                             head: t.local_sha.clone(),
                         }
+                    }
+                    Ok(NewBranchPlan::AlreadyOnRemote { tracking_ref }) => {
+                        eprintln!(
+                            "quorum: new branch {}: {tracking_ref} already has all of it; nothing to review",
+                            t.remote_ref
+                        );
+                        exits.push(Exit::Ok);
+                        continue;
+                    }
+                    Ok(NewBranchPlan::FullTree { reason }) => {
+                        eprintln!(
+                            "quorum: new branch {}: reviewing its full tree, because {reason}",
+                            t.remote_ref
+                        );
+                        let full_tree = ReviewDiff::NewBranchFullTree {
+                            head: t.local_sha.clone(),
+                        };
+                        exits.push(
+                            review_tuple(
+                                repo_start,
+                                t,
+                                full_tree,
+                                archive_name,
+                                &no_keyring_storage,
+                            )
+                            .await,
+                        );
+                        continue;
                     }
                     Err(e) => {
                         // Not a silent skip: the tuple was not reviewed,
@@ -225,38 +318,74 @@ pub async fn run_pre_push<R: Read>(
                     }
                 }
             }
-            TupleAction::Range { base, head } => DiffSource::CommitRange { base, head },
+            TupleAction::Range { base, head } => match check_existing_ref(repo_start, &base, &head)
+            {
+                ExistingRef::Review => DiffSource::CommitRange { base, head },
+                ExistingRef::TreeUnchanged => {
+                    eprintln!(
+                        "quorum: {}: tree unchanged from the remote's {}; nothing to review",
+                        t.remote_ref,
+                        short_sha(&base)
+                    );
+                    exits.push(Exit::Ok);
+                    continue;
+                }
+                ExistingRef::RemoteMissing => {
+                    eprintln!(
+                        "quorum: {}: the remote's commit {} is not in this repository; \
+                         run `git fetch {}` and push again; not reviewed (exit 2)",
+                        t.remote_ref,
+                        short_sha(&base),
+                        fetch_hint(dest)
+                    );
+                    exits.push(Exit::ToolingError);
+                    continue;
+                }
+            },
         };
 
-        let exit = match run_review(
-            repo_start,
-            ReviewOptions {
-                json_to_stdout: false,
-                no_keyring_storage: no_keyring_storage.clone(),
-                diff_source,
-                no_expire: false,
-                tui: false,
-                hook_mode: HookMode::PrePush,
-                archive_filename_override: Some(archive_name),
-                tier_override: None,
-            },
-        )
-        .await
-        {
-            Ok(exit) => exit,
-            Err(e) => {
-                let exit = e.exit();
-                let why = e.to_string().lines().collect::<Vec<_>>().join(" ");
-                eprintln!(
-                    "quorum: pre-push review of {} failed (exit {}): {why}",
-                    t.local_ref, exit as u8
-                );
-                exit
-            }
-        };
-        exits.push(exit);
+        let diff = ReviewDiff::Source(diff_source);
+        exits.push(review_tuple(repo_start, t, diff, archive_name, &no_keyring_storage).await);
     }
     Ok(aggregate_push_exits(exits))
+}
+
+/// Review one tuple's `diff`. An error prints one stderr line naming the
+/// ref and becomes that error's exit (`AuthRequired` for an auth error,
+/// `ToolingError` otherwise).
+async fn review_tuple(
+    repo_start: &Path,
+    t: &PushTuple,
+    diff: ReviewDiff,
+    archive_name: String,
+    no_keyring_storage: &Option<Storage>,
+) -> Exit {
+    match run_review(
+        repo_start,
+        ReviewOptions {
+            json_to_stdout: false,
+            no_keyring_storage: no_keyring_storage.clone(),
+            diff_source: diff,
+            no_expire: false,
+            tui: false,
+            hook_mode: HookMode::PrePush,
+            archive_filename_override: Some(archive_name),
+            tier_override: None,
+        },
+    )
+    .await
+    {
+        Ok(exit) => exit,
+        Err(e) => {
+            let exit = e.exit();
+            let why = e.to_string().lines().collect::<Vec<_>>().join(" ");
+            eprintln!(
+                "quorum: pre-push review of {} failed (exit {}): {why}",
+                t.local_ref, exit as u8
+            );
+            exit
+        }
+    }
 }
 
 /// Combine the per-tuple exits of one push into the hook's exit.
@@ -276,28 +405,6 @@ pub fn aggregate_push_exits(exits: impl IntoIterator<Item = Exit>) -> Exit {
         rest = rest.max(exit);
     }
     rest
-}
-
-/// Attempt to compute the merge-base between `local_sha` and
-/// `origin/HEAD`. Returns `Ok(None)` when there's no `origin/HEAD`
-/// reference (fresh remote / no default branch tracked) so the caller
-/// can fall back to tip-only review.
-fn resolve_new_branch_base(repo_start: &Path, local_sha: &str) -> Result<Option<String>, String> {
-    let repo = git2::Repository::discover(repo_start).map_err(|e| format!("repo discover: {e}"))?;
-    let head_ref = match repo.find_reference("refs/remotes/origin/HEAD") {
-        Ok(r) => r,
-        Err(_) => return Ok(None),
-    };
-    let head_oid = head_ref
-        .resolve()
-        .map_err(|e| format!("resolve origin/HEAD: {e}"))?
-        .target()
-        .ok_or_else(|| "origin/HEAD has no target oid".to_string())?;
-    let local_oid = git2::Oid::from_str(local_sha).map_err(|e| format!("oid parse: {e}"))?;
-    let base = repo
-        .merge_base(local_oid, head_oid)
-        .map_err(|e| format!("merge_base: {e}"))?;
-    Ok(Some(base.to_string()))
 }
 
 #[cfg(test)]
@@ -431,6 +538,35 @@ mod tests {
             (vec![ToolingError, AuthRequired], AuthRequired),
         ] {
             assert_eq!(aggregate_push_exits(exits.clone()), want, "{exits:?}");
+        }
+    }
+
+    /// AC 277a: `$1` equal to `$2` is a URL push; a missing or empty
+    /// `$1` is an old hook. Nothing defaults to `origin`.
+    #[test]
+    fn push_destination_comes_from_the_hook_arguments() {
+        let s = |v: &str| Some(v.to_string());
+        for (remote, url, want) in [
+            (None, None, PushDestination::NotPassed),
+            (s(""), s(""), PushDestination::NotPassed),
+            (
+                s("upstream"),
+                s("https://h/r.git"),
+                PushDestination::Named("upstream".into()),
+            ),
+            (s("a/b"), None, PushDestination::Named("a/b".into())),
+            (
+                s("https://h/r.git"),
+                s("https://h/r.git"),
+                PushDestination::Url,
+            ),
+            (s("../r.git"), s("../r.git"), PushDestination::Url),
+        ] {
+            assert_eq!(
+                PushDestination::from_args(remote.clone(), url.clone()),
+                want,
+                "{remote:?} {url:?}"
+            );
         }
     }
 }
