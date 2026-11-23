@@ -23,12 +23,14 @@ Group by next-target version. Most-recent first.
   0.5.x the archive's `head_sha` is the repository's `HEAD`, not the
   pushed ref, and the base appears only on stderr. It needs v0.6's
   `ReviewResult` (AC 269, 273).
-- **Spec v1.0 §0 contradicts AC 277a.** The round-4 adjudication row
-  (`specs/Quorum-v0_6-Spec-v1_0.md` line 48) says a new branch with zero
-  or several merge-bases, or a raw-URL remote, "is an `error`". AC 277a
-  step 2e, the contract, says those get a full-tree review, and the
-  0.5.1 driver says the same. 0.5.1 follows AC 277a. The §0 row needs an
-  erratum.
+- ~~**Spec v1.0 §0 contradicts AC 277a.**~~ **CLOSED, not a
+  contradiction** (Rolf, 23 Nov 2026). The row at
+  `specs/Quorum-v0_6-Spec-v1_0.md` line 48, which says zero or several
+  merge-bases or a raw-URL remote "is an `error`", sits in §0.2: it is
+  the round-3 ruling. §0.1 (round 4) replaced it: "no eligible ref means
+  the full-tree review, not an error", and "a URL push uses the
+  full-tree review instead of `error`". AC 277a is authoritative, and
+  0.5.1 follows it. No erratum needed.
 
 ## Surfaced after the 0.5.0 release (22 Nov 2026)
 

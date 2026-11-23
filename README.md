@@ -7,7 +7,9 @@ Multi-model code reviewer for the developer's machine.
 Quorum reviews staged git diffs using consensus across frontier LLMs (via
 [Lippa](https://app.lippa.ai)) plus codebase memory accumulated from prior reviews.
 
-**Status:** **`v0.5.0`**: every review sends an explicit Consensus
+**Status:** **`v0.5.1`**: the pre-push hook reviews everything the
+destination remote doesn't have yet, never just the tip commit; every
+review sends an explicit Consensus
 tier (`tier` in config, default `high`) and records it; review bundles rank changed files by kind
 and hunk count instead of size and add bounded related-file context,
 tuned by a `[bundle]` config section; three egress fixes keep
@@ -164,11 +166,14 @@ Hook policy via `QUORUM_HOOK_POLICY` env var:
   counts as a tooling error (exit 2), so it blocks too.
 - `warn`: nothing blocks regardless of exit code.
 
-**Upgrading to 0.5.0.** Installing the 0.5.0 binary doesn't touch your
-hooks. They stay on marker v2 (or v1) until you re-run
-`quorum install --hook=<kind>` for each one. The template carries the
-fail-closed missing-binary check, so it needs v3. The new-branch
-merge-base fix is in the binary and works with any hook version.
+**Upgrading to 0.5.1.** Installing the 0.5.1 binary doesn't touch your
+hooks. Re-run `quorum install --hook=pre-push` in every repository
+with a Quorum pre-push hook, to get marker v4, which passes Git's
+remote name to Quorum. Until you do, every new branch you push gets a
+full-tree review, with a stderr notice saying to reinstall: correct,
+but larger than it needs to be. Pushes to an existing branch are
+unaffected. The pre-commit hook gains nothing from v4, so re-installing
+it is optional.
 
 **Upgrading an installed hook.** Quorum never rewrites `.git/hooks` on
 its own, so an installed hook keeps the template it was installed with.
@@ -233,13 +238,13 @@ rows. See `--help` on each subcommand for full flag detail.
 
 ## Install
 
-**v0.5.0** is the current release. Pick the path that fits.
+**v0.5.1** is the current release. Pick the path that fits.
 
 ### Cargo
 
 ```bash
 cargo install quorum-cli
-quorum --version    # quorum 0.5.0 (unknown)
+quorum --version    # quorum 0.5.1 (unknown)
 ```
 
 The `(unknown)` SHA is by design — crates.io tarballs ship without
@@ -258,7 +263,7 @@ SHA256 sidecar plus an aggregate `sha256.sum`:
 - `quorum-cli-x86_64-pc-windows-msvc.zip` + `.msi`
 
 Direct download from
-[the v0.5.0 release](https://github.com/accillion/quorum/releases/tag/v0.5.0),
+[the v0.5.1 release](https://github.com/accillion/quorum/releases/tag/v0.5.1),
 or one-line install via the cargo-dist installers also attached to
 the release:
 

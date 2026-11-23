@@ -4,23 +4,39 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
-## Phase 0.5.1 — pre-push coverage (v0.6 spec AC 277a) ✦ unreleased
+## Phase 0.5.1 — pre-push coverage (v0.6 spec AC 277a) ✦ TBD
 
-**Spec:** `specs/Quorum-v0_6-Spec-v1_0.md` (locked 23 Nov 2026, committed byte for byte in this PR), AC 277a. Rolf ruled on 23 Nov that it ships early as 0.5.1 (spec §0, §3); Stage 6 only re-verifies its tests.
-**Status:** **Unreleased; in review on `fix/push-coverage`.** A patch release: no public item of `quorum-core` or `quorum-lippa-client` changes. The release follows in its own PR.
+**Spec:** `specs/Quorum-v0_6-Spec-v1_0.md` (locked 23 Nov 2026, committed byte for byte in PR #19), AC 277a. Rolf ruled on 23 Nov that it ships early as 0.5.1 (spec §0, §3); Stage 6 only re-verifies its tests.
+**Status:** **Release prep in review on `release/v0.5.1`.** Not tagged yet. A patch release: no public item of `quorum-core` or `quorum-lippa-client` changes.
+
+**Public release:**
+- crates.io: `quorum-core 0.5.1`, `quorum-lippa-client 0.5.1`, `quorum-cli 0.5.1`: TBD (links once published).
+- GitHub Release: `v0.5.1`: TBD.
+- CI run: TBD.
+
+Tag `v0.5.1`: TBD, on the release PR's merge commit.
 
 ### Commit graph
 
-On `92457a4` (PR #18's merge):
+Everything on `main` since `v0.5.0` (`530a5bf`), first parent:
+
+```
+92ddbac  Merge PR #19: 0.5.1 pre-push coverage (v0.6 spec AC 277a)
+92457a4  Merge PR #18: BACKLOG core.hooksPath gap
+063ec0a  Merge PR #17: v0.5.0 release docs
+```
+
+PR #19, on `92457a4`:
 
 ```
 82b6da6  spec: lock Quorum v0.6 spec v1.0
 dee6fa4  fix(hooks): pre-push passes the remote name; marker v4
 6e6c48b  fix(hooks): pre-push rules for a ref the remote already has
 12a88c9  fix(hooks): pre-push reviews what a new branch's remote lacks
+a56dc35  doc: 0.5.1 pre-push coverage (AC 277a)
 ```
 
-then this docs commit.
+PR #17 and PR #18 are docs only. The release PR, on `92ddbac`: `c5d6c08` (a test pinning the new-branch tie-break by lowest ref name), `9131b45` (version bump), then the docs commit carrying this entry.
 
 Revert order: `12a88c9` and `6e6c48b` each revert alone and pass the suite. `dee6fa4` reverts only after both, because they use its `PushDestination`. Reverting `12a88c9` restores tip-only new-branch review (spec §12). Checked on Linux: 4 alone, 3 alone, and 4 → 3 → 2 (back to the 531-test baseline) all apply cleanly and pass; 2 alone conflicts.
 
@@ -46,7 +62,13 @@ Rules: SERVICES.md §7 ("Pre-push coverage") and §8.
 ### Verification
 
 - Tests at `12a88c9`: Linux (Docker `rust:1.95-bookworm`) 558 passed, 1 ignored (baseline `92457a4`: 531 / 1); Windows 557 passed (baseline 530). clippy `-D warnings` and fmt `--check` are clean on both.
-- Negative controls: every new test that pins a behaviour change was run against the commit before its fix and failed there (PR body).
+- Negative controls: every new test that pins a behaviour change was run against the commit before its fix and failed there (PR #19 body). The tie-break test (`c5d6c08`) fails with the name comparison reversed: Quorum then picks `refs/remotes/origin/b-lane`.
+- **Release prep at `9131b45`.**
+  - Tests: Linux (Docker `rust:1.95-bookworm`) 559 passed, 1 ignored; Windows 558 passed. The one new test is the tie-break.
+  - clippy `-D warnings` and fmt `--check` are clean on both.
+  - `cargo publish --workspace --dry-run` (cargo 1.95) packaged and verified all three at 0.5.1: `quorum-core` 19 files, `quorum-lippa-client` 14, `quorum-cli` 52 (0.5.0's 47 plus `commands/push_coverage.rs`, `tests/support/mod.rs` and three `pre_push_*` test files). `quorum-cli` built against the unpublished 0.5.1 libraries.
+  - Local `dist plan --tag v0.5.1` (cargo-dist 0.31.0) gave `macos-15`, `macos-15-intel`, `windows-2022`, `ubuntu-22.04` and `ubuntu-22.04-arm`, the set that ran green for 0.5.0.
+- Live run, publish and Release checks: TBD (Part B).
 
 ---
 
