@@ -401,3 +401,41 @@ fn a_truncated_full_tree_review_exits_2_without_a_session() {
         "{stderr}"
     );
 }
+
+/// Two verified tracking refs, `b-lane` (created first) and `a-lane`, are
+/// equally close: `feat` merges both lanes and adds one commit, so each
+/// lane's merge-base is three commits from the tip. With no `origin/HEAD`
+/// the lowest ref name, `refs/remotes/origin/a-lane`, is the base. Its
+/// own commit is on the remote and stays out of the bundle; `b-lane`'s
+/// arrives through the merge and is reviewed.
+#[test]
+fn equally_close_tracking_refs_tie_break_by_the_lowest_ref_name() {
+    let (fx, lippa, url) = with_remote("origin");
+    for (lane, marker) in [("b-lane", "QUORUM_LANE_B"), ("a-lane", "QUORUM_LANE_A")] {
+        fx.git(&["checkout", "-q", "-b", lane, "main"]);
+        fx.commit_file(&format!("{lane}.txt"), &format!("{marker}\n"), lane);
+        fx.git(&["push", "-q", "origin", lane]);
+    }
+    fx.git(&["checkout", "-q", "-b", "feat", "b-lane"]);
+    fx.git(&["merge", "-q", "--no-ff", "--no-edit", "a-lane"]);
+    let tip = fx.commit_file("f.txt", "QUORUM_FEATURE_ONE\n", "f");
+    for lane in ["a-lane", "b-lane"] {
+        let distance = fx.git(&["rev-list", "--count", &format!("origin/{lane}..feat")]);
+        assert_eq!(distance, "3", "{lane}: the fixture must be a tie");
+    }
+
+    let (code, stderr) = fx.pre_push(
+        &lippa,
+        &args(&named("origin", &url)),
+        &new_branch_tuple("feat", &tip),
+    );
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stderr.contains("refs/remotes/origin/a-lane"), "{stderr}");
+    let prompt = only_prompt(&lippa);
+    assert!(!prompt.contains("QUORUM_LANE_A"), "based on a-lane");
+    assert!(
+        prompt.contains("QUORUM_LANE_B"),
+        "b-lane's commit is reviewed"
+    );
+    assert!(prompt.contains("QUORUM_FEATURE_ONE"));
+}
