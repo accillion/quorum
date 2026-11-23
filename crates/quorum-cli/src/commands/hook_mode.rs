@@ -173,6 +173,51 @@ pub async fn run_pre_commit(
     .await
 }
 
+/// AC 277a step 1: what to do with a ref the remote already has
+/// (`remote_sha` not all-zero), before any Lippa session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExistingRef {
+    /// Review the exact tree delta, `remote_sha` → `local_sha`.
+    Review,
+    /// Both commits have the same tree: the remote gains nothing.
+    TreeUnchanged,
+    /// `remote_sha` is not in the local object store, so the delta
+    /// cannot be computed.
+    RemoteMissing,
+}
+
+fn check_existing_ref(repo_start: &Path, remote_sha: &str, local_sha: &str) -> ExistingRef {
+    let Ok(repo) = git2::Repository::discover(repo_start) else {
+        // The review pipeline reports the missing repository itself.
+        return ExistingRef::Review;
+    };
+    let tree = |sha: &str| {
+        git2::Oid::from_str(sha)
+            .ok()
+            .and_then(|oid| repo.find_commit(oid).ok())
+            .map(|c| c.tree_id())
+    };
+    match (tree(remote_sha), tree(local_sha)) {
+        (None, _) => ExistingRef::RemoteMissing,
+        (Some(remote), Some(local)) if remote == local => ExistingRef::TreeUnchanged,
+        _ => ExistingRef::Review,
+    }
+}
+
+/// The remote to name in a `git fetch <remote>` hint. A URL is never
+/// printed: it may carry credentials.
+fn fetch_hint(dest: &PushDestination) -> &str {
+    match dest {
+        PushDestination::Named(name) => name,
+        PushDestination::Url | PushDestination::NotPassed => "<remote>",
+    }
+}
+
+/// The first 12 hex digits of a sha, for messages.
+fn short_sha(sha: &str) -> &str {
+    sha.get(..12).unwrap_or(sha)
+}
+
 /// `quorum review --hook-mode=pre-push` entry. Reads stdin tuples,
 /// loops one review per non-skipped tuple, aggregates exit codes with
 /// [`aggregate_push_exits`].
@@ -252,7 +297,30 @@ pub async fn run_pre_push<R: Read>(
                     }
                 }
             }
-            TupleAction::Range { base, head } => DiffSource::CommitRange { base, head },
+            TupleAction::Range { base, head } => match check_existing_ref(repo_start, &base, &head)
+            {
+                ExistingRef::Review => DiffSource::CommitRange { base, head },
+                ExistingRef::TreeUnchanged => {
+                    eprintln!(
+                        "quorum: {}: tree unchanged from the remote's {}; nothing to review",
+                        t.remote_ref,
+                        short_sha(&base)
+                    );
+                    exits.push(Exit::Ok);
+                    continue;
+                }
+                ExistingRef::RemoteMissing => {
+                    eprintln!(
+                        "quorum: {}: the remote's commit {} is not in this repository; \
+                         run `git fetch {}` and push again; not reviewed (exit 2)",
+                        t.remote_ref,
+                        short_sha(&base),
+                        fetch_hint(dest)
+                    );
+                    exits.push(Exit::ToolingError);
+                    continue;
+                }
+            },
         };
 
         let exit = match run_review(
