@@ -5,6 +5,31 @@ Group by next-target version. Most-recent first.
 
 ---
 
+## Surfaced by the 0.5.1 pre-push coverage fix (23 Nov 2026)
+
+- **General truncation handling waits for v0.6 AC 270/272.** 0.5.1
+  refuses (exit 2) only a *new-branch full-tree* review that the bundle
+  budget cuts. Every other truncated review, including an ordinary push
+  whose delta is cut, still runs on what was sent and can pass, as in
+  0.5.0. AC 270 (`partial` when a changed hunk is cut) and AC 272 (exit
+  2 for `unknown`) close it in 0.6.0.
+- **Fold the full-tree diff into `quorum-core` at 0.6.** `quorum-cli`'s
+  `push_coverage::full_tree_diff` repeats core's commit-range delta walk
+  with an empty base, because `DiffSource::CommitRange` needs a base
+  commit and 0.5.1 could not change library API. A `DiffSource` variant
+  (a minor bump) removes the copy.
+- **The reviewed scope is not recorded.** AC 277a wants the result's
+  `scope` to carry the base, head and commit list actually reviewed. In
+  0.5.x the archive's `head_sha` is the repository's `HEAD`, not the
+  pushed ref, and the base appears only on stderr. It needs v0.6's
+  `ReviewResult` (AC 269, 273).
+- **Spec v1.0 §0 contradicts AC 277a.** The round-4 adjudication row
+  (`specs/Quorum-v0_6-Spec-v1_0.md` line 48) says a new branch with zero
+  or several merge-bases, or a raw-URL remote, "is an `error`". AC 277a
+  step 2e, the contract, says those get a full-tree review, and the
+  0.5.1 driver says the same. 0.5.1 follows AC 277a. The §0 row needs an
+  erratum.
+
 ## Surfaced after the 0.5.0 release (22 Nov 2026)
 
 - **`quorum install` ignores `core.hooksPath`.** Install always writes

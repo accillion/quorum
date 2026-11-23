@@ -4,6 +4,52 @@ Chronological log of closed milestones. Most-recent first.
 
 ---
 
+## Phase 0.5.1 — pre-push coverage (v0.6 spec AC 277a) ✦ unreleased
+
+**Spec:** `specs/Quorum-v0_6-Spec-v1_0.md` (locked 23 Nov 2026, committed byte for byte in this PR), AC 277a. Rolf ruled on 23 Nov that it ships early as 0.5.1 (spec §0, §3); Stage 6 only re-verifies its tests.
+**Status:** **Unreleased; in review on `fix/push-coverage`.** A patch release: no public item of `quorum-core` or `quorum-lippa-client` changes. The release follows in its own PR.
+
+### Commit graph
+
+On `92457a4` (PR #18's merge):
+
+```
+82b6da6  spec: lock Quorum v0.6 spec v1.0
+dee6fa4  fix(hooks): pre-push passes the remote name; marker v4
+6e6c48b  fix(hooks): pre-push rules for a ref the remote already has
+12a88c9  fix(hooks): pre-push reviews what a new branch's remote lacks
+```
+
+then this docs commit.
+
+Revert order: `12a88c9` and `6e6c48b` each revert alone and pass the suite. `dee6fa4` reverts only after both, because they use its `PushDestination`. Reverting `12a88c9` restores tip-only new-branch review (spec §12). Checked on Linux: 4 alone, 3 alone, and 4 → 3 → 2 (back to the 531-test baseline) all apply cleanly and pass; 2 alone conflicts.
+
+### What shipped
+
+- **The 0.5.0 gap.** With no `refs/remotes/origin/HEAD`, a new-branch push reviewed `local_sha^..local_sha`, the tip commit only, so a defect from an earlier commit of the branch passed. And `origin` was hardcoded, whatever remote the push went to.
+- **The hook passes the remote (`dee6fa4`).** The v4 pre-push template runs `quorum review --hook-mode=pre-push --remote="$1" --url="$2"`. Both templates move to marker **v4**; the v3 templates are kept verbatim in `hooks/legacy.rs`, so an unedited v1–v3 hook upgrades with `quorum install` and an edited one is refused.
+- **Existing refs (`6e6c48b`).** A `remote_sha` missing locally exits 2 naming `git fetch <remote>`. Identical trees pass with no Lippa session. Otherwise the exact tree delta, as before.
+- **New branches (`12a88c9`).** The merge-base with a tracking ref of the destination remote that `git ls-remote` confirms the remote still has (refspec destinations, not a name pattern; exactly one merge-base; `<remote>/HEAD` first, else the closest). With none (old hook, URL push, no or stale or unverifiable refs, orphan, shallow, criss-cross), the full tree against the empty tree, with a notice naming why. A truncated full-tree review exits 2 before any session. Never tip-only.
+
+Rules: SERVICES.md §7 ("Pre-push coverage") and §8.
+
+### Breaking changes
+
+**For library users.** None. `git diff 92457a4` touches no file under `crates/quorum-core` or `crates/quorum-lippa-client`, and no manifest. The full-tree diff is built in `quorum-cli` (a binary crate) for that reason.
+
+**For CLI users.**
+- **Re-run `quorum install --hook=pre-push`** to get the v4 hook. Installed hooks keep their template until then. A v1–v3 pre-push hook passes no remote name, so every new branch is reviewed as its full tree, with a stderr line saying to reinstall. Re-running `quorum install --hook=pre-commit` is optional: its v4 differs from v3 only in the marker.
+- **A new branch's review can be larger.** With no verified base it is the full tree, and if the bundle budget cuts it, the push exits 2 (blocked under fail-closed; let through with a warning under fail-open).
+- **A force push over a remote commit you never fetched exits 2** with "run `git fetch <remote>`". 0.5.0 exited 2 with a raw libgit2 error.
+- `git ls-remote <remote>` now runs once per new-branch push (credential helpers apply, never a prompt, 15 s timeout).
+
+### Verification
+
+- Tests at `12a88c9`: Linux (Docker `rust:1.95-bookworm`) 558 passed, 1 ignored (baseline `92457a4`: 531 / 1); Windows 557 passed (baseline 530). clippy `-D warnings` and fmt `--check` are clean on both.
+- Negative controls: every new test that pins a behaviour change was run against the commit before its fix and failed there (PR body).
+
+---
+
 ## Phase 0.5.0 — the Consensus tier, and two fail-closed gaps ✦ 2026-11-22
 
 **Spec:** none. The tier sends explicitly a field that was implicit before, and the default keeps the old behaviour, so it has no spec gate. The hook fixes close a PR #11 BACKLOG item on Rolf's ruling. v0.4 Stages 2–4 are retargeted to 0.6.x.

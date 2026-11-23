@@ -168,17 +168,18 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **none. 0.5.0 shipped on 22 Nov 2026:** tag `v0.5.0` on
-`530a5bf` (PR #16's merge), run 45039747819, all 10 jobs green. All
-three crates are on crates.io at 0.5.0 through Trusted Publishing. The
-GitHub Release is live, and its assets pass `gh attestation verify`.
-0.5.0 is PR #14: Quorum always sends the Consensus `tier` (config key,
-default `high`, `--tier` flag), records it in archives and the header,
-and explains a tier 422. Fail-closed blocks a missing binary and a
-failed new-branch merge-base (marker v3). Rules: SERVICES.md §3 and
-§7. It is a minor bump because three library structs gain a public
-`tier` field. The release docs are in review on `doc/v0.5.0-released`.
-Earlier: 0.4.1 (`9aae2a3`, run 45018870330) and 0.4.0 (`024ed97`, run
+**Active:** **0.5.1, pre-push coverage (v0.6 spec AC 277a), in review
+on `fix/push-coverage`.** Never tip-only; the destination remote, not
+`origin`; tracking refs verified with `git ls-remote`; hook marker v4.
+No library API change and no release in that PR: Rolf merges it, then
+sends the release prompt. HISTORY.md has the unreleased 0.5.1 entry;
+rules in SERVICES.md §7 ("Pre-push coverage"). The locked v0.6 spec is
+`specs/Quorum-v0_6-Spec-v1_0.md`.
+**Last shipped: 0.5.0 on 22 Nov 2026:** tag `v0.5.0` on `530a5bf`
+(PR #16's merge), run 45039747819, all 10 jobs green, crates.io and
+an attested GitHub Release. It sends the Consensus `tier` (SERVICES.md
+§3) and fail-closed blocks a missing binary (marker v3). Earlier:
+0.4.1 (`9aae2a3`, run 45018870330) and 0.4.0 (`024ed97`, run
 44931991241).
 **Next: v0.4 Stages 2–4, retargeted to 0.6.x, not started.** Each
 stage needs Rolf's go.

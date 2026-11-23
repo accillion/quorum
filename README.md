@@ -146,7 +146,7 @@ quorum uninstall --hook=pre-commit  # idempotent; refuses non-Quorum hooks
 ```
 
 Hook templates are POSIX `#!/bin/sh`, marked with
-`# quorum-managed-hook v3` in the first 5 lines. Re-running `install`
+`# quorum-managed-hook v4` in the first 5 lines. Re-running `install`
 replaces a hook only while it is an unedited Quorum template, and
 `uninstall` removes only such a hook. Both refuse, with exit 2 and the
 file untouched, a hook of unknown provenance or a Quorum hook you have
@@ -159,8 +159,9 @@ Hook policy via `QUORUM_HOOK_POLICY` env var:
 - `fail-closed`: block on **any** non-zero exit: tooling (2), auth (3),
   and a crash (a panic is 101, a signal death 128+N). Also block when
   `quorum` is not on `PATH`, with a one-line message saying so. A
-  pre-push of a new branch whose merge base with `origin/HEAD` can't be
-  computed counts as a tooling error (exit 2), so it blocks too.
+  pushed ref Quorum can't review (the remote's commit was never
+  fetched, or a new branch's full tree is over the bundle budget)
+  counts as a tooling error (exit 2), so it blocks too.
 - `warn`: nothing blocks regardless of exit code.
 
 **Upgrading to 0.5.0.** Installing the 0.5.0 binary doesn't touch your
@@ -172,7 +173,9 @@ merge-base fix is in the binary and works with any hook version.
 **Upgrading an installed hook.** Quorum never rewrites `.git/hooks` on
 its own, so an installed hook keeps the template it was installed with.
 A v1 hook (0.4.0 or earlier) lets a crash through under `fail-closed`.
-A v2 hook (0.4.1) lets a missing binary through. Check with
+A v2 hook (0.4.1) lets a missing binary through. A v1–v3 pre-push hook
+doesn't pass Git's remote name, so a new branch is reviewed as its full
+tree, with a notice to reinstall. Check with
 `sed -n 2p .git/hooks/pre-commit`. To upgrade, re-run the install for
 each hook you use:
 
@@ -181,17 +184,23 @@ quorum install --hook=pre-commit
 quorum install --hook=pre-push
 ```
 
-An unedited v1 or v2 hook is replaced with v3. If you edited the hook, the
+An unedited v1, v2 or v3 hook is replaced with v4. If you edited the hook, the
 install refuses and says so. Move the file aside, re-run the install,
 and carry your edits over by hand.
 
 Bypass for one operation: `env QUORUM_SKIP=1 git commit ...` or
 `env QUORUM_SKIP=1 git push ...`.
 
-Pre-push reviews each ref tuple Git sends on stdin as a commit range
-(`base..head`). Branch deletions and tag pushes are skipped with a
-stderr note (code review is not meaningful for either). Each tuple
-produces its own archive at
+Pre-push reviews, for each ref Git sends on stdin, at least what the
+destination remote doesn't have yet, never just the tip commit. An
+update to an existing branch is reviewed as the tree change from the
+remote's commit (run `git fetch <remote>` if Quorum says it lacks it).
+A new branch is reviewed from its merge-base with a tracking ref the
+remote still has (checked with `git ls-remote`), or else as its full
+tree, with a note saying why. A push that changes no files passes
+without a Lippa session. Branch deletions and tag pushes are skipped
+with a stderr note (code review is not meaningful for either). Each
+tuple produces its own archive at
 `.quorum/reviews/<push-start-ISO>.tuple-<N>.json`.
 
 ## Local conventions (Phase 1C)
