@@ -19,8 +19,8 @@
 //!   * tag push detected via `local_ref` prefix `refs/tags/`. Skipped
 //!     with stderr note (no commit-range semantics for tags).
 //!   * new branch detected via `remote_sha` all-zeros. Base resolved
-//!     via merge-base against `origin/HEAD`; falls back to tip-only
-//!     review with stderr note.
+//!     via merge-base against the destination remote's `HEAD`; falls
+//!     back to tip-only review with stderr note.
 //!   * standard / force-push: `DiffSource::CommitRange { base:
 //!     remote_sha, head: local_sha }`. Git's range semantics handle
 //!     force-push correctly.
@@ -80,6 +80,32 @@ pub enum TupleAction {
     NewBranch,
     /// Standard / force-push: `base..head` revision range.
     Range { base: String, head: String },
+}
+
+/// Where a push is going, from the `$1` / `$2` Git passes the pre-push
+/// hook (v0.6 spec AC 277a). The v4 template forwards them as `--remote`
+/// and `--url`. The URL itself is never kept: it may carry credentials.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PushDestination {
+    /// A configured remote, by name.
+    Named(String),
+    /// `$1` equals `$2`: the push named a URL, not a remote. A URL push
+    /// has no tracking refs.
+    Url,
+    /// No remote argument: a v1–v3 hook, which never passed one. Quorum
+    /// never guesses `origin` for it.
+    NotPassed,
+}
+
+impl PushDestination {
+    pub fn from_args(remote: Option<String>, url: Option<String>) -> Self {
+        match remote {
+            None => PushDestination::NotPassed,
+            Some(r) if r.is_empty() => PushDestination::NotPassed,
+            Some(r) if url.as_deref() == Some(r.as_str()) => PushDestination::Url,
+            Some(r) => PushDestination::Named(r),
+        }
+    }
 }
 
 /// Parse stdin (newline-delimited, four space-separated fields per
@@ -161,6 +187,7 @@ pub async fn run_pre_commit(
 pub async fn run_pre_push<R: Read>(
     repo_start: &Path,
     stdin: R,
+    dest: &PushDestination,
     no_keyring_storage: Option<Storage>,
 ) -> Result<Exit, CliError> {
     let tuples = parse_tuples(stdin);
@@ -196,7 +223,7 @@ pub async fn run_pre_push<R: Read>(
                 // base and head and let the pipeline handle the
                 // empty-range case OR resolve here and pass the
                 // computed base. The simpler path is to compute now.
-                match resolve_new_branch_base(repo_start, &t.local_sha) {
+                match resolve_new_branch_base(repo_start, &t.local_sha, dest) {
                     Ok(Some(base)) => DiffSource::CommitRange {
                         base,
                         head: t.local_sha.clone(),
@@ -278,22 +305,32 @@ pub fn aggregate_push_exits(exits: impl IntoIterator<Item = Exit>) -> Exit {
     rest
 }
 
-/// Attempt to compute the merge-base between `local_sha` and
-/// `origin/HEAD`. Returns `Ok(None)` when there's no `origin/HEAD`
-/// reference (fresh remote / no default branch tracked) so the caller
-/// can fall back to tip-only review.
-fn resolve_new_branch_base(repo_start: &Path, local_sha: &str) -> Result<Option<String>, String> {
+/// Attempt to compute the merge-base between `local_sha` and the
+/// destination remote's `<remote>/HEAD`. Returns `Ok(None)` when the
+/// push names no remote, or the remote has no `HEAD` tracking ref, so
+/// the caller can fall back to tip-only review. `local_sha` must name a
+/// local commit either way.
+fn resolve_new_branch_base(
+    repo_start: &Path,
+    local_sha: &str,
+    dest: &PushDestination,
+) -> Result<Option<String>, String> {
     let repo = git2::Repository::discover(repo_start).map_err(|e| format!("repo discover: {e}"))?;
-    let head_ref = match repo.find_reference("refs/remotes/origin/HEAD") {
+    let local_oid = git2::Oid::from_str(local_sha).map_err(|e| format!("oid parse: {e}"))?;
+    repo.find_commit(local_oid)
+        .map_err(|e| format!("local commit {local_sha}: {e}"))?;
+    let PushDestination::Named(name) = dest else {
+        return Ok(None);
+    };
+    let head_ref = match repo.find_reference(&format!("refs/remotes/{name}/HEAD")) {
         Ok(r) => r,
         Err(_) => return Ok(None),
     };
     let head_oid = head_ref
         .resolve()
-        .map_err(|e| format!("resolve origin/HEAD: {e}"))?
+        .map_err(|e| format!("resolve {name}/HEAD: {e}"))?
         .target()
-        .ok_or_else(|| "origin/HEAD has no target oid".to_string())?;
-    let local_oid = git2::Oid::from_str(local_sha).map_err(|e| format!("oid parse: {e}"))?;
+        .ok_or_else(|| format!("{name}/HEAD has no target oid"))?;
     let base = repo
         .merge_base(local_oid, head_oid)
         .map_err(|e| format!("merge_base: {e}"))?;
@@ -431,6 +468,35 @@ mod tests {
             (vec![ToolingError, AuthRequired], AuthRequired),
         ] {
             assert_eq!(aggregate_push_exits(exits.clone()), want, "{exits:?}");
+        }
+    }
+
+    /// AC 277a: `$1` equal to `$2` is a URL push; a missing or empty
+    /// `$1` is an old hook. Nothing defaults to `origin`.
+    #[test]
+    fn push_destination_comes_from_the_hook_arguments() {
+        let s = |v: &str| Some(v.to_string());
+        for (remote, url, want) in [
+            (None, None, PushDestination::NotPassed),
+            (s(""), s(""), PushDestination::NotPassed),
+            (
+                s("upstream"),
+                s("https://h/r.git"),
+                PushDestination::Named("upstream".into()),
+            ),
+            (s("a/b"), None, PushDestination::Named("a/b".into())),
+            (
+                s("https://h/r.git"),
+                s("https://h/r.git"),
+                PushDestination::Url,
+            ),
+            (s("../r.git"), s("../r.git"), PushDestination::Url),
+        ] {
+            assert_eq!(
+                PushDestination::from_args(remote.clone(), url.clone()),
+                want,
+                "{remote:?} {url:?}"
+            );
         }
     }
 }

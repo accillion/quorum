@@ -200,6 +200,16 @@ struct ReviewArgs {
     /// `quorum install --hook=<type>`.
     #[arg(long, value_name = "KIND")]
     hook_mode: Option<String>,
+    /// Pre-push hook only: the remote name Git passed the hook as `$1`.
+    /// The v4 hook template supplies it; Quorum reviews what that remote
+    /// lacks.
+    #[arg(long, value_name = "NAME", requires = "hook_mode")]
+    remote: Option<String>,
+    /// Pre-push hook only: the remote URL Git passed the hook as `$2`.
+    /// Used only to tell a push to a raw URL (`$1` equals `$2`) from a
+    /// push to a named remote; never printed.
+    #[arg(long, value_name = "URL", requires = "hook_mode")]
+    url: Option<String>,
     /// Consensus tier for this run: `low`, `medium` or `high`. Overrides
     /// `tier` in `.quorum/config.toml` (default `high`). Hook mode reads
     /// the config only, so this flag is refused with `--hook-mode`.
@@ -310,8 +320,15 @@ async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
                         commands::hook_mode::run_pre_commit(&repo_root, args.json, storage).await
                     }
                     "pre-push" => {
-                        commands::hook_mode::run_pre_push(&repo_root, std::io::stdin(), storage)
-                            .await
+                        let dest =
+                            commands::hook_mode::PushDestination::from_args(args.remote, args.url);
+                        commands::hook_mode::run_pre_push(
+                            &repo_root,
+                            std::io::stdin(),
+                            &dest,
+                            storage,
+                        )
+                        .await
                     }
                     other => Err(CliError::Config(format!(
                         "unknown --hook-mode value: {other:?}; expected pre-commit or pre-push"
