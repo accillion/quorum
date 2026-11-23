@@ -102,6 +102,14 @@ pub enum CliError {
         allowed = quorum_core::config::ConsensusTier::ALLOWED
     )]
     TierRejected { sent: String, detail: String },
+    /// v0.6 spec AC 277a (0.5.1): a pre-push new branch with no verified
+    /// base was reviewed as its full tree, and the bundle budget cut the
+    /// diff. Exit 2: the branch was not fully reviewed.
+    #[error(
+        "new-branch review exceeded the bundle budget; push a smaller branch or \
+         review it with `quorum review --range <base>..<head>`"
+    )]
+    NewBranchTooLarge,
 }
 
 impl CliError {

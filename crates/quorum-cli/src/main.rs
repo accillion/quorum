@@ -347,7 +347,7 @@ async fn dispatch(cli: Cli) -> Result<Exit, CliError> {
                 commands::review::ReviewOptions {
                     json_to_stdout: args.json,
                     no_keyring_storage: storage,
-                    diff_source,
+                    diff_source: commands::review::ReviewDiff::Source(diff_source),
                     no_expire: args.no_expire,
                     tui: args.tui,
                     hook_mode: commands::review::HookMode::None,

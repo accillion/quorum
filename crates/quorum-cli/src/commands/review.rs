@@ -44,12 +44,25 @@ pub enum HookMode {
     PrePush,
 }
 
+/// What a review diffs.
+#[derive(Debug, Clone)]
+pub enum ReviewDiff {
+    /// A `quorum-core` diff source: the staged index, or a commit range.
+    Source(DiffSource),
+    /// v0.6 spec AC 277a step 2e, pre-push only: a new branch with no
+    /// verified base on the destination remote. The full tree of `head`
+    /// is reviewed against the empty tree. A diff the bundle budget cuts
+    /// is refused (exit 2), not reviewed in part.
+    NewBranchFullTree { head: String },
+}
+
 #[derive(Debug, Clone)]
 pub struct ReviewOptions {
     pub json_to_stdout: bool,
     pub no_keyring_storage: Option<Storage>,
-    /// Phase 1B: `StagedIndex` (default) or `CommitRange { base, head }`.
-    pub diff_source: DiffSource,
+    /// Phase 1B: `StagedIndex` (default) or `CommitRange { base, head }`;
+    /// AC 277a adds the pre-push new-branch full tree.
+    pub diff_source: ReviewDiff,
     /// Phase 1B: when true, dismissals from this session are permanent
     /// (`expires_at = NULL`). Default expiry is 365 days; this flag is
     /// surfaced via `quorum review --no-expire`.
@@ -168,12 +181,20 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
     };
 
     // ===== Git, diff, repo metadata =====
-    let (repo, staged) =
-        diff_for_source(repo_start, &opts.diff_source).map_err(|e| CliError::Git(e.to_string()))?;
+    let (repo, staged) = match &opts.diff_source {
+        ReviewDiff::Source(source) => {
+            diff_for_source(repo_start, source).map_err(|e| CliError::Git(e.to_string()))?
+        }
+        ReviewDiff::NewBranchFullTree { head } => {
+            crate::commands::push_coverage::full_tree_diff(repo_start, head)
+                .map_err(CliError::Git)?
+        }
+    };
     if staged.is_empty {
         let label = match &opts.diff_source {
-            DiffSource::StagedIndex => "staged",
-            DiffSource::CommitRange { .. } => "commit-range",
+            ReviewDiff::Source(DiffSource::StagedIndex) => "staged",
+            ReviewDiff::Source(DiffSource::CommitRange { .. }) => "commit-range",
+            ReviewDiff::NewBranchFullTree { .. } => "new-branch",
         };
         println!("No {label} changes — nothing to review");
         return Ok(Exit::Ok);
@@ -269,6 +290,12 @@ pub async fn run(repo_start: &Path, opts: ReviewOptions) -> Result<Exit, CliErro
             }
             _ => eprintln!("excluded: {path}"),
         }
+    }
+    // AC 277a (0.5.1): a new branch's full tree cut by the budget would
+    // pass content nobody reviewed. Refuse it before any Lippa session.
+    // Other truncated reviews keep 0.5.0 behaviour until v0.6 AC 272.
+    if bundle.diff_truncated && matches!(opts.diff_source, ReviewDiff::NewBranchFullTree { .. }) {
+        return Err(CliError::NewBranchTooLarge);
     }
     if bundle.diff_truncated {
         eprintln!("note: diff truncated to fit budget");
