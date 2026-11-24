@@ -56,6 +56,34 @@ Rulings made at the same gate, recorded in `bench/DESIGN.md`:
 - `--max-usd 300`;
 - de-duplicated blind adjudication.
 
+### 0.0b [S1a-ADJ-2] — amendment to AC 252 (Rolf, Gate B of Stage 1a, 2026-11-24)
+
+AC 252's classes gain **`no_issue`**: a finding that asserts no problem
+with the change, such as an approval, a description or a question. It
+is neither a TP nor an FP.
+
+Why: Quorum's findings are Lippa claims, and claims include positions
+("the change correctly handles X"). The `S-` and `E-` arms use the same
+claims format. Under AC 252 as written, an unmatched finding that is
+not a duplicate, a pre-existing issue or an unexpected true positive
+counts as a false alarm. A correct approval of a clean case would
+therefore score as an FP, for every arm.
+
+How it is handled:
+- `no_issue` decisions are part of the random 20% human sample, like
+  any other non-mandatory judge decision.
+- `RESULTS.md` reports `no_issue` counts per arm, next to the duplicate,
+  `pre_existing` and `unexpected_tp` counts.
+
+Also ruled at Gate B, and recorded in `bench/DESIGN.md`:
+- the fix's explanatory comments are removed from bug-case bases, both
+  comment-only lines and trailing comments on removed lines;
+- the halt-rule middle-category decisions in DESIGN.md §14 are accepted
+  as written;
+- the budget is approved: about 1,320 Lippa credits (`--max-credits
+  1100` for the base run, separate caps for the two re-runs) and
+  `--max-usd 300`.
+
 ### 0.1 Round 4 — targeted AC 277a check
 
 Lippa 3 (not ACCEPT; six fixes, then "accept without another check") and

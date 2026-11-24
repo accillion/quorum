@@ -170,7 +170,8 @@ quorum/
 
 **Active: v0.6 Stage 1 (benchmark pilot, ACs 242–255).** Stage 1a
 (harness, corpus, frozen design; zero paid calls) is **in review** at
-Gate B. It awaits Rolf's approval of the design and the budget.
+Gate B (PR #22). Rolf approved the design and the budget on 24 Nov
+2026: about 1,320 credits and `--max-usd 300`.
 Stage 1b, the paid pilot run, has not started. The harness is the
 `bench/` member (`quorum-bench`, `publish = false`, `dist = false`).
 Its rules are in SERVICES.md §9, the frozen design in `bench/DESIGN.md`,
@@ -228,8 +229,8 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 Repo state on `main` (`22c1847`, tagged `v0.5.1`): 559 tests pass, 1
 ignored, on Linux, and 558 on Windows. clippy
 `-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
-With the Stage 1a branch (in review), the counts are 677 passed and 1
-ignored on Linux, and 676 on Windows: `quorum-bench` adds 118 tests.
+With the Stage 1a branch (in review), the counts are 681 passed and 1
+ignored on Linux, and 680 on Windows: `quorum-bench` adds 122 tests.
 Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 
 ---
