@@ -57,6 +57,19 @@ pub struct CaseToml {
     pub dataset: String,
     #[serde(default)]
     pub dataset_instance: String,
+    /// Free-text facts a reader of the results needs (Gate B rulings).
+    #[serde(default)]
+    pub notes: Vec<String>,
+    /// The case base differs from the upstream fixed tree beyond
+    /// `removed_paths` and `base_reverts`: each `base_overrides` path takes
+    /// its content from `base/<path>` in the case directory (Gate B
+    /// ruling 2: the fix's explanatory comments are removed).
+    #[serde(default)]
+    pub edited: bool,
+    #[serde(default)]
+    pub edit_reason: String,
+    #[serde(default)]
+    pub base_overrides: Vec<String>,
     #[serde(default)]
     pub repro: Option<Repro>,
     #[serde(default)]
@@ -210,6 +223,87 @@ pub fn looks_like_test_path(p: &str) -> bool {
         || file.ends_with(".snap")
 }
 
+/// How a file's line comments start, by extension: `//`-style, `#`-style,
+/// or none known (Markdown, data files).
+fn comment_style(path: &str) -> Option<&'static str> {
+    let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+    match ext.as_str() {
+        "rs" | "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "mts" | "cts" | "go" | "java"
+        | "c" | "h" | "cc" | "cpp" | "hpp" | "kt" | "swift" | "scss" | "css" | "vue" | "astro"
+        | "svelte" => Some("slash"),
+        "py" | "pyi" | "toml" | "yaml" | "yml" | "sh" | "bash" | "rb" => Some("hash"),
+        _ => None,
+    }
+}
+
+/// Whether a source line is a comment and nothing else.
+pub fn is_comment_only(line: &str, style: &str) -> bool {
+    let t = line.trim();
+    if t.is_empty() {
+        return false;
+    }
+    match style {
+        "slash" => {
+            t.starts_with("//")
+                || t.starts_with("/*")
+                || t.starts_with("*/")
+                || t == "*"
+                || t.starts_with("* ")
+                || (t.starts_with("{/*") && t.ends_with("*/}"))
+        }
+        // `#!` and Rust-like `#[` never occur in these languages as code
+        // that matters here, but a shebang is not a comment about a fix.
+        "hash" => t.starts_with('#') && !t.starts_with("#!"),
+        _ => false,
+    }
+}
+
+/// Comment-only lines on the removed side of a diff (Gate B ruling 2):
+/// in a bug case these are comments the fix added, which the reverted diff
+/// shows being deleted, and which explain the answer. Returns (path, the
+/// line's 1-based number in the old file, the line text).
+pub fn comment_only_removed_lines(diff: &str) -> Vec<(String, usize, String)> {
+    let mut out = Vec::new();
+    let mut path: Option<String> = None;
+    let mut old_line = 0usize;
+    for l in diff.lines() {
+        if let Some(rest) = l.strip_prefix("diff --git ") {
+            path = rest
+                .split(' ')
+                .next()
+                .and_then(|a| a.strip_prefix("a/"))
+                .map(str::to_string);
+            continue;
+        }
+        if let Some(h) = l.strip_prefix("@@ -") {
+            old_line = h
+                .split([',', ' '])
+                .next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+            continue;
+        }
+        if l.starts_with("---") || l.starts_with("+++") || l.starts_with("index ") {
+            continue;
+        }
+        match l.as_bytes().first() {
+            Some(b'-') => {
+                if let Some(p) = &path {
+                    if let Some(style) = comment_style(p) {
+                        if is_comment_only(&l[1..], style) {
+                            out.push((p.clone(), old_line, l[1..].to_string()));
+                        }
+                    }
+                }
+                old_line += 1;
+            }
+            Some(b' ') => old_line += 1,
+            _ => {}
+        }
+    }
+    out
+}
+
 fn word_count(s: &str) -> usize {
     s.split_whitespace().count()
 }
@@ -261,6 +355,22 @@ pub fn load_case(dir: &Path) -> Result<Case, CorpusError> {
     for f in &meta.agent_files {
         if f != "AGENTS.md" && f != "CLAUDE.md" {
             return Err(invalid(c, format!("agent_files entry `{f}`")));
+        }
+    }
+    if meta.edited == meta.base_overrides.is_empty()
+        || (meta.edited && meta.edit_reason.trim().is_empty())
+    {
+        return Err(invalid(c, "edited = true needs base_overrides and an edit_reason, and base_overrides needs edited = true"));
+    }
+    for p in &meta.base_overrides {
+        if meta.removed_paths.contains(p) || meta.base_reverts.contains(p) {
+            return Err(invalid(
+                c,
+                format!("base_overrides path `{p}` is also removed or reverted"),
+            ));
+        }
+        if !dir.join("base").join(p).is_file() {
+            return Err(invalid(c, format!("base/{p} is missing")));
         }
     }
     let diff = std::fs::read(dir.join("diff.patch"))?;
@@ -603,6 +713,47 @@ mod tests {
         assert!(p.iter().any(|m| m.contains("clean cases")));
         assert!(p.iter().any(|m| m.contains("languages")));
         assert!(p.iter().any(|m| m.contains("AGENTS.md")));
+    }
+
+    #[test]
+    fn comment_only_removed_lines_are_found_per_language() {
+        let diff = "diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -10,4 +10,2 @@ fn f() {\n     let x = 1;\n-    // Guard against an empty slice: the fix.\n-    if v.is_empty() { return; } // trailing\n     g();\ndiff --git a/p/b.py b/p/b.py\n--- a/p/b.py\n+++ b/p/b.py\n@@ -3,2 +3,1 @@\n-# keep the stderr loop alive\n x = 1\ndiff --git a/README.md b/README.md\n--- a/README.md\n+++ b/README.md\n@@ -1,1 +1,0 @@\n-# Title\n";
+        let hits = comment_only_removed_lines(diff);
+        assert_eq!(hits.len(), 2, "{hits:?}");
+        assert_eq!((hits[0].0.as_str(), hits[0].1), ("src/a.rs", 11));
+        assert_eq!((hits[1].0.as_str(), hits[1].1), ("p/b.py", 3));
+        for (line, style, want) in [
+            ("/// doc", "slash", true),
+            (" * block", "slash", true),
+            ("{/* jsx */}", "slash", true),
+            ("x = 1 // trailing", "slash", false),
+            ("#!/bin/sh", "hash", false),
+            ("", "slash", false),
+        ] {
+            assert_eq!(is_comment_only(line, style), want, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn edited_cases_need_overrides_and_a_reason() {
+        let td = tempfile::TempDir::new().unwrap();
+        let d = write_case(td.path(), "rs-x-01", "edited = true\n");
+        assert!(load_case(&d)
+            .unwrap_err()
+            .to_string()
+            .contains("edited = true"));
+        let d = write_case(
+            td.path(),
+            "rs-x-02",
+            "edited = true\nedit_reason = \"r\"\nbase_overrides = [\"src/lib.rs\"]\n",
+        );
+        assert!(load_case(&d)
+            .unwrap_err()
+            .to_string()
+            .contains("base/src/lib.rs is missing"));
+        std::fs::create_dir_all(d.join("base/src")).unwrap();
+        std::fs::write(d.join("base/src/lib.rs"), BASE_SRC).unwrap();
+        assert!(load_case(&d).is_ok());
     }
 
     #[test]

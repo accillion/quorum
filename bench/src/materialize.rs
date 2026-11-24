@@ -124,6 +124,7 @@ fn copy_tree(
     prefix: &str,
     removed: &BTreeSet<String>,
     reverts: &Reverts,
+    overrides: &BTreeMap<String, Vec<u8>>,
 ) -> Result<Option<Oid>, git2::Error> {
     let mut tb = dst.treebuilder(None)?;
     for entry in tree.iter() {
@@ -136,12 +137,17 @@ fn copy_tree(
         match entry.kind() {
             Some(ObjectType::Tree) => {
                 let sub = src.find_tree(entry.id())?;
-                if let Some(oid) = copy_tree(src, dst, &sub, &path, removed, reverts)? {
+                if let Some(oid) = copy_tree(src, dst, &sub, &path, removed, reverts, overrides)? {
                     tb.insert(&name, oid, 0o040000)?;
                 }
             }
             Some(ObjectType::Blob) => {
                 if removed.contains(&path) {
+                    continue;
+                }
+                if let Some(bytes) = overrides.get(&path) {
+                    let new = dst.blob(bytes)?;
+                    tb.insert(&name, new, entry.filemode())?;
                     continue;
                 }
                 let (oid, mode) = match reverts.get(&path) {
@@ -266,10 +272,22 @@ pub fn materialize_trees(
         }
     }
     let removed: BTreeSet<String> = case.meta.removed_paths.iter().cloned().collect();
+    // Gate B ruling 2: edited base files (the fix's explanatory comments
+    // removed) come from the case directory's `base/`.
+    let mut overrides: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    for p in &case.meta.base_overrides {
+        if f_tree.get_path(Path::new(p)).is_err() {
+            return Err(MaterializeError::Case {
+                case: id,
+                msg: format!("base_overrides path `{p}` is not in the base commit"),
+            });
+        }
+        overrides.insert(p.clone(), std::fs::read(case.dir.join("base").join(p))?);
+    }
     // Every object is built in memory and written as one pack; only then
     // is the case commit checked out.
     let (base, head) = packed(&dst, || -> Result<(Oid, Oid), MaterializeError> {
-        let base_tree_oid = copy_tree(upstream, &dst, &f_tree, "", &removed, &reverts)?
+        let base_tree_oid = copy_tree(upstream, &dst, &f_tree, "", &removed, &reverts, &overrides)?
             .ok_or_else(|| MaterializeError::Case {
                 case: id.clone(),
                 msg: "empty base tree".into(),

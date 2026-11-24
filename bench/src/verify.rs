@@ -26,6 +26,30 @@ pub struct CaseReport {
     pub bundle_sha256: Option<String>,
     /// Unchanged context files the budget left out (allowed; reported).
     pub context_files_omitted: usize,
+    /// Facts that are not failures (comment-only removals in clean cases).
+    pub notes: Vec<String>,
+}
+
+/// Gate B ruling 2: a bug case's diff.patch must not remove comment-only
+/// lines. Those are comments the fix added, and the reverted diff would
+/// show the reviewer the explanation. In a clean case the removed side is
+/// the original code before an ordinary commit, so such lines are only
+/// reported.
+pub fn comment_hint_findings(case: &Case) -> (Vec<String>, Vec<String>) {
+    let hits = crate::corpus::comment_only_removed_lines(&String::from_utf8_lossy(&case.diff));
+    let msgs: Vec<String> = hits
+        .iter()
+        .map(|(p, n, t)| {
+            format!(
+                "diff.patch removes comment-only line {p}:{n}: `{}`",
+                t.trim().chars().take(60).collect::<String>()
+            )
+        })
+        .collect();
+    match case.meta.kind {
+        crate::corpus::Kind::Bug => (msgs, Vec::new()),
+        crate::corpus::Kind::Clean => (Vec::new(), msgs),
+    }
 }
 
 /// Cuts that would change what the reviewer sees of the change itself.
@@ -113,6 +137,9 @@ pub async fn verify_case(case: &Case, cache: &Path, quorum_bin: Option<&Path>) -
         id: case.id().into(),
         ..Default::default()
     };
+    let (hints, notes) = comment_hint_findings(case);
+    r.problems.extend(hints);
+    r.notes.extend(notes);
     let m = match materialize(case, cache).await {
         Ok(m) => m,
         Err(e) => {

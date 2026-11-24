@@ -64,6 +64,12 @@ enum Cmd {
         #[arg(long)]
         confirm_paid: bool,
     },
+    /// Gate B ruling 2: remove the fix's comment-only lines from bug cases'
+    /// bases and regenerate their diff.patch (corpus maintenance).
+    StripCommentHints {
+        #[arg(long)]
+        case: Option<String>,
+    },
     /// (Re)build the blind human queue of a finished run.
     Queue {
         #[arg(long)]
@@ -139,6 +145,9 @@ fn run(cli: Cli) -> Result<(), String> {
                     failed += 1;
                     println!("FAIL  {:<28} {}", r.id, r.problems.join("; "));
                 }
+                for n in &r.notes {
+                    println!("note  {:<28} {n}", r.id);
+                }
             }
             for p in corpus::corpus_problems(&cases) {
                 failed += 1;
@@ -204,6 +213,34 @@ fn run(cli: Cli) -> Result<(), String> {
                     confirm_paid,
                 },
             ))
+        }
+        Cmd::StripCommentHints { case } => {
+            let cases = corpus::load_corpus(&bench.join("cases")).map_err(|e| e.to_string())?;
+            let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+            for c in cases.iter().filter(|c| {
+                c.meta.kind == corpus::Kind::Bug && case.as_deref().map_or(true, |id| c.id() == id)
+            }) {
+                if c.meta.edited {
+                    println!("skip  {:<28} already edited", c.id());
+                    continue;
+                }
+                let m = rt
+                    .block_on(quorum_bench::materialize::materialize(c, &cache))
+                    .map_err(|e| e.to_string())?;
+                match quorum_bench::edit::comment_edit(c, &m).map_err(|e| e.to_string())? {
+                    None => {}
+                    Some(e) => {
+                        quorum_bench::edit::apply_to_case(c, &e).map_err(|e| e.to_string())?;
+                        println!(
+                            "edit  {:<28} {} line(s) in {}",
+                            c.id(),
+                            e.lines_removed,
+                            e.files.join(", ")
+                        );
+                    }
+                }
+            }
+            Ok(())
         }
         Cmd::Queue { run } => quorum_bench::commands::cmd_queue(&root, &run),
         Cmd::Adjudicate { run } => {

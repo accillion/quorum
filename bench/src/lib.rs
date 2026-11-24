@@ -11,6 +11,7 @@ pub mod claims;
 pub mod commands;
 pub mod config;
 pub mod corpus;
+pub mod edit;
 pub mod fake_lippa;
 pub mod findings;
 pub mod github;
