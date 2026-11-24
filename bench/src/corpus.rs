@@ -258,11 +258,75 @@ pub fn is_comment_only(line: &str, style: &str) -> bool {
     }
 }
 
-/// Comment-only lines on the removed side of a diff (Gate B ruling 2):
-/// in a bug case these are comments the fix added, which the reverted diff
-/// shows being deleted, and which explain the answer. Returns (path, the
-/// line's 1-based number in the old file, the line text).
-pub fn comment_only_removed_lines(diff: &str) -> Vec<(String, usize, String)> {
+/// Split a code line into (code, trailing comment) when a comment follows
+/// code on the same line, scanning past string and character literals so
+/// `"http://x"` or `'#'` is not a comment. `None` when there is no
+/// trailing comment, or no code before it. Rust `'a` lifetimes are told
+/// apart from character literals by the closing quote.
+pub fn split_trailing_comment<'a>(line: &'a str, path: &str) -> Option<(&'a str, &'a str)> {
+    let style = comment_style(path)?;
+    let rust = path.ends_with(".rs");
+    let b = line.as_bytes();
+    let mut i = 0;
+    let mut quote: Option<u8> = None;
+    while i < b.len() {
+        let c = b[i];
+        if let Some(q) = quote {
+            if c == b'\\' {
+                i += 2;
+                continue;
+            }
+            if c == q {
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        let comment_starts = match style {
+            "slash" => c == b'/' && matches!(b.get(i + 1), Some(b'/') | Some(b'*')),
+            _ => c == b'#',
+        };
+        if comment_starts {
+            let code = line[..i].trim_end();
+            return (!code.trim().is_empty()).then_some((code, &line[i..]));
+        }
+        match c {
+            b'"' | b'`' if style == "slash" || c == b'"' => quote = Some(c),
+            b'\'' => {
+                // A Rust lifetime (`'a`, `'static`) has no closing quote
+                // within a character literal's length.
+                let is_char_lit = !rust || {
+                    let rest = &b[i + 1..];
+                    (rest.len() >= 2 && rest[1] == b'\'')
+                        || (rest.first() == Some(&b'\\')
+                            && rest.iter().skip(1).take(10).any(|&x| x == b'\''))
+                };
+                if is_char_lit {
+                    quote = Some(c);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Removed lines that are code followed by a comment (Gate B, PR #22
+/// ruling 1): (path, 1-based old line number, line, code part).
+pub fn trailing_comment_removed_lines(diff: &str) -> Vec<(String, usize, String, String)> {
+    removed_lines(diff)
+        .into_iter()
+        .filter_map(|(p, n, t)| {
+            let (code, _) = split_trailing_comment(&t, &p)?;
+            let code = code.to_string();
+            Some((p, n, t, code))
+        })
+        .collect()
+}
+
+/// Every removed line of a diff: (path, 1-based old line number, text).
+pub fn removed_lines(diff: &str) -> Vec<(String, usize, String)> {
     let mut out = Vec::new();
     let mut path: Option<String> = None;
     let mut old_line = 0usize;
@@ -283,17 +347,13 @@ pub fn comment_only_removed_lines(diff: &str) -> Vec<(String, usize, String)> {
                 .unwrap_or(0);
             continue;
         }
-        if l.starts_with("---") || l.starts_with("+++") || l.starts_with("index ") {
+        if l.starts_with("--- ") || l.starts_with("+++ ") || l.starts_with("index ") {
             continue;
         }
         match l.as_bytes().first() {
             Some(b'-') => {
                 if let Some(p) = &path {
-                    if let Some(style) = comment_style(p) {
-                        if is_comment_only(&l[1..], style) {
-                            out.push((p.clone(), old_line, l[1..].to_string()));
-                        }
-                    }
+                    out.push((p.clone(), old_line, l[1..].to_string()));
                 }
                 old_line += 1;
             }
@@ -302,6 +362,17 @@ pub fn comment_only_removed_lines(diff: &str) -> Vec<(String, usize, String)> {
         }
     }
     out
+}
+
+/// Comment-only lines on the removed side of a diff (Gate B ruling 2):
+/// in a bug case these are comments the fix added, which the reverted diff
+/// shows being deleted, and which explain the answer. Returns (path, the
+/// line's 1-based number in the old file, the line text).
+pub fn comment_only_removed_lines(diff: &str) -> Vec<(String, usize, String)> {
+    removed_lines(diff)
+        .into_iter()
+        .filter(|(p, _, t)| comment_style(p).is_some_and(|s| is_comment_only(t, s)))
+        .collect()
 }
 
 fn word_count(s: &str) -> usize {
@@ -732,6 +803,56 @@ mod tests {
         ] {
             assert_eq!(is_comment_only(line, style), want, "{line:?}");
         }
+    }
+
+    #[test]
+    fn trailing_comments_are_split_outside_literals() {
+        let cases = [
+            (
+                "src/a.rs",
+                "            b'\\\\' => i += 1, // escaped brace is data",
+                Some("            b'\\\\' => i += 1,"),
+            ),
+            (
+                "src/a.ts",
+                "  if (gen !== ref.current) return; // stale",
+                Some("  if (gen !== ref.current) return;"),
+            ),
+            ("src/a.ts", "  const u = 'http://x'; ", None),
+            (
+                "src/a.ts",
+                "  const u = \"http://x\"; // a url",
+                Some("  const u = \"http://x\";"),
+            ),
+            (
+                "src/a.rs",
+                "fn f<'a>(x: &'a str) -> &'a str { x } // lifetime",
+                Some("fn f<'a>(x: &'a str) -> &'a str { x }"),
+            ),
+            (
+                "src/a.rs",
+                "let c = '/'; let d = 1; /* why */",
+                Some("let c = '/'; let d = 1;"),
+            ),
+            (
+                "p/a.py",
+                "x = '#not a comment'  # but this is",
+                Some("x = '#not a comment'"),
+            ),
+            ("p/a.py", "# only a comment", None),
+            ("README.md", "text // not code", None),
+        ];
+        for (p, line, want) in cases {
+            assert_eq!(
+                split_trailing_comment(line, p).map(|x| x.0),
+                want,
+                "{p}: {line}"
+            );
+        }
+        let diff = "diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -5,2 +5,1 @@\n-  return; // stale\n   x();\n";
+        let hits = trailing_comment_removed_lines(diff);
+        assert_eq!(hits.len(), 1);
+        assert_eq!((hits[0].1, hits[0].3.as_str()), (5, "  return;"));
     }
 
     #[test]

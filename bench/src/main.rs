@@ -220,10 +220,8 @@ fn run(cli: Cli) -> Result<(), String> {
             for c in cases.iter().filter(|c| {
                 c.meta.kind == corpus::Kind::Bug && case.as_deref().map_or(true, |id| c.id() == id)
             }) {
-                if c.meta.edited {
-                    println!("skip  {:<28} already edited", c.id());
-                    continue;
-                }
+                // An already-edited case is edited again only if its
+                // current diff still shows a hint; the edits accumulate.
                 let m = rt
                     .block_on(quorum_bench::materialize::materialize(c, &cache))
                     .map_err(|e| e.to_string())?;
@@ -232,9 +230,10 @@ fn run(cli: Cli) -> Result<(), String> {
                     Some(e) => {
                         quorum_bench::edit::apply_to_case(c, &e).map_err(|e| e.to_string())?;
                         println!(
-                            "edit  {:<28} {} line(s) in {}",
+                            "edit  {:<28} {} line(s) removed, {} trailing comment(s) stripped, in {}",
                             c.id(),
                             e.lines_removed,
+                            e.trailing_stripped,
                             e.files.join(", ")
                         );
                     }

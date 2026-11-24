@@ -47,7 +47,20 @@ pub fn comment_hint_findings(case: &Case) -> (Vec<String>, Vec<String>) {
         })
         .collect();
     match case.meta.kind {
-        crate::corpus::Kind::Bug => (msgs, Vec::new()),
+        crate::corpus::Kind::Bug => {
+            // Gate B, PR #22 ruling 1: a trailing comment on a removed line
+            // is the fix's explanation too.
+            let mut msgs = msgs;
+            for (p, n, t, _) in
+                crate::corpus::trailing_comment_removed_lines(&String::from_utf8_lossy(&case.diff))
+            {
+                msgs.push(format!(
+                    "diff.patch removes a line with a trailing comment {p}:{n}: `{}`",
+                    t.trim().chars().take(60).collect::<String>()
+                ));
+            }
+            (msgs, Vec::new())
+        }
         crate::corpus::Kind::Clean => (Vec::new(), msgs),
     }
 }

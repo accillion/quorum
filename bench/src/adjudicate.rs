@@ -522,6 +522,23 @@ mod tests {
         assert_eq!(q, queue_for(&c, &ds), "seeded: the same queue every time");
     }
 
+    /// [S1a-ADJ-2] (accepted): certain `no_issue` decisions are in the
+    /// random 20% sample, like every other non-mandatory decision.
+    #[test]
+    fn no_issue_decisions_are_sampled_at_twenty_percent() {
+        let (_td, c) = case();
+        let ds: Vec<Decision> = (0..10).map(|i| dec(i, Class::NoIssue, false)).collect();
+        let q = queue_for(&c, &ds);
+        let picked: Vec<&Item> = q
+            .iter()
+            .filter(|i| matches!(i, Item::Finding { why, .. } if why == "sample"))
+            .collect();
+        assert_eq!(picked.len(), 2, "ceil(20% of 10)");
+        assert!(q
+            .iter()
+            .all(|i| !matches!(i, Item::Finding { why, .. } if why != "sample")));
+    }
+
     #[test]
     fn nothing_in_the_queue_names_an_arm_model_or_agreement() {
         let (_td, c) = case();
