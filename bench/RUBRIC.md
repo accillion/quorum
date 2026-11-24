@@ -18,7 +18,7 @@ every copy; the judge never learns how many copies there are.
 | `false_alarm` | The finding asserts a problem that is not real | FP |
 | `pre_existing` | A real problem, present before this change and not introduced by it | neither (reported) |
 | `unexpected_tp` | A real problem the change introduces that is not an expected defect | neither (reported; always checked by Rolf) |
-| `no_issue` | The finding asserts no problem: an approval, a description, a question ([S1a-ADJ-2], proposed) | neither (reported) |
+| `no_issue` | The finding asserts no problem: an approval, a description, a question ([S1a-ADJ-2], spec §0.0b) | neither (reported) |
 | `unresolved` | The judge cannot decide | blocks scoring until Rolf decides |
 
 `uncertain = true` sends a decision to Rolf, blind. Rolf also decides every

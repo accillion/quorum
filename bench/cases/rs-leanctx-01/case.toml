@@ -11,7 +11,7 @@ removed_paths = [
   "rust/src/core/shell_allowlist/tests.rs",
 ]
 base_reverts = []
-case_base_tree = "78e1771bf8284e9e6e5d872d0d7c847dc9dfc42e"
+case_base_tree = "cc869fb4a032c587c8727f603ddf6b0612740f9c"
 case_commit_tree = "ee46521aecc19e01eeb170f793b651d8afb7eaf4"
 licence = "Apache-2.0"
 licence_path = "LICENSE"
@@ -21,15 +21,18 @@ Copyright 2026 Yves Gugger
 agent_files = ["AGENTS.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "yvgude__lean-ctx-969"
+notes = [
+  "Reproduces single-threaded (`-- --test-threads=1`, Gate B PR #22 ruling, 2026-11-24). Upstream tests set and unset LEAN_CTX_SHELL_ALLOWLIST_OVERRIDE / LEAN_CTX_SHELL_SECURITY without the test env lock, so under parallel threads unrelated tests race and fail at random. The unedited upstream fix commit flakes the same way (3 of 8 parallel runs failed). Single-threaded: fixed tree 5 of 5 pass (185 tests), reverted tree 5 of 5 fail on exactly the 3 brace_group_* tests.",
+]
 
 edited = true
-edit_reason = "Gate B ruling 2 (2026-11-24): 23 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+edit_reason = "Gate B ruling 2 (2026-11-24): 23 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation. Gate B PR #22 ruling 1 (2026-11-24): the trailing comment is stripped from 2 removed line(s), code kept."
 base_overrides = ["rust/src/core/shell_allowlist/mod.rs"]
 
 [repro]
 reproduced = true
 image = "rust@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1"
-command = "cargo test --manifest-path rust/Cargo.toml --lib core::shell_allowlist::tests"
+command = "cargo test --manifest-path rust/Cargo.toml --lib core::shell_allowlist::tests -- --test-threads=1"
 test_files = [
   "rust/src/core/shell_allowlist/tests.rs",
 ]

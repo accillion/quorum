@@ -242,7 +242,7 @@ language = "rust"
 source_repo = "yvgude/lean-ctx"
 reproduced = true
 agent_files = true
-content_sha256 = "94b679b63335b004be5f7ccb31f1591930456dbe95b2062fa45cded19008a437"
+content_sha256 = "fd5831f1d137051be1f7a627c0d57d661dfac427d0788441ddc23e2ea5a81446"
 
 [[case]]
 id = "rs-leanctx-02"
@@ -350,7 +350,7 @@ language = "typescript"
 source_repo = "qwenlm/qwen-code"
 reproduced = true
 agent_files = true
-content_sha256 = "9348698423956e35ed587a0d893bc4f47422529cdc62e6ba9c4cbe818bb0121b"
+content_sha256 = "3b8adf77d4e7a96f3e151c5c0f0d728a9cfb1601d4dfa13a22683d8d8a6df7fc"
 
 [[case]]
 id = "ts-workers-01"

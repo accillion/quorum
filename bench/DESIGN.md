@@ -1,7 +1,7 @@
 # Benchmark pilot: frozen design (v0.6 Stage 1)
 
-**Status: frozen at Gate B (Stage 1a), awaiting Rolf's approval of the
-design and the budget.** No paid call has been made. Changing anything
+**Status: frozen at Gate B (Stage 1a). Rolf approved the design and the
+budget on 2026-11-24 (PR #22 rulings).** No paid call has been made. Changing anything
 this file pins, after the first paid run, restarts the pilot (spec §3).
 Every result is labelled **pilot — exploratory** (AC 243).
 
@@ -12,11 +12,11 @@ matching, if `MANIFEST.toml` is stale, or if the frozen settings drift.
 
 | File | SHA-256 | Version |
 |---|---|---|
-| `bench/MANIFEST.toml` | c83f1cb10d8f2985f3508f6ddfb78eb2c943be7abb41dbb09910e2f8c4ab7bde | corpus of 40 cases |
+| `bench/MANIFEST.toml` | 68b047eeda6e60bec4cf2317962c8a9f75c4f8e254b61656e935dcc674e996c0 | corpus of 40 cases |
 | `bench/bench.toml` | da534240084eb57ffa7882582b77ef19e7ac9726af8295de0b5e88cf09beca5e | run settings |
 | `bench/prices.toml` | a34ce5840ac2d95d545864f3714c918eb90a518ffc50faee8fdfafb1cf4cd173 | prices read 2026-11-23 |
 | `bench/prompts/single-v1.md` | 899b51fdf38830f417e286784c48363518f3c5d1ac6da2d655fe86e2892c04e4 | single-model prompt v1 |
-| `bench/RUBRIC.md` | f5ac0550f9cc7bfba78e51de35d76a1f67c0a7582945ebe5574c90aed9c15a32 | judging rubric v1 |
+| `bench/RUBRIC.md` | 66d215c1611c1529d7eb545b045851aafcc36ce0d7f03f6bb7e409423545c4b3 | judging rubric v1 |
 | `bench/rubrics/extraction-v1.md` | ada34c3209da94a0568a459faa39c4f1da6c737781df46674f94f38a19c902e9 | extraction rubric v1 |
 | `bench/rubrics/clustering-v1.md` | 5e25edc3e907eb53a01e42a3f7bb44e6d93c8bd0378a126597f3417041ff200b | clustering rubric v1 |
 
@@ -129,63 +129,117 @@ Only 7 of the 35 expected defects are high severity, so
   symlink support, it becomes a one-line file, and Quorum reads that
   line.
 
-### Edited cases: the fix's explanatory comments removed (Gate B ruling 2)
+### Edited cases: the fix's explanatory comments removed (Gate B rulings)
 
 A comment the fix added shows up in the reverted diff as a deleted line
 explaining the answer. It leaks the answer to every arm and inflates
 recall. `verify-corpus` therefore fails any bug case whose `diff.patch`
-removes a comment-only line: `//`, `/* */`, `///` and `#` styles, chosen
-by file extension.
+removes a comment-only line (first ruling): `//`, `/* */`, `///` and `#`
+styles, chosen by file extension. It also fails a removed line of code
+that carries a trailing comment (second ruling, PR #22). The comment is
+found by a scan that skips string and character literals.
 
-`quorum-bench strip-comment-hints` deleted those lines from the case
-base file, stored as `base/<path>` and listed in `base_overrides`. It
+`quorum-bench strip-comment-hints` deleted the comment-only lines, and
+stripped trailing comments while keeping their code, in the case base
+file, stored as `base/<path>` and listed in `base_overrides`. It
 recomputed `case_base_tree` and regenerated `diff.patch` from the edited
 base to the unchanged case commit tree. Each case records `edited =
 true` and an `edit_reason`. No edit could unbalance a `/* */` block, and
 none was refused. The edited lines therefore appear neither in
 `diff.patch` nor in the materialized base.
 
-| Case | Lines removed | File(s) |
-|---|---|---|
-| `py-agents-02` | 1 | `src/agents/sandbox/memory/storage.py` |
-| `py-claudesdk-03` | 4 | `src/claude_agent_sdk/_internal/transport/subprocess_cli.py` |
-| `py-pydanticai-01` | 1 | `pydantic_ai_slim/pydantic_ai/models/test.py` |
-| `rs-biome-01` | 15 | `crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_bind.rs` (rule-doc prose and the `vue` example) |
-| `rs-biome-02` | 26 | `crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_on.rs` (rule-doc prose and the `vue` example) |
-| `rs-biome-04` | 3 | `crates/biome_js_formatter/src/js/expressions/call_arguments.rs` |
-| `rs-biome-05` | 2 | `crates/biome_service/src/file_handlers/html/parse_embedded_nodes.rs` |
-| `rs-dioxus-01` | 2 | `packages/autofmt/src/writer.rs` |
-| `rs-dioxus-02` | 4 | `packages/autofmt/src/prettier_please.rs` |
-| `rs-leanctx-01` | 23 | `rust/src/core/shell_allowlist/mod.rs` |
-| `rs-obscura-01` | 8 | `crates/obscura-cdp/src/domains/page.rs` |
-| `rs-oxc-03` | 1 | `crates/oxc_minifier/src/peephole/remove_unused_expression.rs` |
-| `rs-pnpm-01` | 6 | `pnpm/crates/resolving-npm-resolver/src/errors.rs`, `.../fetch_full_metadata.rs` |
-| `ts-agentsjs-02` | 19 | `packages/agents-realtime/src/realtimeSession.ts` |
-| `ts-defuddle-01` | 1 | `src/standardize.ts` |
-| `ts-hydrogen-01` | 2 | `packages/hydrogen-react/src/parse-metafield.ts` |
-| `ts-manifest-01` | 4 | `packages/backend/src/routing/proxy/provider-client.ts` |
-| `ts-qwen-01` | 6 | `packages/cli/src/ui/hooks/useStatusLine.ts` |
-| `ts-workers-01` | 5 | `packages/miniflare/src/workers/d1/dumpSql.ts` |
+| Case | Comment-only lines removed | Trailing comments stripped | File(s) |
+|---|---|---|---|
+| `py-agents-02` | 1 | 0 | `src/agents/sandbox/memory/storage.py` |
+| `py-claudesdk-03` | 4 | 0 | `src/claude_agent_sdk/_internal/transport/subprocess_cli.py` |
+| `py-pydanticai-01` | 1 | 0 | `pydantic_ai_slim/pydantic_ai/models/test.py` |
+| `rs-biome-01` | 15 | 0 | `crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_bind.rs` (rule-doc prose and the `vue` example) |
+| `rs-biome-02` | 26 | 0 | `crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_on.rs` (rule-doc prose and the `vue` example) |
+| `rs-biome-04` | 3 | 0 | `crates/biome_js_formatter/src/js/expressions/call_arguments.rs` |
+| `rs-biome-05` | 2 | 0 | `crates/biome_service/src/file_handlers/html/parse_embedded_nodes.rs` |
+| `rs-dioxus-01` | 2 | 0 | `packages/autofmt/src/writer.rs` |
+| `rs-dioxus-02` | 4 | 0 | `packages/autofmt/src/prettier_please.rs` |
+| `rs-leanctx-01` | 23 | 2 | `rust/src/core/shell_allowlist/mod.rs` |
+| `rs-obscura-01` | 8 | 0 | `crates/obscura-cdp/src/domains/page.rs` |
+| `rs-oxc-03` | 1 | 0 | `crates/oxc_minifier/src/peephole/remove_unused_expression.rs` |
+| `rs-pnpm-01` | 6 | 0 | `pnpm/crates/resolving-npm-resolver/src/errors.rs`, `.../fetch_full_metadata.rs` |
+| `ts-agentsjs-02` | 19 | 0 | `packages/agents-realtime/src/realtimeSession.ts` |
+| `ts-defuddle-01` | 1 | 0 | `src/standardize.ts` |
+| `ts-hydrogen-01` | 2 | 0 | `packages/hydrogen-react/src/parse-metafield.ts` |
+| `ts-manifest-01` | 4 | 0 | `packages/backend/src/routing/proxy/provider-client.ts` |
+| `ts-qwen-01` | 6 | 1 | `packages/cli/src/ui/hooks/useStatusLine.ts` |
+| `ts-workers-01` | 5 | 0 | `packages/miniflare/src/workers/d1/dumpSql.ts` |
 
-That is 19 of the 30 bug cases, 133 lines in all.
+That is 19 of the 30 bug cases: 133 comment-only lines removed and 3
+trailing comments stripped. The trailing comments were in
+`rs-leanctx-01` (2, for example `b'\\' => i += 1, // escaped brace is
+data, not a group delimiter`) and `ts-qwen-01` (1, `… return; // stale`).
+No other bug case has one.
 
-- **Clean cases are reported, not edited (middle category).** The check
-  also lists comment-only removed lines in `clean-py-mcp-01` (1) and
-  `clean-rs-harper-01` (4). In a clean case the removed side is the
-  original code before an ordinary commit, which the commit itself
-  rewrote. It explains no fix and points at no defect, so editing it
-  would only change the commit under review. `verify-corpus` prints
-  them as `note` lines.
-- **What stays.** A comment sharing a line with code is not
-  comment-only, and it stays. Python docstrings are strings, not
-  comments, and also stay. Both can still carry a hint. A scan of every
-  bug case's removed lines for code with a trailing comment found two,
-  left as they are because the ruling covers comment-only lines. Rolf
-  may rule on them:
-  - `rs-leanctx-01`: `b'\\' => i += 1, // escaped brace is data, not a
-    group delimiter`. This partly explains the fix.
-  - `ts-qwen-01`: `if (gen !== generationRef.current) return; // stale`.
-    This is a one-word label.
+- **Clean cases are reported, not edited** (accepted, PR #22 ruling 2).
+  The check also lists comment-only removed lines in `clean-py-mcp-01`
+  (1) and `clean-rs-harper-01` (4). In a clean case the removed side is
+  the original code before an ordinary commit, which the commit itself
+  rewrote. It explains no fix and points at no defect. `verify-corpus`
+  prints them as `note` lines.
+- **What stays.** Python docstrings are strings, not comments, so they
+  stay. They can still carry a hint.
+- **Reproduction re-run (PR #22 ruling 6).** Every edited case's repro
+  command was re-run on its edited trees with `quorum-bench
+  export-trees`: the fixed tree is the edited base plus the repro tests,
+  and the reverted tree is the case commit plus the same tests. The
+  results are in the table below.
+
+| Case | Fixed exit | Reverted exit | Failing test(s) on the reverted tree (as originally recorded) |
+|---|---|---|---|
+| `py-agents-02` | 0 | 1 | `test_phase_two_selection_tracks_added_retained_and_removed_rollouts` (3 parametrisations) |
+| `py-claudesdk-03` | 0 | 1 | `test_stderr_callback_raise_does_not_terminate_loop` |
+| `py-pydanticai-01` | 0 | 1 | `test_tool_type_list_args` (both seeds) |
+| `rs-biome-01` | 0 | 101 | `specs::correctness::use_vue_valid_v_bind::valid_vue` |
+| `rs-biome-02` | 0 | 101 | `specs::correctness::use_vue_valid_v_on::valid_vue` |
+| `rs-biome-04` | 0 | 101 | `formatter::js_module::module::each::each_js` |
+| `rs-biome-05` | 0 | 101 | `specs::correctness::no_unused_variables::valid_issue_10840_astro` |
+| `rs-dioxus-01` | 0 | 101 | `commented_rsx_block`, `commented_rsx_block_deep`, `commented_rsx_block_nested` |
+| `rs-dioxus-02` | 0 | 101 | `forloop_tuple` |
+| `rs-leanctx-01` | 0 (5 of 5) | 101 (5 of 5) | the 3 `core::shell_allowlist::tests::brace_group_*` tests. **Single-threaded**, see below |
+| `rs-obscura-01` | 0 | 101 | `navigation_prunes_stale_execution_context_ids` |
+| `rs-oxc-03` | 0 | 101 | `peephole::remove_unused_expression::test_nullish_assign_preserves_guard` |
+| `rs-pnpm-01` | 0 | 101 | `unsolicited_304_retries_without_cache`, `repeated_unsolicited_304_reports_missing_cache` |
+| `ts-agentsjs-02` | 0 | 1 | `RealtimeSession > preserves custom audio formats across updateAgent` |
+| `ts-defuddle-01` | 0 | 1 | `should process fixture: 'elements--empty-table'` |
+| `ts-hydrogen-01` | 0 | 1 | `parseMetafield > money with currency_code (Storefront API format)` |
+| `ts-manifest-01` | 0 | 1 | the two `ProviderClient > Custom endpoint` tests (#1591, #1615) |
+| `ts-qwen-01` | 0 | 1 | the two `useStatusLine > spawn failure handling` tests |
+| `ts-workers-01` | 0 | 1 | `dumpSql exports and imports complete database structure and content correctly` |
+
+All 19 still reproduce. Each fixed tree passes and each reverted tree
+fails on exactly the tests its `repro/output-reverted.txt` records. Each
+run used the case's own image digest and command.
+
+**`rs-biome-01`, `rs-biome-02`.** The edit removed rule-doc examples, so
+Biome's doc-example check was also run on both edited fixed trees:
+`cargo run -p rules_check`, Biome's `just lint-rules` and the
+`lint_rule_docs.yml` CI job. It exits 0 on both. The removed examples
+were "valid" examples, so removing them only drops checks.
+
+**`rs-leanctx-01` reproduces single-threaded** (PR #22 ruling, applied
+2026-11-24). Upstream tests set and unset
+`LEAN_CTX_SHELL_ALLOWLIST_OVERRIDE` / `LEAN_CTX_SHELL_SECURITY` without
+taking the test environment lock (for example `tests.rs:298-301`).
+Under cargo's parallel test threads they overwrite each other, and
+unrelated tests fail at random:
+- with the old parallel command, the edited fixed tree failed in 5 of 8
+  runs;
+- **the unedited upstream fix commit flakes the same way**: 3 of 8
+  parallel runs failed.
+
+The repro command is therefore now
+`cargo test --manifest-path rust/Cargo.toml --lib core::shell_allowlist::tests -- --test-threads=1`.
+With it, the fixed tree passed 5 of 5 (185 tests) and the reverted
+tree failed 5 of 5 on exactly the 3 recorded `brace_group_*` tests.
+Its `repro/` outputs were re-recorded from the fifth run of each tree.
+The case's `notes` say the same. The edits to this case only remove
+comments, so they cannot change behaviour.
 
 The AC 244 leakage check and the dry run were re-run on all 40 cases
 after the edits (§2).
@@ -355,10 +409,10 @@ All case content reaches the model between `<<<BENCH_*_BEGIN>>>` and
 Findings appear in a seeded shuffle under opaque ids.
 
 **Classes:** `match`, `false_alarm`, `pre_existing`, `unexpected_tp`,
-`unresolved`, and `duplicate`. Scoring derives `duplicate`, one-to-one
+`no_issue`, `unresolved`, and `duplicate`. Scoring derives `duplicate`, one-to-one
 per expected defect within an arm and repeat.
 
-**Proposed, needs Rolf's ruling — [S1a-ADJ-2], a `no_issue` class.**
+**[S1a-ADJ-2], the `no_issue` class (accepted by Rolf, 2026-11-24; spec §0.0b).**
 Quorum's findings are Lippa claims, and claims include positions such as
 "The change correctly handles empty input". The `S-` and `E-` arms use
 the same claims format. Under AC 252 as written, every unmatched finding
@@ -367,11 +421,12 @@ a false alarm. A correct approval of a clean case would then count as an
 FP for every arm, and "false alarms per clean case" would mostly count
 approvals.
 
-I added `no_issue` ("the finding asserts no problem: an approval, a
-description, a question"). It is neither TP nor FP and is reported
-separately. If Rolf prefers AC 252 as written, remove the class from
-`RUBRIC.md` and the schema before the freeze. That needs no paid
-re-run.
+`no_issue` ("the finding asserts no problem: an approval, a
+description, a question") is neither TP nor FP. Certain `no_issue`
+decisions are part of the random 20% human sample, like every other
+non-mandatory decision (`adjudicate::tests::no_issue_decisions_are_sampled_at_twenty_percent`).
+`RESULTS.md` reports `no_issue` counts per arm, next to the duplicate,
+`pre_existing` and `unexpected_tp` counts (`results.json` `side`).
 
 ## 7. Primary endpoint and statistics (AC 253, AC 254)
 
@@ -462,8 +517,10 @@ The estimate uses these assumptions:
 | Judging (about 2 batches per case, plus 1 per case for each of the 2 re-runs) | 160 | $6.86 | $19.65 |
 | **Total** | 1,000 | **about $62** | **about $227** |
 
-**Requested cap: `--max-usd 300`** (Gate A ruling 7). It covers the
-worst case, in which every reservation is billed in full.
+**Approved (Rolf, 2026-11-24):** about 1,320 Lippa credits and
+`--max-usd 300`. The base run gets `--max-credits 1100`, and each of the
+two `Q-high` re-runs gets its own cap. The USD cap covers the worst
+case, in which every reservation is billed in full.
 
 ## 11. Human adjudication workload (AC 252, AC 248a, [S1a-ADJ])
 
@@ -549,8 +606,8 @@ be split across sessions.
 
 ## 14. Decisions taken under the halt rule's middle category
 
-Each was decided and documented here rather than halted on. Rolf may
-overrule any before the freeze.
+Each was decided and documented here rather than halted on. Items 1–10
+were accepted as written by Rolf on 2026-11-24 (PR #22 ruling 4).
 
 1. **Uniform severity in the stripped format** (§4).
 2. **`duplicate` is derived, not judged.** The judge classifies each
@@ -588,6 +645,6 @@ overrule any before the freeze.
     tree hashes, with the API's tree listing as the fallback. Quorum's
     git2 has no TLS transport, and its tech stack rules out shelling out
     to git (BACKLOG).
-11. **The `no_issue` class**, [S1a-ADJ-2], is built in and proposed
-    (§6). It needs Rolf's ruling. It adds to AC 252's class list, so it
-    is the one item here that changes an AC rather than reading one.
+11. **The `no_issue` class**, [S1a-ADJ-2], was accepted by Rolf as a
+    spec amendment (spec §0.0b), not as a middle-category decision. It
+    adds to AC 252's class list.

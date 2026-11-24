@@ -1,5 +1,5 @@
 diff --git a/rust/src/core/shell_allowlist/mod.rs b/rust/src/core/shell_allowlist/mod.rs
-index 1e44041..a8da69a 100644
+index 8b322b2..a8da69a 100644
 --- a/rust/src/core/shell_allowlist/mod.rs
 +++ b/rust/src/core/shell_allowlist/mod.rs
 @@ -840,12 +840,6 @@ fn resolve_segment_leaves(
@@ -45,7 +45,7 @@ index 1e44041..a8da69a 100644
 -        }
 -        if in_double_quote {
 -            match ch {
--                b'\\' => i += 1, // \" and \\ stay inside the string
+-                b'\\' => i += 1,
 -                b'"' => in_double_quote = false,
 -                _ => {}
 -            }
@@ -53,7 +53,7 @@ index 1e44041..a8da69a 100644
 -            continue;
 -        }
 -        match ch {
--            b'\\' => i += 1, // escaped brace is data, not a group delimiter
+-            b'\\' => i += 1,
 -            b'\'' => in_single_quote = true,
 -            b'"' => in_double_quote = true,
 -            b'{' => depth += 1,

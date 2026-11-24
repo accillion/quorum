@@ -9,7 +9,7 @@ source_commit_date = "2026-04-16"
 base_commit = "6f29d24fb90504aa486b4dd78b1fae2593068c9f"
 removed_paths = ["packages/cli/src/ui/hooks/useStatusLine.test.ts"]
 base_reverts = []
-case_base_tree = "ee4f1cd8026671baedf56995b3b677f768a79a42"
+case_base_tree = "64e3bb536d2cd37c0cacd9a63aff6715ef04abec"
 case_commit_tree = "8851b90286d134b6d5e3097fbb54a8a72a4eb8f9"
 licence = "Apache-2.0"
 licence_path = "LICENSE"
@@ -21,8 +21,9 @@ agent_files = ["AGENTS.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "QwenLM__qwen-code-3310"
 
+
 edited = true
-edit_reason = "Gate B ruling 2 (2026-11-24): 6 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+edit_reason = "Gate B ruling 2 (2026-11-24): 6 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation. Gate B PR #22 ruling 1 (2026-11-24): the trailing comment is stripped from 1 removed line(s), code kept."
 base_overrides = ["packages/cli/src/ui/hooks/useStatusLine.ts"]
 
 [repro]

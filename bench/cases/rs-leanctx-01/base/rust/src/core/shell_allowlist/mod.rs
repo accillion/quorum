@@ -1093,7 +1093,7 @@ fn balanced_brace_inner(segment: &str) -> Option<&str> {
         }
         if in_double_quote {
             match ch {
-                b'\\' => i += 1, // \" and \\ stay inside the string
+                b'\\' => i += 1,
                 b'"' => in_double_quote = false,
                 _ => {}
             }
@@ -1101,7 +1101,7 @@ fn balanced_brace_inner(segment: &str) -> Option<&str> {
             continue;
         }
         match ch {
-            b'\\' => i += 1, // escaped brace is data, not a group delimiter
+            b'\\' => i += 1,
             b'\'' => in_single_quote = true,
             b'"' => in_double_quote = true,
             b'{' => depth += 1,

@@ -1,49 +1,42 @@
-   Compiling ureq v3.3.0
-   Compiling hyper-rustls v0.27.9
-   Compiling tokio-postgres-rustls v0.14.0
-   Compiling reqwest v0.13.4
-   Compiling tokio-tungstenite v0.29.0
-   Compiling axum v0.8.9
-   Compiling tikv-jemalloc-ctl v0.7.0
-   Compiling tikv-jemallocator v0.7.0
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 38s
+   Compiling lean-ctx v3.9.11 (/work/rerun-rs-leanctx-01/rust)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 03s
      Running unittests src/lib.rs (/work/target/debug/deps/lean_ctx-77a74dcaa6253049)
 
 running 185 tests
-test core::shell_allowlist::tests::allowlist_empty_always_passes ... ok
-test core::shell_allowlist::tests::backslash_newline_normalized ... ok
-test core::shell_allowlist::tests::bare_assignment_without_substitution_still_skipped ... ok
-test core::shell_allowlist::tests::bare_interpreter_detection ... ok
-test core::shell_allowlist::tests::blocks_backtick_at_command_pos ... ok
-test core::shell_allowlist::tests::block_message_offers_additive_allow ... ok
-test core::shell_allowlist::tests::allowlist_blocks_unlisted ... ok
-test core::shell_allowlist::tests::assignment_with_command_substitution_in_quoted_jq_filter_not_split ... ok
-test core::shell_allowlist::tests::awk_normal_allowed ... ok
-test core::shell_allowlist::tests::assignment_with_command_substitution_still_blocks_unlisted_inner_command ... ok
-test core::shell_allowlist::tests::allows_dollar_paren_in_arguments ... ok
-test core::shell_allowlist::tests::blocks_eval ... ok
-test core::shell_allowlist::tests::assignment_with_command_substitution_validates_inner_command ... ok
-test core::shell_allowlist::tests::allows_git_commit_heredoc_body_with_conventional_prefix ... ok
-test core::shell_allowlist::tests::allowlist_allows_listed ... ok
 test core::shell_allowlist::tests::all_segments_must_be_allowed_chain ... ok
-test core::shell_allowlist::tests::allows_backticks_in_arguments ... ok
+test core::shell_allowlist::tests::all_segments_must_be_allowed_or ... ok
+test core::shell_allowlist::tests::all_segments_must_be_allowed_pipe ... ok
 test core::shell_allowlist::tests::all_segments_must_be_allowed_semicolon ... ok
 test core::shell_allowlist::tests::allowlist_allows_full_path ... ok
-test core::shell_allowlist::tests::awk_system_blocked ... ok
-test core::shell_allowlist::tests::backticks_in_args_passes_by_default ... ok
-test core::shell_allowlist::tests::allowlist_blocks_similar_names ... ok
+test core::shell_allowlist::tests::allowlist_allows_listed ... ok
 test core::shell_allowlist::tests::allowlist_allows_with_env_prefix ... ok
-test core::shell_allowlist::tests::background_operator_blocked ... ok
+test core::shell_allowlist::tests::allowlist_blocks_similar_names ... ok
+test core::shell_allowlist::tests::allowlist_blocks_unlisted ... ok
+test core::shell_allowlist::tests::allowlist_empty_always_passes ... ok
+test core::shell_allowlist::tests::allows_backticks_in_arguments ... ok
+test core::shell_allowlist::tests::allows_dollar_paren_in_arguments ... ok
+test core::shell_allowlist::tests::allows_git_commit_heredoc_body_with_conventional_prefix ... ok
 test core::shell_allowlist::tests::allows_git_commit_with_cat_heredoc ... ok
-test core::shell_allowlist::tests::block_message_mentions_ctx_execute ... ok
-test core::shell_allowlist::tests::all_segments_must_be_allowed_pipe ... ok
-test core::shell_allowlist::tests::blocks_command_substitution_at_command_pos ... ok
-test core::shell_allowlist::tests::all_segments_must_be_allowed_or ... ok
+test core::shell_allowlist::tests::assignment_with_command_substitution_in_quoted_jq_filter_not_split ... ok
+test core::shell_allowlist::tests::assignment_with_command_substitution_still_blocks_unlisted_inner_command ... ok
+test core::shell_allowlist::tests::assignment_with_command_substitution_validates_inner_command ... ok
+test core::shell_allowlist::tests::awk_normal_allowed ... ok
+test core::shell_allowlist::tests::awk_system_blocked ... ok
 test core::shell_allowlist::tests::background_ampersand_still_splits ... ok
-test core::shell_allowlist::tests::brace_group_does_not_bypass_substitution_hard_block ... ok
-test core::shell_allowlist::tests::brace_group_does_not_bypass_dangerous_flags ... ok
-test core::shell_allowlist::tests::brace_group_validates_every_inner_command_not_just_the_first ... ok
+test core::shell_allowlist::tests::background_operator_blocked ... ok
+test core::shell_allowlist::tests::backslash_newline_normalized ... ok
+test core::shell_allowlist::tests::backticks_in_args_passes_by_default ... ok
+test core::shell_allowlist::tests::bare_assignment_without_substitution_still_skipped ... ok
+test core::shell_allowlist::tests::bare_interpreter_detection ... ok
+test core::shell_allowlist::tests::block_message_mentions_ctx_execute ... ok
+test core::shell_allowlist::tests::block_message_offers_additive_allow ... ok
+test core::shell_allowlist::tests::blocks_backtick_at_command_pos ... ok
+test core::shell_allowlist::tests::blocks_command_substitution_at_command_pos ... ok
+test core::shell_allowlist::tests::blocks_eval ... ok
 test core::shell_allowlist::tests::brace_group_allows_all_inner_commands_when_allowlisted ... ok
+test core::shell_allowlist::tests::brace_group_does_not_bypass_dangerous_flags ... ok
+test core::shell_allowlist::tests::brace_group_does_not_bypass_substitution_hard_block ... ok
+test core::shell_allowlist::tests::brace_group_validates_every_inner_command_not_just_the_first ... ok
 test core::shell_allowlist::tests::break_continue_return_and_bracket_test_are_default_allowed ... ok
 test core::shell_allowlist::tests::carriage_return_splits_commands ... ok
 test core::shell_allowlist::tests::case_construct_blocked ... ok
@@ -196,5 +189,5 @@ test core::shell_allowlist::tests::until_loop_with_substitution_and_break_passes
 test core::shell_allowlist::tests::while_loop_with_allowed_body_passes ... ok
 test core::shell_allowlist::tests::while_loop_with_substitution_passes ... ok
 
-test result: ok. 185 passed; 0 failed; 0 ignored; 0 measured; 7641 filtered out; finished in 0.10s
+test result: ok. 185 passed; 0 failed; 0 ignored; 0 measured; 7641 filtered out; finished in 0.14s
 
