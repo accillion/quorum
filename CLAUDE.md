@@ -228,8 +228,8 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 Repo state on `main` (`22c1847`, tagged `v0.5.1`): 559 tests pass, 1
 ignored, on Linux, and 558 on Windows. clippy
 `-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
-With the Stage 1a branch (in review), the counts are 673 passed and 1
-ignored on Linux, and 672 on Windows: `quorum-bench` adds 114 tests.
+With the Stage 1a branch (in review), the counts are 677 passed and 1
+ignored on Linux, and 676 on Windows: `quorum-bench` adds 118 tests.
 Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 
 ---
