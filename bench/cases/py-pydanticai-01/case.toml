@@ -1,0 +1,33 @@
+schema = 1
+id = "py-pydanticai-01"
+kind = "bug"
+language = "python"
+source_repo = "https://github.com/pydantic/pydantic-ai"
+source_commit = "7d105ad5d606845ba1f14979f49883c385ef516e"
+source_commit_url = "https://github.com/pydantic/pydantic-ai/commit/7d105ad5d606845ba1f14979f49883c385ef516e"
+source_commit_date = "2026-11-16"
+base_commit = "7d105ad5d606845ba1f14979f49883c385ef516e"
+removed_paths = ["tests/models/test_model_test.py"]
+base_reverts = []
+case_base_tree = "f1bd806ce7e9464ebf07ceea8d9d9db5778aebb8"
+case_commit_tree = "3b1b299683d49c1272df3253d23b35a1c9147991"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) Pydantic Services Inc. 2024 to present
+"""
+agent_files = ["AGENTS.md", "CLAUDE.md"]
+dataset = "hand-picked"
+dataset_instance = ""
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 1 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["pydantic_ai_slim/pydantic_ai/models/test.py"]
+
+[repro]
+reproduced = true
+image = "python@sha256:4209fae09a3e20afd863e528bfddc235da5fd5977983e1996cd54cc9a72e6267"
+command = 'pip install -q uv==0.13.9 && export UV_DYNAMIC_VERSIONING_BYPASS=0.0.0 && uv sync --frozen && uv run --frozen --no-sync pytest -p no:cacheprovider tests/models/test_model_test.py'
+test_files = ["tests/models/test_model_test.py"]
+fixed_exit = 0
+reverted_exit = 1

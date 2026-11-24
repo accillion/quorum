@@ -1,0 +1,14 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["packages/agents-core/src/run.ts"]
+title = "Streaming handoff emits agent_updated_stream_event with the previous agent instead of the handoff target"
+description = """
+In the streaming run loop of Runner (packages/agents-core/src/run.ts), after a handoff is
+processed the runner emits RunAgentUpdatedStreamEvent with the local `currentAgent`
+variable, which still refers to the agent that handed off. The state's current agent
+(`result.state._currentAgent`) has already been switched to the handoff target. As a
+result, when Agent A hands off to Agent B during a streamed run, consumers receive an
+`agent_updated_stream_event` whose `agent` is Agent A, not the new active Agent B
+(issue #202), so UIs and logs tracking the active agent show the wrong agent.
+"""

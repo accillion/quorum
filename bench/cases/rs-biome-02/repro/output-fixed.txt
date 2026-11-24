@@ -1,0 +1,28 @@
+   Compiling biome_yaml_factory v0.0.1 (/work/biome/crates/biome_yaml_factory)
+   Compiling biome_css_parser v0.5.7 (/work/biome/crates/biome_css_parser)
+   Compiling biome_yaml_parser v0.0.1 (/work/biome/crates/biome_yaml_parser)
+   Compiling biome_package v0.5.7 (/work/biome/crates/biome_package)
+   Compiling biome_resolver v0.1.0 (/work/biome/crates/biome_resolver)
+   Compiling biome_project_layout v0.0.1 (/work/biome/crates/biome_project_layout)
+   Compiling biome_js_type_info v0.0.1 (/work/biome/crates/biome_js_type_info)
+   Compiling biome_rule_options v0.0.1 (/work/biome/crates/biome_rule_options)
+   Compiling biome_module_graph v0.0.1 (/work/biome/crates/biome_module_graph)
+   Compiling biome_workspace_db v0.1.0 (/work/biome/crates/biome_workspace_db)
+   Compiling biome_json_analyze v0.5.7 (/work/biome/crates/biome_json_analyze)
+   Compiling biome_html_analyze v0.5.7 (/work/biome/crates/biome_html_analyze)
+   Compiling biome_js_analyze v0.5.7 (/work/biome/crates/biome_js_analyze)
+   Compiling biome_css_analyze v0.5.7 (/work/biome/crates/biome_css_analyze)
+   Compiling biome_configuration_macros v0.0.1 (/work/biome/crates/biome_configuration_macros)
+   Compiling biome_configuration v0.0.1 (/work/biome/crates/biome_configuration)
+   Compiling biome_service v0.0.0 (/work/biome/crates/biome_service)
+   Compiling biome_test_utils v0.0.0 (/work/biome/crates/biome_test_utils)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 37.98s
+     Running tests/spec_tests.rs (/target/debug/deps/spec_tests-8979f165adfe3f86)
+
+running 2 tests
+test specs::correctness::use_vue_valid_v_on::valid_vue ... ok
+test specs::correctness::use_vue_valid_v_on::invalid_vue ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 515 filtered out; finished in 0.10s
+
+EXIT 0

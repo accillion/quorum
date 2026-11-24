@@ -1,0 +1,17 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["crates/obscura-cdp/src/domains/page.rs"]
+title = "Navigation emits Runtime.executionContextsCleared but never prunes valid_context_ids, so stale context ids stay valid"
+description = """
+`emit_navigation_events` (crates/obscura-cdp/src/domains/page.rs) sends
+`Runtime.executionContextsCleared` on every navigation, telling CDP clients
+that all prior execution contexts are gone, but `CdpContext.valid_context_ids`
+is insert-only and is never cleared there. A `Runtime.evaluate` or
+`Runtime.callFunctionOn` that targets a pre-navigation context id therefore
+still runs instead of being rejected with Chrome's "Cannot find context with
+specified id", and on a long-lived CDP connection the set grows by one id per
+navigation without bound (issue #407). The fix clears the set when the
+cleared event is emitted, re-registers the default world (id 2), and lets the
+isolated worlds re-register as their executionContextCreated events go out.
+"""

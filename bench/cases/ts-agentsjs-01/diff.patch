@@ -1,0 +1,15 @@
+diff --git a/packages/agents-core/src/run.ts b/packages/agents-core/src/run.ts
+index a0c4c4a..3169e19 100644
+--- a/packages/agents-core/src/run.ts
++++ b/packages/agents-core/src/run.ts
+@@ -824,9 +824,7 @@ export class Runner extends RunHooks<any, AgentOutputType<unknown>> {
+             resetCurrentSpan();
+           }
+           result.state._currentAgentSpan = undefined;
+-          result._addItem(
+-            new RunAgentUpdatedStreamEvent(result.state._currentAgent),
+-          );
++          result._addItem(new RunAgentUpdatedStreamEvent(currentAgent));
+           result.state._noActiveAgentRun = true;
+ 
+           // we've processed the handoff, so we need to run the loop again

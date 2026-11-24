@@ -1,0 +1,21 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["rust/src/dashboard/routes/helpers.rs"]
+title = "Dashboard git-root promotion treats any ancestor .git as a repo boundary, including broken gitfiles"
+description = """
+`git_root_for` in the dashboard route helpers walks up from the project path
+and returns the first ancestor whose `.git` merely exists
+(`p.join(".git").exists()`). It does not check that the boundary is real: a
+`.git` *file* (gitfile) whose `gitdir:` target no longer exists, or that is
+not a valid gitfile at all, is accepted. So an explicit dashboard project root
+(for example `LEAN_CTX_PROJECT_ROOT=<home>/project`) is promoted to an
+ancestor that contains a stale gitfile, such as the user's home directory.
+The graph index then refuses to index the home directory ("cannot index home
+directory ... scan aborted for unsafe root"), so the dashboard has no project
+index. Expected: a `.git` directory is a valid boundary, a gitfile counts only
+when its `gitdir:` target (absolute, or relative to the gitfile's directory)
+resolves to an existing directory, and broken gitfiles are skipped so the
+explicit project root is kept, while valid gitfile worktrees are still
+promoted to their checkout root.
+"""

@@ -1,0 +1,51 @@
+   Compiling oxc_formatter v0.44.0 (/work/oxc/crates/oxc_formatter)
+    Finished `test` profile [unoptimized] target(s) in 13.33s
+     Running tests/mod.rs (/target/debug/deps/mod-bb4d19c22607f07c)
+
+running 1 test
+test fixtures::ts::comments::r#enum ... FAILED
+
+failures:
+
+---- fixtures::ts::comments::r#enum stdout ----
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Snapshot Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Snapshot file: crates/oxc_formatter/tests/fixtures/ts/comments/enum.ts.snap
+Snapshot: enum.ts
+Source: crates/oxc_formatter/tests/fixtures/mod.rs:234
+────────────────────────────────────────────────────────────────────────────────
+-old snapshot
++new results
+────────────┬───────────────────────────────────────────────────────────────────
+    6     6 │ ==================== Output ====================
+    7     7 │ ------------------
+    8     8 │ { printWidth: 80 }
+    9     9 │ ------------------
+   10       │-enum Foo {
+   11       │-  // Comment
+   12       │-}
+         10 │+enum Foo {// Comment}
+   13    11 │ 
+   14    12 │ -------------------
+   15    13 │ { printWidth: 100 }
+   16    14 │ -------------------
+   17       │-enum Foo {
+   18       │-  // Comment
+   19       │-}
+         15 │+enum Foo {// Comment}
+   20    16 │ 
+   21    17 │ ===================== End =====================
+────────────┴───────────────────────────────────────────────────────────────────
+Stopped on the first failure. Run `cargo insta test` to run all snapshots.
+
+thread 'fixtures::ts::comments::r#enum' (106) panicked at /usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/insta-1.47.1/src/runtime.rs:719:13:
+snapshot assertion for 'enum.ts' failed in line 234
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    fixtures::ts::comments::r#enum
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 265 filtered out; finished in 0.03s
+
+error: test failed, to rerun pass `-p oxc_formatter --test mod`
+EXIT 101

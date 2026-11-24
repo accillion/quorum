@@ -1,0 +1,16 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["pydantic_ai_slim/pydantic_ai/models/fallback.py"]
+title = "FallbackModel treats every fallback_on tuple as exception types, mishandling handler functions inside tuples"
+description = """
+`FallbackModel._parse_fallback_on` special-cases a tuple and registers the
+whole tuple as one exception-type handler, assuming it contains only exception
+classes. A tuple may also contain response or exception handler functions,
+which a list handles per entry. With a tuple, a response handler is silently
+ignored (the bad primary response is returned instead of falling back), and an
+exception handler makes the fallback decision raise
+`TypeError: isinstance() arg 2 must be a type, a tuple of types, or a union`
+when a model error occurs, which prevents fallback and hides the original
+error. Tuples should take the same per-entry registration path as lists.
+"""

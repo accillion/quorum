@@ -1,0 +1,25 @@
+diff --git a/src/claude_agent_sdk/_internal/transport/subprocess_cli.py b/src/claude_agent_sdk/_internal/transport/subprocess_cli.py
+index ce8ec87..665e481 100644
+--- a/src/claude_agent_sdk/_internal/transport/subprocess_cli.py
++++ b/src/claude_agent_sdk/_internal/transport/subprocess_cli.py
+@@ -526,17 +526,13 @@ class SubprocessCLITransport(Transport):
+                 if not line_str:
+                     continue
+ 
++                # Call the stderr callback if provided
+                 if self._options.stderr:
+-                    try:
+-                        self._options.stderr(line_str)
+-                    except Exception:
+-                        logger.debug(
+-                            "stderr callback raised; continuing", exc_info=True
+-                        )
++                    self._options.stderr(line_str)
+         except anyio.ClosedResourceError:
+             pass  # Stream closed, exit normally
+         except Exception:
+-            logger.debug("stderr stream read failed", exc_info=True)
++            pass  # Ignore other errors during stderr reading
+ 
+     async def close(self) -> None:
+         """Close the transport and clean up resources."""

@@ -1,0 +1,33 @@
+schema = 1
+id = "ts-hydrogen-01"
+kind = "bug"
+language = "typescript"
+source_repo = "https://github.com/Shopify/hydrogen"
+source_commit = "1bff1dac122eed09583dce54fc83a19ababddfca"
+source_commit_url = "https://github.com/Shopify/hydrogen/commit/1bff1dac122eed09583dce54fc83a19ababddfca"
+source_commit_date = "2025-08-18"
+base_commit = "1bff1dac122eed09583dce54fc83a19ababddfca"
+removed_paths = [".changeset/fix-parsemetafield-money-currency.md", "packages/hydrogen-react/src/parse-metafield.test.ts"]
+base_reverts = []
+case_base_tree = "d68bb70f0cffdb34ceb73533dcd54ecf3baa14ab"
+case_commit_tree = "0f737f11e8d15e4968992ccb70f7499d0558e160"
+licence = "MIT"
+licence_path = "LICENSE.md"
+licence_notice = """
+Copyright 2023-present, Shopify Inc.
+"""
+agent_files = ["CLAUDE.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "Shopify__hydrogen-3072"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 2 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["packages/hydrogen-react/src/parse-metafield.ts"]
+
+[repro]
+reproduced = true
+image = "docker.io/library/node:20-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5"
+command = "npm install -g npm@10.9.2 && npm install --no-audit --no-fund && cd packages/hydrogen-react && npx vitest run src/parse-metafield.test.ts"
+test_files = ["packages/hydrogen-react/src/parse-metafield.test.ts"]
+fixed_exit = 0
+reverted_exit = 1

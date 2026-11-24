@@ -1,0 +1,16 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["src/mcp/server/experimental/task_result_handler.py"]
+title = "tasks/result payloads are dumped without exclude_none, so optional fields are sent as JSON null"
+description = """
+`TaskResultHandler.handle` builds the completed task's payload with
+`result.model_dump(by_alias=True)` (and the related-task metadata with
+`related_task.model_dump(by_alias=True)`), without `mode="json"` and
+`exclude_none=True`. Optional fields that are `None`, such as `annotations` and
+`_meta` on nested content blocks, are therefore kept and serialized as explicit
+JSON `null` in the `tasks/result` response, unlike the normal response path in
+the session, which omits them. Clients that treat those fields as
+optional-but-not-null (for example the TypeScript SDK's Zod schemas) reject the
+result ("expected object, received null"), which breaks task result delivery.
+"""

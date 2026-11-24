@@ -1,0 +1,22 @@
+diff --git a/src/mcp/server/experimental/task_result_handler.py b/src/mcp/server/experimental/task_result_handler.py
+index 09f2a0a..1cf7f69 100644
+--- a/src/mcp/server/experimental/task_result_handler.py
++++ b/src/mcp/server/experimental/task_result_handler.py
+@@ -129,15 +129,9 @@ class TaskResultHandler:
+                 # The stored result contains the actual payload data
+                 # Per spec: tasks/result MUST include _meta with related-task metadata
+                 related_task = RelatedTaskMetadata(taskId=task_id)
+-                related_task_meta: dict[str, Any] = {
+-                    RELATED_TASK_METADATA_KEY: related_task.model_dump(
+-                        by_alias=True,
+-                        mode="json",
+-                        exclude_none=True,
+-                    )
+-                }
++                related_task_meta: dict[str, Any] = {RELATED_TASK_METADATA_KEY: related_task.model_dump(by_alias=True)}
+                 if result is not None:
+-                    result_data = result.model_dump(by_alias=True, mode="json", exclude_none=True)
++                    result_data = result.model_dump(by_alias=True)
+                     existing_meta: dict[str, Any] = result_data.get("_meta") or {}
+                     result_data["_meta"] = {**existing_meta, **related_task_meta}
+                     return GetTaskPayloadResult.model_validate(result_data)

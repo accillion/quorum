@@ -1,0 +1,14 @@
+[[defect]]
+id = "D1"
+severity = "high"
+files = ["packages/cli/src/ui/hooks/useStatusLine.ts"]
+title = "Synchronous throw from child_process.exec in the status line hook escapes the timer and crashes the CLI"
+description = """
+useStatusLine (packages/cli/src/ui/hooks/useStatusLine.ts) calls child_process.exec()
+for the configured `ui.statusLine` command inside a debounced setTimeout callback with no
+try/catch. exec() throws synchronously for spawn errors that Node does not report via the
+async 'error' event (for example EBADF, seen on macOS with Node 22). The throw escapes the
+callback as an uncaughtException and the whole CLI crashes right after every assistant
+response when a status line is configured (issue #3264). A failing status line command
+should degrade to no status line output, and later state changes should recover.
+"""

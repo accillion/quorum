@@ -1,0 +1,11 @@
+
+ RUN  v3.2.4 /w/repo
+
+ ✓  @openai/agents-core  test/run.stream.test.ts (4 tests) 12ms
+ ✓  @openai/agents-core  test/run.test.ts (25 tests) 24ms
+
+ Test Files  2 passed (2)
+      Tests  29 passed (29)
+   Start at  22:50:41
+   Duration  1.35s (transform 200ms, setup 0ms, collect 610ms, tests 36ms, environment 0ms, prepare 93ms)
+

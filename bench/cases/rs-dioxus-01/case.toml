@@ -1,0 +1,48 @@
+schema = 1
+id = "rs-dioxus-01"
+kind = "bug"
+language = "rust"
+source_repo = "https://github.com/DioxusLabs/dioxus"
+source_commit = "82c3cab25fd0b59bdf5137573517fdcd9a66b838"
+source_commit_url = "https://github.com/DioxusLabs/dioxus/commit/82c3cab25fd0b59bdf5137573517fdcd9a66b838"
+source_commit_date = "2026-04-22"
+base_commit = "82c3cab25fd0b59bdf5137573517fdcd9a66b838"
+removed_paths = [
+  "packages/autofmt/tests/samples.rs",
+  "packages/autofmt/tests/samples/commented_rsx_block.rsx",
+  "packages/autofmt/tests/samples/commented_rsx_block_between.rsx",
+  "packages/autofmt/tests/samples/commented_rsx_block_deep.rsx",
+  "packages/autofmt/tests/samples/commented_rsx_block_nested.rsx",
+  "packages/autofmt/tests/samples/commented_rsx_block_only.rsx",
+]
+base_reverts = []
+case_base_tree = "44f30eaa7ca9c26d4e30d81cc9589c06033d1217"
+case_commit_tree = "4f182fb6719ea7a9c943fc037cd9af55edddb0c0"
+licence = "MIT OR Apache-2.0"
+licence_path = "LICENSE-MIT"
+licence_notice = """
+No copyright line in LICENSE-MIT or LICENSE-APACHE at base_commit.
+The crate manifest (packages/autofmt/Cargo.toml) declares license = "MIT OR Apache-2.0".
+"""
+agent_files = ["AGENTS.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "DioxusLabs__dioxus-5464"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 2 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["packages/autofmt/src/writer.rs"]
+
+[repro]
+reproduced = true
+image = "rust@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1"
+command = "cargo test -p dioxus-autofmt --test samples"
+test_files = [
+  "packages/autofmt/tests/samples.rs",
+  "packages/autofmt/tests/samples/commented_rsx_block.rsx",
+  "packages/autofmt/tests/samples/commented_rsx_block_between.rsx",
+  "packages/autofmt/tests/samples/commented_rsx_block_deep.rsx",
+  "packages/autofmt/tests/samples/commented_rsx_block_nested.rsx",
+  "packages/autofmt/tests/samples/commented_rsx_block_only.rsx",
+]
+fixed_exit = 0
+reverted_exit = 101

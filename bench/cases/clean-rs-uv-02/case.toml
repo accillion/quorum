@@ -1,0 +1,31 @@
+schema = 1
+id = "clean-rs-uv-02"
+kind = "clean"
+language = "rust"
+source_repo = "https://github.com/astral-sh/uv"
+source_commit = "036c9bef3f3c29c785e4e1c96edbed9f745e23c8"
+source_commit_url = "https://github.com/astral-sh/uv/commit/036c9bef3f3c29c785e4e1c96edbed9f745e23c8"
+source_commit_date = "2025-07-21"
+base_commit = "a3ea1b69f28dc4a0ab1fee400e7509d1fa3bf136"
+removed_paths = []
+base_reverts = []
+case_base_tree = "f4ef223f566ce1acdefe9a59c4aa97d4c0142360"
+case_commit_tree = "d70c0790f423506e27a47f7a5fed5a26f988013b"
+licence = "MIT OR Apache-2.0"
+licence_path = "LICENSE-MIT"
+licence_notice = """
+Copyright (c) 2025 Astral Software Inc.
+"""
+agent_files = []
+dataset = "hand-picked"
+dataset_instance = ""
+
+[clean]
+head_checked = "d99121a2e246065c28661dc58da9233b0abbd479"
+head_checked_date = "2026-11-23"
+retained_share = 0.959
+later_commits = [
+  "c2100d11f3d231f8b419cca5f2d95f58620142b7 Make cache control lookups robust to username (#16088)",
+  "a43f5fd51c69b628576dce2eacb10567f0c25908 Use `SafeUrl` in authentication helpers (#22602)",
+]
+verdict = "no later fix, revert or substantial rewrite: c2100d11 only made RealmRef pub for a cache-control lookup elsewhere, and a43f5fd5 moved the From<&Url> conversions to SafeUrl; neither changed the comparison or hashing logic the commit added"

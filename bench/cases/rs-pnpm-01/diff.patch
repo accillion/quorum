@@ -1,0 +1,264 @@
+diff --git a/pnpm/crates/resolving-npm-resolver/src/errors.rs b/pnpm/crates/resolving-npm-resolver/src/errors.rs
+index 8975dac..c8500a5 100644
+--- a/pnpm/crates/resolving-npm-resolver/src/errors.rs
++++ b/pnpm/crates/resolving-npm-resolver/src/errors.rs
+@@ -67,8 +67,14 @@ pub enum FetchMetadataError {
+         error: serde_json::Error,
+     },
+ 
++    /// `META_NOT_MODIFIED_WITHOUT_CACHE`. Surfaces only when a
++    /// stale-but-removed mirror plus an `If-None-Match` header the
++    /// caller-provided cache headers carried (impossible in pacquet's
++    /// chain because we always read headers off a present mirror)
++    /// would trip a 304 reply we have no body to satisfy — a
++    /// defense-in-depth check for hand-edited caches.
+     #[display("Registry returned 304 for {pkg_name} without an existing cache to refresh.")]
+-    #[diagnostic(code(ERR_PNPM_META_NOT_MODIFIED_WITHOUT_CACHE))]
++    #[diagnostic(code(pacquet_resolving_npm_resolver::not_modified_without_cache))]
+     NotModifiedWithoutCache {
+         #[error(not(source))]
+         pkg_name: String,
+diff --git a/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata.rs b/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata.rs
+index ec21159..94d04bc 100644
+--- a/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata.rs
++++ b/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata.rs
+@@ -18,11 +18,10 @@
+ //! demands it.
+ 
+ use pacquet_network::{
+-    AuthHeaders, RetryOpts, ThrottledClient, ThrottledClientGuard, redact_url_credentials,
+-    retry_async, send_with_retry,
++    AuthHeaders, RetryOpts, ThrottledClient, redact_url_credentials, retry_async, send_with_retry,
+ };
+ use pacquet_registry::Package;
+-use reqwest::{Response, StatusCode, header};
++use reqwest::{StatusCode, header};
+ 
+ use crate::{FetchMetadataError, mirror::clear_meta, registry_url::to_registry_url};
+ 
+@@ -90,72 +89,6 @@ pub enum FetchFullMetadataOutcome {
+     NotModified,
+ }
+ 
+-pub(crate) struct MetadataRequestOptions<'a> {
+-    pub pkg_name: &'a str,
+-    pub url: &'a str,
+-    pub accept: &'a str,
+-    pub http_client: &'a ThrottledClient,
+-    pub auth_headers: &'a AuthHeaders,
+-    pub etag: Option<&'a str>,
+-    pub modified: Option<&'a str>,
+-    pub retry_opts: RetryOpts,
+-}
+-
+-pub(crate) async fn send_metadata_request<'a>(
+-    opts: &MetadataRequestOptions<'a>,
+-) -> Result<(ThrottledClientGuard<'a>, Response), FetchMetadataError> {
+-    let etag = opts.etag.filter(|value| !value.is_empty());
+-    let modified = opts.modified.filter(|value| !value.is_empty());
+-    let has_validator = etag.is_some() || modified.is_some();
+-    let build_request = |client: &reqwest::Client, bypass_cache: bool| {
+-        let mut request = client.get(opts.url).header(header::ACCEPT, opts.accept);
+-        if let Some(value) = opts.auth_headers.for_url_with_package(opts.url, Some(opts.pkg_name)) {
+-            request = request.header(header::AUTHORIZATION, value);
+-        }
+-        if let Some(etag) = etag {
+-            request = request.header(header::IF_NONE_MATCH, etag);
+-        }
+-        if let Some(modified) = modified {
+-            request = request.header(header::IF_MODIFIED_SINCE, modified);
+-        }
+-        if bypass_cache {
+-            request = request.header(header::CACHE_CONTROL, "no-cache");
+-        }
+-        request
+-    };
+-
+-    let (client, response) =
+-        send_with_retry(opts.http_client, opts.url, opts.retry_opts, |client| {
+-            build_request(client, false)
+-        })
+-        .await
+-        .map_err(|error| FetchMetadataError::Network {
+-            url: redact_url_credentials(opts.url),
+-            error,
+-        })?;
+-    if response.status() != StatusCode::NOT_MODIFIED || has_validator {
+-        return Ok((client, response));
+-    }
+-
+-    drop(client);
+-    let (client, response) =
+-        send_with_retry(opts.http_client, opts.url, opts.retry_opts, |client| {
+-            build_request(client, true)
+-        })
+-        .await
+-        .map_err(|error| FetchMetadataError::Network {
+-            url: redact_url_credentials(opts.url),
+-            error,
+-        })?;
+-    if response.status() == StatusCode::NOT_MODIFIED {
+-        drop(client);
+-        return Err(FetchMetadataError::NotModifiedWithoutCache {
+-            pkg_name: opts.pkg_name.to_string(),
+-        });
+-    }
+-    Ok((client, response))
+-}
+-
+ /// Fetch the registry metadata document for `pkg_name`. The
+ /// `full_metadata` flag on [`FetchFullMetadataOptions`] picks
+ /// between the full and abbreviated packument forms.
+@@ -166,17 +99,25 @@ pub async fn fetch_full_metadata(
+     let url = to_registry_url(opts.registry, pkg_name);
+     let accept = if opts.full_metadata { ACCEPT_FULL_DOC } else { ACCEPT_ABBREVIATED_DOC };
+     retry_async(&url, opts.retry_opts, FetchMetadataError::is_body_retryable, || async {
+-        let (client, response) = send_metadata_request(&MetadataRequestOptions {
+-            pkg_name,
+-            url: &url,
+-            accept,
+-            http_client: opts.http_client,
+-            auth_headers: opts.auth_headers,
+-            etag: opts.etag,
+-            modified: opts.modified,
+-            retry_opts: opts.retry_opts,
+-        })
+-        .await?;
++        let (client, response) =
++            send_with_retry(opts.http_client, &url, opts.retry_opts, |client| {
++                let mut request = client.get(&url).header(header::ACCEPT, accept);
++                if let Some(value) = opts.auth_headers.for_url_with_package(&url, Some(pkg_name)) {
++                    request = request.header(header::AUTHORIZATION, value);
++                }
++                if let Some(etag) = opts.etag {
++                    request = request.header(header::IF_NONE_MATCH, etag);
++                }
++                if let Some(modified) = opts.modified {
++                    request = request.header(header::IF_MODIFIED_SINCE, modified);
++                }
++                request
++            })
++            .await
++            .map_err(|error| FetchMetadataError::Network {
++                url: redact_url_credentials(&url),
++                error,
++            })?;
+         if response.status() == StatusCode::NOT_MODIFIED {
+             return Ok(FetchFullMetadataOutcome::NotModified);
+         }
+diff --git a/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata_cached.rs b/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata_cached.rs
+index 28b01eb..2752154 100644
+--- a/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata_cached.rs
++++ b/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata_cached.rs
+@@ -16,7 +16,7 @@
+ use std::path::Path;
+ 
+ use pacquet_network::{
+-    AuthHeaders, RetryOpts, ThrottledClient, redact_url_credentials, retry_async,
++    AuthHeaders, RetryOpts, ThrottledClient, redact_url_credentials, retry_async, send_with_retry,
+ };
+ use pacquet_registry::Package;
+ use pipe_trait::Pipe;
+@@ -25,8 +25,8 @@ use reqwest::{StatusCode, header};
+ use crate::{
+     FetchMetadataError,
+     fetch_full_metadata::{
+-        ACCEPT_ABBREVIATED_DOC, ACCEPT_FULL_DOC, MetadataRequestOptions,
+-        is_abbreviated_content_type, normalize_abbreviated_meta, send_metadata_request,
++        ACCEPT_ABBREVIATED_DOC, ACCEPT_FULL_DOC, is_abbreviated_content_type,
++        normalize_abbreviated_meta,
+     },
+     mirror::{
+         ABBREVIATED_META_DIR, FULL_FILTERED_META_DIR, FULL_META_DIR, clear_meta,
+@@ -108,17 +108,27 @@ pub async fn fetch_full_metadata_cached(
+     // headers and all, so a `304` stays a success that returns the
+     // cached mirror body rather than re-fetching it.
+     retry_async(&url, opts.retry_opts, FetchMetadataError::is_body_retryable, || async {
+-        let (client, response) = send_metadata_request(&MetadataRequestOptions {
+-            pkg_name,
+-            url: &url,
+-            accept,
+-            http_client: opts.http_client,
+-            auth_headers: opts.auth_headers,
+-            etag: cache_headers.as_ref().and_then(|headers| headers.etag.as_deref()),
+-            modified: cache_headers.as_ref().and_then(|headers| headers.modified.as_deref()),
+-            retry_opts: opts.retry_opts,
+-        })
+-        .await?;
++        let (client, response) =
++            send_with_retry(opts.http_client, &url, opts.retry_opts, |client| {
++                let mut request = client.get(&url).header(header::ACCEPT, accept);
++                if let Some(value) = opts.auth_headers.for_url_with_package(&url, Some(pkg_name)) {
++                    request = request.header(header::AUTHORIZATION, value);
++                }
++                if let Some(headers) = cache_headers.as_ref() {
++                    if let Some(etag) = headers.etag.as_deref() {
++                        request = request.header(header::IF_NONE_MATCH, etag);
++                    }
++                    if let Some(modified) = headers.modified.as_deref() {
++                        request = request.header(header::IF_MODIFIED_SINCE, modified);
++                    }
++                }
++                request
++            })
++            .await
++            .map_err(|error| FetchMetadataError::Network {
++                url: redact_url_credentials(&url),
++                error,
++            })?;
+ 
+         if response.status() == StatusCode::NOT_MODIFIED {
+             // No body to stream — release the connection and its
+diff --git a/pnpm11/resolving/npm-resolver/src/fetch.ts b/pnpm11/resolving/npm-resolver/src/fetch.ts
+index 959c6aa..733429a 100644
+--- a/pnpm11/resolving/npm-resolver/src/fetch.ts
++++ b/pnpm11/resolving/npm-resolver/src/fetch.ts
+@@ -148,31 +148,20 @@ export async function fetchMetadataFromFromRegistry (
+ ): Promise<FetchMetadataResult | FetchMetadataNotModifiedResult> {
+   const uri = toUri(pkgName, registry)
+   const op = retry.operation(fetchOpts.retry)
+-  const ifModifiedSince = cachedModified ? new Date(cachedModified).toUTCString() : undefined
+-  const hasValidator = Boolean(cachedEtag || ifModifiedSince)
+   return new Promise((resolve, reject) => {
+     op.attempt(async (attempt) => {
+       let response: RegistryResponse
+       const startTime = Date.now()
+       try {
+-        const requestOptions = {
++        response = await fetchOpts.fetch(uri, {
+           authHeaderValue,
+           compress: true,
+           fullMetadata,
+           ifNoneMatch: cachedEtag,
+-          ifModifiedSince,
++          ifModifiedSince: cachedModified ? new Date(cachedModified).toUTCString() : undefined,
+           retry: fetchOpts.retry,
+           timeout: fetchOpts.timeout,
+-        }
+-        response = await fetchOpts.fetch(uri, requestOptions) as RegistryResponse
+-        if (response.status === 304 && !hasValidator) {
+-          response = await fetchOpts.fetch(uri, {
+-            ...requestOptions,
+-            headers: {
+-              'cache-control': 'no-cache',
+-            },
+-          }) as RegistryResponse
+-        }
++        }) as RegistryResponse
+       } catch (error: any) { // eslint-disable-line
+         // Redact credentials embedded in the URL from the cause as well, not
+         // just the top-level message: a reporter or debugger that renders
+@@ -187,13 +176,6 @@ export async function fetchMetadataFromFromRegistry (
+         return
+       }
+       if (response.status === 304) {
+-        if (!hasValidator) {
+-          reject(new PnpmError(
+-            'META_NOT_MODIFIED_WITHOUT_CACHE',
+-            `Registry returned 304 for ${pkgName} without an existing cache to refresh.`
+-          ))
+-          return
+-        }
+         resolve({ notModified: true })
+         return
+       }

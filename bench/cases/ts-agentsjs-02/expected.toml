@@ -1,0 +1,15 @@
+[[defect]]
+id = "D1"
+severity = "high"
+files = ["packages/agents-realtime/src/realtimeSession.ts"]
+title = "RealtimeSession.updateAgent rebuilds the session config from a minimal field set, dropping audio formats"
+description = """
+RealtimeSession's #getSessionConfig returns only instructions, voice, model, tools,
+tracing plus the per-call additionalConfig. updateAgent() calls it without the original
+options.config or the previously sent config, so the session.update sent to the server
+omits fields such as inputAudioFormat, outputAudioFormat, modalities, speed and
+turnDetection. The server then falls back to its defaults (for example pcm16 instead of
+g711_ulaw). For Twilio integrations, which require g711_ulaw, switching agents makes the
+caller hear loud static (issue #317). Updating the agent should not change any other
+part of the session configuration.
+"""

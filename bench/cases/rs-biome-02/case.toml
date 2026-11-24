@@ -1,0 +1,34 @@
+schema = 1
+id = "rs-biome-02"
+kind = "bug"
+language = "rust"
+source_repo = "https://github.com/biomejs/biome"
+source_commit = "3c6513d4e9a82a195785144caa9d96093c3861ff"
+source_commit_url = "https://github.com/biomejs/biome/commit/3c6513d4e9a82a195785144caa9d96093c3861ff"
+source_commit_date = "2026-07-01"
+base_commit = "3c6513d4e9a82a195785144caa9d96093c3861ff"
+removed_paths = ["crates/biome_html_analyze/tests/specs/correctness/useVueValidVOn/invalid.vue", "crates/biome_html_analyze/tests/specs/correctness/useVueValidVOn/invalid.vue.snap", "crates/biome_html_analyze/tests/specs/correctness/useVueValidVOn/valid.vue", "crates/biome_html_analyze/tests/specs/correctness/useVueValidVOn/valid.vue.snap", ".changeset/fix-use-vue-valid-v-on-verb-modifier-only.md"]
+base_reverts = []
+case_base_tree = "380518110b178694fbecf0ceced1dbe59d098641"
+case_commit_tree = "973d34f241a39ff39223707a29c6e50928a31a14"
+licence = "MIT OR Apache-2.0"
+licence_path = "LICENSE-MIT"
+licence_notice = """
+Copyright (c) 2023-present Biome Developers and Contributors.
+Copyright (c) 2020-2023 Rome Tools is Rome Tools, Inc. and its affiliates.
+"""
+agent_files = ["AGENTS.md", "CLAUDE.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "biomejs__biome-10773"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 26 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_on.rs"]
+
+[repro]
+reproduced = true
+image = "rust@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1"
+command = "cargo test --locked -p biome_html_analyze --test spec_tests -- specs::correctness::use_vue_valid_v_on::"
+test_files = ["crates/biome_html_analyze/tests/specs/correctness/useVueValidVOn/invalid.vue", "crates/biome_html_analyze/tests/specs/correctness/useVueValidVOn/invalid.vue.snap", "crates/biome_html_analyze/tests/specs/correctness/useVueValidVOn/valid.vue", "crates/biome_html_analyze/tests/specs/correctness/useVueValidVOn/valid.vue.snap"]
+fixed_exit = 0
+reverted_exit = 101

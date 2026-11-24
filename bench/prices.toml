@@ -1,0 +1,76 @@
+# Pinned list prices for the v0.6 Stage 1 pilot (AC 250, AC 251).
+# USD per 1M tokens. Reasoning/thinking tokens bill as output on all three
+# panel vendors. Cached-input discounts are ignored: reservations and
+# estimates use the full input price, so they can only overstate cost.
+# Part of the frozen design: its SHA-256 is in bench/DESIGN.md and every
+# run manifest. Changing a price after the freeze is a design change.
+
+read_on = "2026-11-23"
+
+# ── High-tier panel (Lippa effort_tiers.py CONSENSUS_SEATS["high"]) ──────
+
+[models."gpt-6.2-sol"]
+vendor = "openai"
+input = 2.00
+output = 10.00
+long_context_threshold = 272000
+long_input = 4.00
+long_output = 15.00
+source = "https://developers.openai.com/api/docs/pricing"
+
+[models."claude-opus-5-5"]
+vendor = "anthropic"
+input = 4.00
+output = 20.00
+source = "https://platform.claude.com/docs/en/about-claude/pricing"
+
+# Google doubles this model's price on 2026-12-01 ($2/$10 -> $4/$20). The
+# pilot runs after that date, so the table pins the new price.
+[models."gemini-4-carbon"]
+vendor = "google"
+input = 4.00
+output = 20.00
+source = "https://aistudio.google.com/docs/pricing"
+
+# ── Same-vendor fallbacks a seat can be answered by (CONSENSUS_FAILOVER) ──
+# A case-repeat answered by a fallback is panel drift (uncontrolled), but a
+# price must exist for every id the harness could be asked to call.
+
+[models."gpt-6-luna"]
+vendor = "openai"
+input = 0.10
+output = 0.50
+long_context_threshold = 272000
+long_input = 0.20
+long_output = 0.75
+source = "https://developers.openai.com/api/docs/pricing"
+
+[models."claude-sonnet-5-5"]
+vendor = "anthropic"
+input = 2.00
+output = 10.00
+source = "https://platform.claude.com/docs/en/about-claude/pricing"
+
+[models."gemini-4-hydrogen"]
+vendor = "google"
+input = 1.50
+output = 7.50
+source = "https://aistudio.google.com/docs/pricing"
+
+# ── Judge candidates (AC 252; the choice is recorded in bench/DESIGN.md) ──
+
+[models."mistral-large-4-0"]
+vendor = "mistral"
+input = 0.70
+output = 2.10
+source = "https://docs.mistral.ai/models/mistral-large-4-0"
+
+# xAI doubles every token price for a prompt of 200K tokens or more.
+[models."grok-4.7"]
+vendor = "xai"
+input = 2.00
+output = 6.00
+long_context_threshold = 199999
+long_input = 4.00
+long_output = 12.00
+source = "https://docs.x.ai/docs/models/grok-4.7"

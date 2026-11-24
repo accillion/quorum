@@ -1,0 +1,13 @@
+diff --git a/pydantic_ai_slim/pydantic_ai/models/test.py b/pydantic_ai_slim/pydantic_ai/models/test.py
+index 4c02a3e..4c187be 100644
+--- a/pydantic_ai_slim/pydantic_ai/models/test.py
++++ b/pydantic_ai_slim/pydantic_ai/models/test.py
+@@ -521,8 +521,6 @@ class _JsonSchemaTestData:
+             case None:
+                 # if there's no type or ref, we can't generate anything
+                 return self._char()
+-            case [_, *_] as types:
+-                return self._gen_any({**schema, 'type': types[self.seed % len(types)]})
+             case 'object':
+                 return self._object_gen(schema)
+             case 'string':

@@ -1,0 +1,38 @@
+
+ RUN  v3.2.4 /w/repo
+
+ ❯  @openai/agents-core  test/run.stream.test.ts (4 tests | 1 failed) 20ms
+   ✓ Runner.run (streaming) > does not emit unhandled rejection when stream loop fails 4ms
+   ✓ Runner.run (streaming) > exposes model error to the consumer 1ms
+   ✓ Runner.run (streaming) > emits agent_updated_stream_event with new agent on handoff 8ms
+   × Runner.run (streaming) > emits agent_end lifecycle event for streaming agents 5ms
+     → expected [] to have a length of 1 but got +0
+ ✓  @openai/agents-core  test/run.test.ts (25 tests) 31ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL   @openai/agents-core  test/run.stream.test.ts > Runner.run (streaming) > emits agent_end lifecycle event for streaming agents
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ test/run.stream.test.ts:175:28
+    173| 
+    174|     // Verify agent_end was called on both agent and runner
+    175|     expect(agentEndEvents).toHaveLength(1);
+       |                            ^
+    176|     expect(agentEndEvents[0].output).toBe('Final output');
+    177|     
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 28 passed (29)
+   Start at  22:50:51
+   Duration  1.50s (transform 221ms, setup 0ms, collect 682ms, tests 50ms, environment 0ms, prepare 242ms)
+

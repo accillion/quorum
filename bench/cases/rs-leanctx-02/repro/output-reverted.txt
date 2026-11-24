@@ -1,0 +1,116 @@
+== CASE COMMIT tree + repro/files
+   Compiling lean-ctx v3.9.12 (/work/src/rust)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 25s
+     Running unittests src/lib.rs (/work/target/debug/deps/lean_ctx-7f5061baac245a9b)
+
+running 50 tests
+test core::context_kernel::live_dashboard::tests::empty_snapshot ... ok
+test core::context_kernel::live_dashboard::tests::format_summary_non_empty ... ok
+test core::context_kernel::live_dashboard::tests::snapshot_after_activity ... ok
+test core::context_kernel::live_dashboard::tests::snapshot_includes_coverage ... ok
+test core::context_kernel::live_dashboard::tests::snapshot_serializes ... ok
+test dashboard::tests::api_billing_badge_returns_cosmetic_shape ... ok
+test dashboard::tests::api_compression_demo_heals_moved_file_paths ... ok
+test dashboard::tests::api_context_overlay_evict_removes_ledger_entry ... ok
+test dashboard::tests::api_episodes_returns_json ... ok
+test dashboard::tests::api_path_detection ... ok
+test dashboard::tests::api_procedures_returns_json ... ok
+test dashboard::tests::api_profile_returns_json ... ok
+test dashboard::tests::build_allowed_hosts_covers_loopback_and_bound_host ... ok
+test dashboard::tests::build_allowed_hosts_honors_env_extra_hosts ... ok
+test dashboard::tests::check_auth_lowercase_bearer ... ok
+test dashboard::tests::check_auth_missing_header ... ok
+test dashboard::tests::check_auth_with_invalid_bearer ... ok
+test dashboard::tests::check_auth_with_valid_bearer ... ok
+test dashboard::tests::dashboard_project_root_honors_general_env_override ... ok
+test dashboard::tests::dashboard_project_root_honors_resolvable_ancestor_gitfile ... ok
+test dashboard::tests::dashboard_project_root_ignores_broken_ancestor_gitfile ... FAILED
+test dashboard::tests::dashboard_responding_false_for_non_dashboard_service ... ok
+test dashboard::tests::dashboard_responding_true_for_lean_ctx_version_endpoint ... ok
+test dashboard::tests::host_is_loopback_covers_literals_on_any_port ... ok
+test dashboard::tests::no_auth_allows_direct_navigation ... ok
+test dashboard::tests::no_auth_allows_loopback_host_on_remapped_port ... ok
+test dashboard::tests::no_auth_allows_non_browser_client ... ok
+test dashboard::tests::no_auth_allows_null_origin ... ok
+test dashboard::tests::no_auth_allows_same_origin_browser_request ... ok
+test dashboard::tests::no_auth_rejects_cross_site_fetch ... ok
+test dashboard::tests::no_auth_rejects_dns_rebinding_host ... ok
+test dashboard::tests::no_auth_rejects_foreign_origin ... ok
+test dashboard::tests::no_auth_rejects_missing_host ... ok
+test dashboard::tests::no_auth_rejects_same_site_fetch ... ok
+test dashboard::tests::no_auth_still_rejects_rebinding_on_remapped_port ... ok
+test dashboard::tests::normalize_dashboard_demo_path_preserves_absolute_windows_path ... ok
+test dashboard::tests::normalize_dashboard_demo_path_preserves_unc_path ... ok
+test dashboard::tests::normalize_dashboard_demo_path_strips_dot_slash_prefix ... ok
+test dashboard::tests::normalize_dashboard_demo_path_strips_rooted_relative_windows_path ... ok
+test dashboard::tests::open_mode_env_is_used_when_no_flag ... ok
+test dashboard::tests::open_mode_flag_parses_all_variants ... ok
+test dashboard::tests::parse_human_bool_accepts_common_forms ... ok
+test dashboard::tests::query_token_parsing ... ok
+test dashboard::tests::resolve_token_empty_flag_falls_back_to_env ... FAILED
+test dashboard::tests::resolve_token_falls_back_to_random_when_unset ... FAILED
+test dashboard::tests::resolve_token_flag_overrides_env ... FAILED
+test dashboard::tests::resolve_token_ignores_empty_env ... FAILED
+test dashboard::tests::resolve_token_trims_env_var ... FAILED
+test dashboard::tests::resolve_token_uses_env_var_verbatim ... FAILED
+test dashboard::tests::resolve_token_uses_flag_when_env_unset ... FAILED
+
+failures:
+
+---- dashboard::tests::dashboard_project_root_ignores_broken_ancestor_gitfile stdout ----
+
+thread 'dashboard::tests::dashboard_project_root_ignores_broken_ancestor_gitfile' (12758) panicked at src/dashboard/tests.rs:39:5:
+assertion `left == right` failed
+  left: "/tmp/.tmpBQcRiS/workspace"
+ right: "/tmp/.tmpBQcRiS/workspace/project"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- dashboard::tests::resolve_token_empty_flag_falls_back_to_env stdout ----
+
+thread 'dashboard::tests::resolve_token_empty_flag_falls_back_to_env' (12783) panicked at src/dashboard/tests.rs:427:30:
+env lock: PoisonError { .. }
+
+---- dashboard::tests::resolve_token_falls_back_to_random_when_unset stdout ----
+
+thread 'dashboard::tests::resolve_token_falls_back_to_random_when_unset' (12784) panicked at src/dashboard/tests.rs:374:30:
+env lock: PoisonError { .. }
+
+---- dashboard::tests::resolve_token_flag_overrides_env stdout ----
+
+thread 'dashboard::tests::resolve_token_flag_overrides_env' (12785) panicked at src/dashboard/tests.rs:408:30:
+env lock: PoisonError { .. }
+
+---- dashboard::tests::resolve_token_ignores_empty_env stdout ----
+
+thread 'dashboard::tests::resolve_token_ignores_empty_env' (12786) panicked at src/dashboard/tests.rs:393:30:
+env lock: PoisonError { .. }
+
+---- dashboard::tests::resolve_token_trims_env_var stdout ----
+
+thread 'dashboard::tests::resolve_token_trims_env_var' (12787) panicked at src/dashboard/tests.rs:364:30:
+env lock: PoisonError { .. }
+
+---- dashboard::tests::resolve_token_uses_env_var_verbatim stdout ----
+
+thread 'dashboard::tests::resolve_token_uses_env_var_verbatim' (12788) panicked at src/dashboard/tests.rs:351:30:
+env lock: PoisonError { .. }
+
+---- dashboard::tests::resolve_token_uses_flag_when_env_unset stdout ----
+
+thread 'dashboard::tests::resolve_token_uses_flag_when_env_unset' (12789) panicked at src/dashboard/tests.rs:418:30:
+env lock: PoisonError { .. }
+
+
+failures:
+    dashboard::tests::dashboard_project_root_ignores_broken_ancestor_gitfile
+    dashboard::tests::resolve_token_empty_flag_falls_back_to_env
+    dashboard::tests::resolve_token_falls_back_to_random_when_unset
+    dashboard::tests::resolve_token_flag_overrides_env
+    dashboard::tests::resolve_token_ignores_empty_env
+    dashboard::tests::resolve_token_trims_env_var
+    dashboard::tests::resolve_token_uses_env_var_verbatim
+    dashboard::tests::resolve_token_uses_flag_when_env_unset
+
+test result: FAILED. 42 passed; 8 failed; 0 ignored; 0 measured; 8778 filtered out; finished in 1.12s
+
+error: test failed, to rerun pass `--lib`

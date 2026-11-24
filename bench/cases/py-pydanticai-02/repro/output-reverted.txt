@@ -1,0 +1,200 @@
+            part = response.parts[0] if response.parts else None
+            return isinstance(part, TextPart) and 'primary' in part.content
+    
+        for handler in (reject_primary, reject_primary_async):
+            fallback_model = FallbackModel(primary_model, fallback_model_impl, fallback_on=(handler,))
+            agent = Agent(model=fallback_model)
+    
+            result = await agent.run('hello')
+>           assert result.output == 'fallback response'
+E           AssertionError: assert 'primary response' == 'fallback response'
+E             
+E             - fallback response
+E             + primary response
+
+tests/models/test_fallback.py:3453: AssertionError
+------------------------------ Captured log setup ------------------------------
+WARNING  opentelemetry.sdk.metrics._internal:__init__.py:629 shutdown can only be called once
+___________________ test_fallback_on_exception_handler_tuple ___________________
+
+    async def test_fallback_on_exception_handler_tuple() -> None:
+        """Exception handlers in a tuple fall back like the equivalent single handler."""
+    
+        def retry_http_error(exc: Exception) -> bool:
+            return isinstance(exc, ModelHTTPError) and exc.status_code == 500
+    
+        async def retry_http_error_async(exc: Exception) -> bool:
+            return isinstance(exc, ModelHTTPError) and exc.status_code == 500
+    
+        for handler in (retry_http_error, retry_http_error_async):
+            fallback_model = FallbackModel(failure_model, success_model, fallback_on=(handler,))
+            agent = Agent(model=fallback_model)
+    
+>           result = await agent.run('hello')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/models/test_fallback.py:3469: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+pydantic_ai_slim/pydantic_ai/agent/abstract.py:678: in run
+    node = await agent_run.next(node)  # pyright: ignore[reportArgumentType]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:656: in next
+    return await self._run_node_with_hooks(node, self._stream_and_advance)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:571: in _run_node_with_hooks
+    result = await lifecycle(node)
+             ^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:551: in lifecycle
+    result = await step_fn(lifecycle_node)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:670: in _stream_and_advance
+    return await self._advance_graph(node)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:466: in _advance_graph
+    task = await self._graph_run.next(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/graph_builder.py:579: in next
+    return await anext(self)
+           ^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/graph_builder.py:556: in __anext__
+    raise self._next.error
+pydantic_graph/pydantic_graph/graph_builder.py:857: in _run_tracked_task
+    result = await self._run_task(t_)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/graph_builder.py:915: in _run_task
+    output = await node.call(step_context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/step.py:253: in _call_node
+    return await node.run(GraphRunContext(state=ctx.state, deps=ctx.deps))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1385: in run
+    return await self._make_request(ctx)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1730: in _make_request
+    model_response = await model_handler(request_context)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1713: in model_handler
+    response = await self._recover_model_request_error(ctx, run_context, req_ctx, e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:2094: in _recover_model_request_error
+    raise error
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1699: in model_handler
+    response = await model_request(
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1219: in model_request
+    new_response = await model.request(
+pydantic_ai_slim/pydantic_ai/models/fallback.py:294: in request
+    if await self._should_fallback(exc):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/fallback.py:183: in _should_fallback
+    result = await await_maybe(handler(value))  # type: ignore[arg-type]
+                               ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+exc = ModelHTTPError("status_code: 500, model_name: test-function-model, body: {'error': 'test error'}")
+
+    def handler(exc: Exception) -> bool:
+>       return isinstance(exc, exceptions)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: isinstance() arg 2 must be a type, a tuple of types, or a union
+
+pydantic_ai_slim/pydantic_ai/models/fallback.py:573: TypeError
+------------------------------ Captured log setup ------------------------------
+WARNING  opentelemetry.sdk.metrics._internal:__init__.py:629 shutdown can only be called once
+_________________________ test_fallback_on_mixed_tuple _________________________
+
+    async def test_fallback_on_mixed_tuple() -> None:
+        """A tuple mixing an exception type and an exception handler falls back like the equivalent list."""
+    
+        def retry_http_error(exc: Exception) -> bool:
+            return isinstance(exc, ModelHTTPError) and exc.status_code == 500
+    
+        async def retry_http_error_async(exc: Exception) -> bool:
+            return isinstance(exc, ModelHTTPError) and exc.status_code == 500
+    
+        for handler in (retry_http_error, retry_http_error_async):
+            # The ValueError entry never matches; the handler entry triggers the fallback.
+            fallback_model = FallbackModel(failure_model, success_model, fallback_on=(ValueError, handler))
+            agent = Agent(model=fallback_model)
+    
+>           result = await agent.run('hello')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/models/test_fallback.py:3487: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+pydantic_ai_slim/pydantic_ai/agent/abstract.py:678: in run
+    node = await agent_run.next(node)  # pyright: ignore[reportArgumentType]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:656: in next
+    return await self._run_node_with_hooks(node, self._stream_and_advance)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:571: in _run_node_with_hooks
+    result = await lifecycle(node)
+             ^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:551: in lifecycle
+    result = await step_fn(lifecycle_node)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:670: in _stream_and_advance
+    return await self._advance_graph(node)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:466: in _advance_graph
+    task = await self._graph_run.next(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/graph_builder.py:579: in next
+    return await anext(self)
+           ^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/graph_builder.py:556: in __anext__
+    raise self._next.error
+pydantic_graph/pydantic_graph/graph_builder.py:857: in _run_tracked_task
+    result = await self._run_task(t_)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/graph_builder.py:915: in _run_task
+    output = await node.call(step_context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/step.py:253: in _call_node
+    return await node.run(GraphRunContext(state=ctx.state, deps=ctx.deps))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1385: in run
+    return await self._make_request(ctx)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1730: in _make_request
+    model_response = await model_handler(request_context)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1713: in model_handler
+    response = await self._recover_model_request_error(ctx, run_context, req_ctx, e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:2094: in _recover_model_request_error
+    raise error
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1699: in model_handler
+    response = await model_request(
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1219: in model_request
+    new_response = await model.request(
+pydantic_ai_slim/pydantic_ai/models/fallback.py:294: in request
+    if await self._should_fallback(exc):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/fallback.py:183: in _should_fallback
+    result = await await_maybe(handler(value))  # type: ignore[arg-type]
+                               ^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+exc = ModelHTTPError("status_code: 500, model_name: test-function-model, body: {'error': 'test error'}")
+
+    def handler(exc: Exception) -> bool:
+>       return isinstance(exc, exceptions)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: isinstance() arg 2 must be a type, a tuple of types, or a union
+
+pydantic_ai_slim/pydantic_ai/models/fallback.py:573: TypeError
+------------------------------ Captured log setup ------------------------------
+WARNING  opentelemetry.sdk.metrics._internal:__init__.py:629 shutdown can only be called once
+                              Summary of Failures                               
+┏━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃               ┃               ┃  Function     ┃              ┃               ┃
+┃  File         ┃  Function     ┃  Line         ┃  Error Line  ┃  Error        ┃
+┡━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│  tests/mode…  │  test_fallb…  │  3437         │  3453        │  AssertionE…  │
+│  tests/mode…  │  test_fallb…  │  3456         │  3469        │  TypeError    │
+│  tests/mode…  │  test_fallb…  │  3473         │  3487        │  TypeError    │
+└───────────────┴───────────────┴───────────────┴──────────────┴───────────────┘
+Results (4.20s):
+         3 failed
+        91 passed

@@ -1,0 +1,107 @@
++ uv uv 0.13.9 (x86_64-unknown-linux-gnu)
++ pip install -q -e ".[dev]" && python -m pytest -p no:cacheprovider tests/test_transport.py
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+
+[notice] A new release of pip is available: 25.0.1 -> 26.3
+[notice] To update, run: pip install --upgrade pip
+/usr/local/lib/python3.12/site-packages/pytest_asyncio/plugin.py:306: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to "function" scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session". Set it to "fixture-scope" to keep the current behavior.
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+============================= test session starts ==============================
+platform linux -- Python 3.12.16, pytest-9.2.0, pluggy-1.7.0
+rootdir: /work
+configfile: pyproject.toml
+plugins: asyncio-1.5.0, anyio-4.16.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 90 items
+
+tests/test_transport.py ................................................ [ 53%]
+........................................F.                               [100%]
+
+=================================== FAILURES ===================================
+_ TestSubprocessCLITransport.test_stderr_callback_raise_does_not_terminate_loop _
+
+self = <tests.test_transport.TestSubprocessCLITransport object at 0x7906d14bce30>
+
+    def test_stderr_callback_raise_does_not_terminate_loop(self) -> None:
+        """Regression for issue #929: a raise from ``options.stderr`` must not
+        kill the read loop. Previously the outer ``except Exception: pass``
+        caught it, exited the ``async for``, and silently dropped every
+        subsequent stderr line for the rest of the session."""
+    
+        async def _test() -> None:
+            received: list[str] = []
+    
+            def stderr_cb(line: str) -> None:
+                received.append(line)
+                if len(received) == 1:
+                    raise RuntimeError("simulated handler failure")
+    
+            transport = SubprocessCLITransport(
+                prompt="x", options=ClaudeAgentOptions(stderr=stderr_cb)
+            )
+    
+            async def mock_iter() -> AsyncIterator[str]:
+                yield "line 1"
+                yield "line 2"
+                yield "line 3"
+    
+            transport._stderr_stream = mock_iter()  # type: ignore[assignment]
+            await transport._handle_stderr()
+    
+            # All three lines must be delivered despite the first raise.
+            assert received == ["line 1", "line 2", "line 3"]
+    
+>       anyio.run(_test)
+
+tests/test_transport.py:2104: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/lib/python3.12/site-packages/anyio/_core/_eventloop.py:83: in run
+    return async_backend.run(func, args, {}, backend_options)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/site-packages/anyio/_backends/_asyncio.py:2621: in run
+    return runner.run(wrapper())
+           ^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/runners.py:118: in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/site-packages/anyio/_backends/_asyncio.py:2604: in wrapper
+    return await func(*args)
+           ^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+    async def _test() -> None:
+        received: list[str] = []
+    
+        def stderr_cb(line: str) -> None:
+            received.append(line)
+            if len(received) == 1:
+                raise RuntimeError("simulated handler failure")
+    
+        transport = SubprocessCLITransport(
+            prompt="x", options=ClaudeAgentOptions(stderr=stderr_cb)
+        )
+    
+        async def mock_iter() -> AsyncIterator[str]:
+            yield "line 1"
+            yield "line 2"
+            yield "line 3"
+    
+        transport._stderr_stream = mock_iter()  # type: ignore[assignment]
+        await transport._handle_stderr()
+    
+        # All three lines must be delivered despite the first raise.
+>       assert received == ["line 1", "line 2", "line 3"]
+E       AssertionError: assert ['line 1'] == ['line 1', 'line 2', 'line 3']
+E         
+E         Right contains 2 more items, first extra item: 'line 2'
+E         Use -v to get more diff
+
+tests/test_transport.py:2102: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_transport.py::TestSubprocessCLITransport::test_stderr_callback_raise_does_not_terminate_loop
+========================= 1 failed, 89 passed in 0.72s =========================

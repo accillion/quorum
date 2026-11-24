@@ -1,0 +1,16 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["src/agents/sandbox/memory/storage.py"]
+title = "Sandbox memory selection sorts raw updated_at strings, picking older rollouts across UTC offsets"
+description = """
+`_updated_at_sort_key` returns the raw `updated_at` string as the sort key,
+and the phase-two selection sorts by it in reverse and keeps only the first
+`max_raw_memories_for_consolidation` entries. Lexicographic order is not time
+order when ISO 8601 timestamps carry different UTC offsets (for example
+`2026-11-16T23:30:00-05:00` is later than `2026-11-17T03:30:00+00:00` but sorts
+lower), or differ in fractional-second precision. At the cap, consolidation
+therefore selects an older rollout and excludes a newer one, and the wrong
+memory feeds the consolidation prompt. Timestamps must be normalised to UTC
+(keeping the fractional part) before comparing.
+"""

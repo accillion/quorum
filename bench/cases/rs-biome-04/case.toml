@@ -1,0 +1,42 @@
+schema = 1
+id = "rs-biome-04"
+kind = "bug"
+language = "rust"
+source_repo = "https://github.com/biomejs/biome"
+source_commit = "60c8043527f7ccc7b505471e1042f2a4324e4d31"
+source_commit_url = "https://github.com/biomejs/biome/commit/60c8043527f7ccc7b505471e1042f2a4324e4d31"
+source_commit_date = "2026-07-09"
+base_commit = "60c8043527f7ccc7b505471e1042f2a4324e4d31"
+removed_paths = [
+  "crates/biome_js_formatter/tests/specs/js/module/each/each.js",
+  "crates/biome_js_formatter/tests/specs/js/module/each/each.js.snap",
+  ".changeset/public-pants-beg.md",
+]
+base_reverts = []
+case_base_tree = "64c0e9436485f51298ff0442ff831f7fca0116ae"
+case_commit_tree = "c06b6642387d39bea2c1bf92e13da290ed38e19b"
+licence = "MIT OR Apache-2.0"
+licence_path = "LICENSE-MIT"
+licence_notice = """
+Copyright (c) 2023-present Biome Developers and Contributors.
+Copyright (c) 2020-2023 Rome Tools is Rome Tools, Inc. and its affiliates.
+(LICENSE-APACHE: Copyright (c) 2023 Biome Developers and Contributors.)
+"""
+agent_files = ["AGENTS.md", "CLAUDE.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "biomejs__biome-10886"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 3 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["crates/biome_js_formatter/src/js/expressions/call_arguments.rs"]
+
+[repro]
+reproduced = true
+image = "rust@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1"
+command = "cargo test -p biome_js_formatter --test spec_tests -- formatter::js_module::module::each::"
+test_files = [
+  "crates/biome_js_formatter/tests/specs/js/module/each/each.js",
+  "crates/biome_js_formatter/tests/specs/js/module/each/each.js.snap",
+]
+fixed_exit = 0
+reverted_exit = 101

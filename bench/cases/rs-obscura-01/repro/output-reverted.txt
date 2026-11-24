@@ -1,0 +1,23 @@
+== CASE COMMIT tree + repro/files
+   Compiling obscura-cdp v0.1.0 (/work/src/crates/obscura-cdp)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.53s
+     Running tests/execution_context_pruned_on_navigation.rs (/work/target/debug/deps/execution_context_pruned_on_navigation-38909a5a4e6033e7)
+
+running 1 test
+test navigation_prunes_stale_execution_context_ids ... FAILED
+
+failures:
+
+---- navigation_prunes_stale_execution_context_ids stdout ----
+
+thread 'navigation_prunes_stale_execution_context_ids' (4908) panicked at crates/obscura-cdp/tests/execution_context_pruned_on_navigation.rs:36:5:
+stale execution context id must be pruned on navigation
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    navigation_prunes_stale_execution_context_ids
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p obscura-cdp --test execution_context_pruned_on_navigation`

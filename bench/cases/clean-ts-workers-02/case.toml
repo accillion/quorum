@@ -1,0 +1,28 @@
+schema = 1
+id = "clean-ts-workers-02"
+kind = "clean"
+language = "typescript"
+source_repo = "https://github.com/cloudflare/workers-sdk"
+source_commit = "3b60131ca5a1bafcf7af16b0f41f2601a9a3ee85"
+source_commit_url = "https://github.com/cloudflare/workers-sdk/commit/3b60131ca5a1bafcf7af16b0f41f2601a9a3ee85"
+source_commit_date = "2025-04-28"
+base_commit = "c8a5a602b2cc1296b67f7d40a4b43bc71d863569"
+removed_paths = []
+base_reverts = []
+case_base_tree = "c3ca27788ac6d8dee1a788ada0a812fb046ad6bd"
+case_commit_tree = "827705a33b37dbf74c5bf5d9f234af693faed695"
+licence = "MIT OR Apache-2.0"
+licence_path = "LICENSE-MIT"
+licence_notice = """
+Copyright (c) 2020 Cloudflare, Inc. <wrangler@cloudflare.com>
+"""
+agent_files = []
+dataset = "hand-picked"
+dataset_instance = ""
+
+[clean]
+head_checked = "de6b171603576fd12afa4f32736c0c0ecb28eeab"
+head_checked_date = "2026-11-23"
+retained_share = 1.0
+later_commits = []
+verdict = "no later fix, revert or substantial rewrite: share 1.0, no later commit changed any added line"

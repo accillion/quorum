@@ -1,0 +1,17 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["src/agents/run_internal/guardrails.py"]
+title = "Output guardrail tripwire drops already-completed sibling results from output_guardrail_results"
+description = """
+`run_output_guardrails` consumes guardrail results with `asyncio.as_completed`.
+When the tripping result is consumed first, it records only that result and
+then cancels the remaining tasks, so a sibling output guardrail that had
+already completed successfully is never recorded. As a result
+`OutputGuardrailTripwireTriggered.run_data.output_guardrail_results` (and
+`RunResultStreaming.output_guardrail_results` in streamed runs) omits the
+passed sibling whenever the tripping guardrail is registered first, although
+the docs promise the accumulated results. The input-guardrail path already
+collects completed siblings before cancelling; the output path does not (the
+collector helper is typed for input guardrail results only).
+"""

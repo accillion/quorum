@@ -1,0 +1,67 @@
+# v0.6 Stage 1 pilot: the frozen run settings. Part of the design freeze
+# (bench/DESIGN.md pins this file's SHA-256). Changing it after the freeze
+# restarts the pilot.
+
+[lippa]
+base_url = "https://app.lippa.ai"
+# The dedicated bench project. Rolf creates it and fills in its id before
+# run 1b; filling it in is the one edit allowed after the freeze. The run
+# refuses to start while it is empty, or while the project holds any
+# confirmed or pinned memory item (bench/src/preflight.rs).
+project_id = ""
+# Worst-case credits reserved per Consensus session (CONSENSUS_CREDIT_COST).
+credits_per_session = 3
+
+[quorum]
+# The binary under test is built from this commit:
+#   cargo install --path crates/quorum-cli --locked --root bench/.cache/quorum-4f4ec22
+commit = "4f4ec225c8b3af0293a4214c5ce45d036bdacfd2"
+
+[run]
+repeats = 3
+tiers = ["high", "medium", "low"]
+review_timeout_seconds = 1800
+seed = 20261124
+
+# S- arms at the panel seats' high-tier settings (Gate A ruling 4), keyed
+# by the Lippa model id a Q-high session reports.
+[s_arms]
+prompt = "bench/prompts/single-v1.md"
+output_cap = 16384
+
+[s_arms.models."gpt-6.2-sol"]
+vendor = "openai"
+vendor_model = "gpt-6.2-sol"
+effort = "medium"
+
+[s_arms.models."claude-opus-5-5"]
+vendor = "anthropic"
+vendor_model = "claude-opus-5-5"
+effort = "low"
+
+[s_arms.models."gemini-4-carbon"]
+vendor = "google"
+vendor_model = "gemini-4-carbon"
+effort = "medium"
+
+# Gate A ruling 2: Mistral failed the data-policy check, so the judge is
+# xAI grok-4.7 with strict JSON schema (bench/DESIGN.md, "Judge").
+[judge]
+vendor = "xai"
+model = "grok-4.7"
+effort = "high"
+output_cap = 16384
+seed = 7
+rubric = "bench/RUBRIC.md"
+batch_size = 40
+
+[extraction]
+rubric = "bench/rubrics/extraction-v1.md"
+output_cap = 8192
+
+[clustering]
+rubric = "bench/rubrics/clustering-v1.md"
+output_cap = 16384
+
+[adjudication]
+human_share = 0.2

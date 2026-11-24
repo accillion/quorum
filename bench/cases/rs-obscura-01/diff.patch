@@ -1,0 +1,19 @@
+diff --git a/crates/obscura-cdp/src/domains/page.rs b/crates/obscura-cdp/src/domains/page.rs
+index 61ed806..dd84b5e 100644
+--- a/crates/obscura-cdp/src/domains/page.rs
++++ b/crates/obscura-cdp/src/domains/page.rs
+@@ -73,14 +73,12 @@ pub fn emit_navigation_events(
+         });
+     }
+ 
+-    ctx.valid_context_ids.clear();
+     let mut phase1 = vec![
+         CdpEvent { method: "Page.lifecycleEvent".into(), params: json!({"frameId": frame_id, "loaderId": loader_id, "name": "init", "timestamp": ts}), session_id: es.clone() },
+         CdpEvent { method: "Runtime.executionContextsCleared".into(), params: json!({}), session_id: es.clone() },
+         CdpEvent { method: "Page.frameNavigated".into(), params: json!({"frame": {"id": frame_id, "loaderId": loader_id, "url": page_url, "domainAndRegistry": "", "securityOrigin": page_url, "mimeType": nav_mime, "adFrameStatus": {"adFrameType": "none"}}, "type": "Navigation"}), session_id: es.clone() },
+         CdpEvent { method: "Runtime.executionContextCreated".into(), params: json!({"context": {"id": 2, "origin": page_url, "name": "", "uniqueId": format!("ctx-nav-{}", page_id), "auxData": {"isDefault": true, "type": "default", "frameId": frame_id}}}), session_id: es.clone() },
+     ];
+-    ctx.valid_context_ids.insert(2);
+     let world_names: Vec<String> = if ctx.isolated_worlds.is_empty() {
+         vec!["__puppeteer_utility_world__24.40.0".to_string()]
+     } else {

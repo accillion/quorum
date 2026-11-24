@@ -1,0 +1,32 @@
+schema = 1
+id = "clean-py-mcp-01"
+kind = "clean"
+language = "python"
+source_repo = "https://github.com/modelcontextprotocol/python-sdk"
+source_commit = "31ae5f4dc4b6572c18fa425c53f83e411d176155"
+source_commit_url = "https://github.com/modelcontextprotocol/python-sdk/commit/31ae5f4dc4b6572c18fa425c53f83e411d176155"
+source_commit_date = "2025-10-27"
+base_commit = "6c26d087df3406c7da1f85b8ae3c3caeabf7b002"
+removed_paths = []
+base_reverts = []
+case_base_tree = "36c90c097e74e85f9101c4a2dae3f59e7804dc44"
+case_commit_tree = "412b23f62da4bf75c5b15193a1a4b587c0efaae3"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) 2024 Anthropic, PBC
+"""
+agent_files = ["CLAUDE.md"]
+dataset = "hand-picked"
+dataset_instance = ""
+
+[clean]
+head_checked = "77001c96f9507be0f4d009b83210a384a5e08bda"
+head_checked_date = "2026-11-05"
+retained_share = 0.875
+later_commits = [
+  "89e9c43acf7e23cf766357d776ec1ce63ac2c58e Get baseline 100% clean coverage (#1553)",
+  "a7ddfdae0721d5c78b35c7810fc4b1a6303538b9 ci: add strict-no-cover to detect unnecessary coverage pragmas (#1897)",
+  "067f90578c0f08001f25ada200426681073cc602 Add SSE response mode to the 2026 streamable-HTTP server entry (#3001)",
+]
+verdict = "no later fix, revert or substantial rewrite: later commits added coverage pragmas and a new SSE response mode; none fixed the Accept-header validation"

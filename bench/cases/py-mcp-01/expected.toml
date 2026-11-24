@@ -1,0 +1,28 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["src/mcp/shared/tool_name_validation.py"]
+title = "Tool-name validation uses re.match with a $-anchored regex, so a name with a trailing newline passes"
+description = """
+`validate_tool_name` checks the name with `TOOL_NAME_REGEX.match(name)`, where
+the pattern is `^[A-Za-z0-9._-]{1,128}$`. In Python's default mode `$` also
+matches just before a single trailing newline, so a name such as
+`"evil_tool\\n"` is reported as valid and `validate_and_warn_tool_name` logs no
+warning, although a newline is not an allowed SEP-986 tool-name character. The
+length guard counts the newline too, so a 127-character name plus `\\n` slips
+past both the length and the character checks. The check must use `fullmatch`
+(or a `\\Z` anchor) so the whole string is matched.
+"""
+
+[[defect]]
+id = "D2"
+severity = "low"
+files = ["src/mcp/shared/uri_template.py"]
+title = "URI-template variable names are checked with re.match, so a varname ending in a newline is accepted"
+description = """
+`_parse_expression` validates each variable name with `_VARNAME_RE.match(name)`.
+Because the pattern ends with `$`, which also matches before a single trailing
+newline, `UriTemplate.parse` accepts an invalid variable name such as
+`"foo\\n"` instead of raising `InvalidUriTemplate`. The check must use
+`fullmatch` so the whole name has to match the RFC 6570 varname grammar.
+"""

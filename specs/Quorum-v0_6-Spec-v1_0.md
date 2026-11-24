@@ -17,6 +17,73 @@ Companion analysis: `specs/Quorum-v0_4-CI-Feedback-Remediation.md`.
 
 ## 0. Adjudication of the v0.3 reviews and the AC 277a check
 
+### 0.0 [S1a-ADJ] — amendment to AC 248a (Rolf, Gate A of Stage 1a, 2026-11-24)
+
+CC-Recon-v06-1 found that Lippa's public session detail
+(`GET /api/v1/consensus/sessions/{id}`, `routes/api_v1/consensus.py:580–648`
+at Lippa `3cd425b89`) returns each seat's Round 0 `raw_response`. Round 0 is
+independent (`consensus_service._build_round0_prompts`). The claims block is
+stripped from that text, and the claim groups come from the final round
+only. AC 248a's conditional therefore applies, amended as follows:
+
+- The `E-union` and `E-majority` arms are built from each seat's Round 0
+  `raw_response` in the **same** `Q-high` session: repeat *k* from repeat
+  *k*. This makes C2 a **direct** test under D7.
+- The claims are extracted by the judge model under a frozen, versioned
+  extraction rubric (`bench/rubrics/extraction-v1.md`). Extraction never
+  reads `expected.toml`, and its decisions are stored. Rolf checks a random
+  20% blind.
+- Extracted findings use the same shape and word cap as `Q-` claims: at
+  most 5 claims per seat, each at most 20 words. Length therefore favours
+  neither arm.
+- A session with fewer than three healthy Round 0 seats excludes that
+  case-repeat from C2, and it is reported separately.
+- With this amendment, the AC 248 clause "a model with no mapping has no
+  `S-` arm … and C2 is not reported" no longer affects C2, because the `E-`
+  arms no longer use the `S-` arms. A missing mapping removes only that
+  `S-` arm from C1.
+
+Rulings made at the same gate, recorded in `bench/DESIGN.md`:
+- the corpus source;
+- the judge: xAI `grok-4.7`, because Mistral failed the data-policy
+  check;
+- the `S-` prompt (`bench/prompts/single-v1.md`, Lippa's Round 0 wrapper
+  with the multi-model sentences removed);
+- `S-` arms at the panel seats' settings, with C1 scoped to "at panel
+  settings";
+- the recording proxy;
+- the bench-only dependencies;
+- `--max-usd 300`;
+- de-duplicated blind adjudication.
+
+### 0.0b [S1a-ADJ-2] — amendment to AC 252 (Rolf, Gate B of Stage 1a, 2026-11-24)
+
+AC 252's classes gain **`no_issue`**: a finding that asserts no problem
+with the change, such as an approval, a description or a question. It
+is neither a TP nor an FP.
+
+Why: Quorum's findings are Lippa claims, and claims include positions
+("the change correctly handles X"). The `S-` and `E-` arms use the same
+claims format. Under AC 252 as written, an unmatched finding that is
+not a duplicate, a pre-existing issue or an unexpected true positive
+counts as a false alarm. A correct approval of a clean case would
+therefore score as an FP, for every arm.
+
+How it is handled:
+- `no_issue` decisions are part of the random 20% human sample, like
+  any other non-mandatory judge decision.
+- `RESULTS.md` reports `no_issue` counts per arm, next to the duplicate,
+  `pre_existing` and `unexpected_tp` counts.
+
+Also ruled at Gate B, and recorded in `bench/DESIGN.md`:
+- the fix's explanatory comments are removed from bug-case bases, both
+  comment-only lines and trailing comments on removed lines;
+- the halt-rule middle-category decisions in DESIGN.md §14 are accepted
+  as written;
+- the budget is approved: about 1,320 Lippa credits (`--max-credits
+  1100` for the base run, separate caps for the two re-runs) and
+  `--max-usd 300`.
+
 ### 0.1 Round 4 — targeted AC 277a check
 
 Lippa 3 (not ACCEPT; six fixes, then "accept without another check") and

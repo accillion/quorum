@@ -1,0 +1,200 @@
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openai: https://api.openai.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openrouter: https://openrouter.ai/api/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to mistral: https://api.mistral.ai/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to mistral: https://api.mistral.ai/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to deepseek: https://api.deepseek.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to deepseek: https://api.deepseek.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to deepseek: https://api.deepseek.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to deepseek: https://api.deepseek.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to deepseek: https://api.deepseek.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to mistral: https://api.mistral.ai/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to deepseek: https://api.deepseek.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openai: https://api.openai.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openrouter: https://openrouter.ai/api/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openrouter: https://openrouter.ai/api/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to mistral: https://api.mistral.ai/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to mistral: https://api.mistral.ai/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to mistral: https://api.mistral.ai/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to mistral: https://api.mistral.ai/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to mistral: https://api.mistral.ai/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openai: https://api.openai.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openrouter: https://openrouter.ai/api/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openai: https://api.openai.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openrouter: https://openrouter.ai/api/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to ollama: http://localhost:11434/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to ollama-cloud: https://ollama.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openai: https://api.openai.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to mistral: https://api.mistral.ai/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openai: https://api.openai.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to custom: https://api.groq.com/openai/v1/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to custom: http://localhost:8000/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to custom: http://localhost:8000/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to custom: https://api.minimax.io/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to custom: https://api.fireworks.ai/inference/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to openai: https://api.openai.com/v1/chat/completions
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to google: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=***
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to google: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=***
+[Nest] 406  - 11/24/2026, 1:59:46 AM   DEBUG [ProviderClient] Forwarding to google: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=***
+FAIL src/routing/proxy/__tests__/provider-client.spec.ts
+  ProviderClient
+    OpenAI-compatible providers
+      ✓ builds correct URL and headers for openai (3 ms)
+      ✓ builds correct URL for deepseek
+      ✓ builds correct URL for mistral (1 ms)
+      ✓ builds correct URL for moonshot
+      ✓ builds correct URL for qwen (1 ms)
+      ✓ builds correct URL for xai
+      ✓ builds correct URL for openrouter (1 ms)
+      ✓ sets stream=true when streaming
+    Anthropic provider
+      ✓ uses native Messages API path and x-api-key header (1 ms)
+      ✓ does not include anthropic-beta header (caching is GA)
+      ✓ does not include top-level cache_control in Anthropic request body
+      ✓ converts request body to Anthropic format with model (1 ms)
+      ✓ sets stream=true in body when streaming
+      ✓ does not set stream when not streaming
+      ✓ omits cache_control from request body for subscription auth (1 ms)
+      ✓ includes block-level cache_control for regular Anthropic API key auth
+    Google provider
+      ✓ uses query param auth and Gemini path (1 ms)
+      ✓ adds alt=sse for streaming
+      ✓ converts request body to Gemini format (1 ms)
+    ChatGPT subscription provider
+      ✓ routes to chatgpt.com Codex backend with subscription authType
+      ✓ converts request body using toResponsesRequest (1 ms)
+      ✓ sends default instructions when no system or developer prompt is present
+      ✓ sets isChatGpt=false for regular OpenAI api_key auth
+    Z.ai subscription provider
+      ✓ routes to Coding Plan endpoint with subscription authType
+      ✓ routes to standard Z.ai endpoint for api_key auth
+    OpenCode Go provider
+      ✓ routes non-minimax models to OpenAI /v1/chat/completions
+      ✓ routes minimax-* models to Anthropic /v1/messages (1 ms)
+      ✓ also routes minimax-m2.5 to the Anthropic endpoint
+      ✓ routes kimi-k2.5 through the OpenAI endpoint
+    convertChatGptResponse
+      ✓ delegates to fromResponsesResponse (1 ms)
+    convertChatGptStreamChunk
+      ✓ converts output_text delta to chat completion chunk
+      ✓ returns null for irrelevant events
+    OpenRouter Anthropic cache injection
+      ✓ injects cache_control for anthropic/ models on openrouter (1 ms)
+      ✓ does not inject cache_control for non-anthropic models on openrouter
+    Extra headers
+      ✓ merges extraHeaders into outgoing request
+      ✓ does not override base headers
+    Provider aliases
+      ✓ resolves gemini to google endpoint (1 ms)
+    AbortSignal passthrough
+      ✓ uses timeout signal when no client signal provided
+      ✓ combines client signal with timeout signal (1 ms)
+      ✓ passes already-aborted signal correctly
+      ✓ always provides a signal to fetch even without client signal
+      ✓ provides signal for Google provider as well (1 ms)
+    convertGoogleResponse
+      ✓ delegates to fromGoogleResponse
+    convertGoogleStreamChunk
+      ✓ delegates to transformGoogleStreamChunk
+      ✓ returns null chunk for empty input
+      ✓ surfaces extracted signatures from functionCall parts (1 ms)
+    convertAnthropicResponse
+      ✓ delegates to fromAnthropicResponse
+    convertAnthropicStreamChunk
+      ✓ delegates to transformAnthropicStreamChunk
+      ✓ returns null for ping chunk
+    createAnthropicStreamTransformer
+      ✓ creates a stateful transformer that processes Anthropic stream events
+    URL masking
+      ✓ masks API key in Google URL for debug logging (1 ms)
+    Request body construction
+      ✓ includes model and stream in request body for OpenAI providers
+      ✓ does not include model or stream for Google provider (uses Gemini format) (2 ms)
+    Vendor prefix stripping
+      ✓ strips vendor prefix for non-OpenRouter providers (1 ms)
+      ✓ preserves vendor prefix for OpenRouter
+    Body sanitization for non-OpenAI providers
+      ✓ strips OpenAI-only fields for Mistral
+      ✓ converts max_completion_tokens to max_tokens for non-OpenAI providers (1 ms)
+      ✓ does not overwrite existing max_tokens when converting
+      ✓ strips OpenAI-only fields for DeepSeek
+      ✓ caps DeepSeek max_tokens at the provider limit (1 ms)
+      ✓ drops non-positive DeepSeek max_tokens values
+      ✓ normalizes string DeepSeek max_tokens values
+      ✓ strips reasoning_content for Mistral assistant messages without mutating the input
+      ✓ preserves reasoning_content for DeepSeek reasoning models
+      ✓ strips reasoning_content for native OpenAI targets
+      ✓ strips reasoning_content for non-DeepSeek OpenRouter targets
+      ✓ preserves reasoning_content for DeepSeek models on OpenRouter (1 ms)
+      ✓ leaves non-array messages unchanged during sanitization
+      ✓ preserves non-object entries inside the messages array
+      ✓ normalizes non-compliant tool call ids for Mistral while preserving references (1 ms)
+      ✓ preserves valid 9-character alphanumeric tool call ids for Mistral
+      ✓ does not rewrite later valid Mistral tool call ids when generated ids would collide
+      ✓ preserves all fields for OpenAI (1 ms)
+      ✓ preserves all fields for OpenRouter
+    stream_options.include_usage injection
+      ✓ injects stream_options.include_usage for OpenAI streaming requests
+      ✓ injects stream_options.include_usage for OpenRouter streaming requests (1 ms)
+      ✓ injects stream_options.include_usage for Ollama streaming requests
+      ✓ injects stream_options.include_usage for Ollama Cloud streaming requests
+      ✓ does not inject stream_options for non-streaming OpenAI requests
+      ✓ does not inject stream_options for non-passthrough providers (1 ms)
+      ✓ preserves existing stream_options fields when injecting include_usage
+    Custom endpoint
+      ✓ uses custom endpoint instead of resolving by provider name
+      ✓ uses custom endpoint with streaming (1 ms)
+      ✓ merges extraHeaders with custom endpoint headers
+      ✕ preserves multi-segment upstream model ids with a vendor/model shape (#1591) (1 ms)
+      ✕ preserves deeply slashed upstream model ids (#1615)
+    Error handling
+      ✓ throws for unknown provider (2 ms)
+      ✓ propagates fetch errors (1 ms)
+      ✓ sanitizes Google API key from fetch error messages
+      ✓ sanitizes non-Error fetch exceptions (1 ms)
+
+  ● ProviderClient › Custom endpoint › preserves multi-segment upstream model ids with a vendor/model shape (#1591)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "MiniMaxAI/MiniMax-2.7"
+    Received: "MiniMax-2.7"
+
+      1694 |
+      1695 |       const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    > 1696 |       expect(sentBody.model).toBe('MiniMaxAI/MiniMax-2.7');
+           |                              ^
+      1697 |     });
+      1698 |
+      1699 |     // Regression: #1615 — Fireworks Fire Pass rejects truncated model name
+
+      at Object.<anonymous> (routing/proxy/__tests__/provider-client.spec.ts:1696:30)
+
+  ● ProviderClient › Custom endpoint › preserves deeply slashed upstream model ids (#1615)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "accounts/fireworks/routers/kimi-k2p5-turbo"
+    Received: "fireworks/routers/kimi-k2p5-turbo"
+
+      1722 |
+      1723 |       const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    > 1724 |       expect(sentBody.model).toBe('accounts/fireworks/routers/kimi-k2p5-turbo');
+           |                              ^
+      1725 |     });
+      1726 |   });
+      1727 |
+
+      at Object.<anonymous> (routing/proxy/__tests__/provider-client.spec.ts:1724:30)
+
+Test Suites: 1 failed, 1 total
+Tests:       2 failed, 88 passed, 90 total
+Snapshots:   0 total
+Time:        2.026 s
+Ran all test suites matching /src\/routing\/proxy\/__tests__\/provider-client.spec.ts/i.
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /w/repo/packages/backend
+npm error workspace manifest-backend@0.1.0
+npm error location /w/repo/packages/backend
+npm error command failed
+npm error command sh -c jest src/routing/proxy/__tests__/provider-client.spec.ts

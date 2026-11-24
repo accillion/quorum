@@ -4,6 +4,9 @@ members = [
     "crates/quorum-cli",
     "crates/quorum-core",
     "crates/quorum-lippa-client",
+    # v0.6 Stage 1 benchmark harness: publish = false, dist = false, and no
+    # published crate depends on it (AC 247).
+    "bench",
 ]
 
 [workspace.package]

@@ -1,0 +1,18 @@
+[[defect]]
+id = "D1"
+severity = "high"
+files = ["packages/backend/src/routing/proxy/provider-client.ts"]
+title = "Custom-provider requests strip the first slash segment of the upstream model id, so slashed model names break"
+description = """
+`stripModelPrefix` in packages/backend/src/routing/proxy/provider-client.ts
+removes everything up to the first `/` of the model name for every endpoint
+except `openrouter`. For custom providers the internal `custom:<id>/` prefix
+has already been removed upstream (`CustomProviderService.rawModelName` in
+proxy-fallback.service.ts), so this second strip eats a legitimate segment
+of the real upstream model id. A custom provider whose model is
+`MiniMaxAI/MiniMax-2.7` is called with `MiniMax-2.7` ("model not hosted",
+issue #1591), and Fireworks' `accounts/fireworks/routers/kimi-k2p5-turbo` is
+sent as `fireworks/routers/kimi-k2p5-turbo` and fails with `NOT_FOUND`
+(issue #1615). The fix skips `stripModelPrefix` when `endpointKey` is
+`custom`, so custom-provider model ids are forwarded unchanged.
+"""

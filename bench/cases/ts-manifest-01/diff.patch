@@ -1,0 +1,12 @@
+diff --git a/packages/backend/src/routing/proxy/provider-client.ts b/packages/backend/src/routing/proxy/provider-client.ts
+index 4524aa7..8f27a33 100644
+--- a/packages/backend/src/routing/proxy/provider-client.ts
++++ b/packages/backend/src/routing/proxy/provider-client.ts
+@@ -38,7 +38,6 @@ const PROVIDER_TIMEOUT_MS = 180_000;
+ function stripModelPrefix(model: string, endpointKey: string): string {
+   // OpenRouter accepts and expects vendor prefixes
+   if (endpointKey === 'openrouter') return model;
+-  if (endpointKey === 'custom') return model;
+   const slashIdx = model.indexOf('/');
+   return slashIdx > 0 ? model.substring(slashIdx + 1) : model;
+ }

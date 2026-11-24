@@ -1,0 +1,30 @@
+
+> miniflare@4.20250712.0 build /w/repo/packages/miniflare
+> node scripts/build.mjs && pnpm run types:build
+
+
+> miniflare@4.20250712.0 types:build /w/repo/packages/miniflare
+> node scripts/types.mjs tsconfig.json && node scripts/types.mjs src/workers/tsconfig.json
+
+
+Bundling types...
+Analysis will use the bundled TypeScript version 5.8.2
+Writing package typings: /w/repo/packages/miniflare/dist/src/index.d.ts
+
+Bundled types with 0 error(s) and 0 warning(s)
+
+  ✔ operations permit strange database names (173ms)
+  ✔ it properly handles ROWS_AND_COLUMNS results format
+  ✔ D1Database: batch (275ms)
+  ✔ D1Database: exec (219ms)
+  ✔ D1PreparedStatement: run (248ms)
+  ✔ D1PreparedStatement: first (288ms)
+  ✔ D1PreparedStatement: all (272ms)
+  ✔ D1PreparedStatement: bind (526ms)
+  ✔ D1PreparedStatement: raw (539ms)
+  ✔ migrates database to new location (895ms)
+  ✔ operations persist D1 data (1s)
+  ✔ dumpSql exports and imports complete database structure and content correctly (1.5s)
+  ─
+
+  12 tests passed

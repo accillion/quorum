@@ -1,0 +1,33 @@
+schema = 1
+id = "rs-leanctx-02"
+kind = "bug"
+language = "rust"
+source_repo = "https://github.com/yvgude/lean-ctx"
+source_commit = "8953517c1ca6961f15b23649c3fc43bb6e881ec0"
+source_commit_url = "https://github.com/yvgude/lean-ctx/commit/8953517c1ca6961f15b23649c3fc43bb6e881ec0"
+source_commit_date = "2026-07-22"
+base_commit = "8953517c1ca6961f15b23649c3fc43bb6e881ec0"
+removed_paths = [
+  "rust/src/dashboard/tests.rs",
+]
+base_reverts = []
+case_base_tree = "099c572d2147798611e3fc0b2992ae2ec0ef518b"
+case_commit_tree = "c09488c23ee13017e2d2cb4ff78d78d07b465695"
+licence = "Apache-2.0"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright 2026 Yves Gugger
+"""
+agent_files = ["AGENTS.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "yvgude__lean-ctx-1179"
+
+[repro]
+reproduced = true
+image = "rust@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1"
+command = "LEAN_CTX_EMBEDDINGS_AUTO_DOWNLOAD=0 cargo test --locked --manifest-path rust/Cargo.toml --lib dashboard::tests -- --test-threads=1"
+test_files = [
+  "rust/src/dashboard/tests.rs",
+]
+fixed_exit = 0
+reverted_exit = 101

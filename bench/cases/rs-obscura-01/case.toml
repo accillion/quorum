@@ -1,0 +1,39 @@
+schema = 1
+id = "rs-obscura-01"
+kind = "bug"
+language = "rust"
+source_repo = "https://github.com/h4ckf0r0day/obscura"
+source_commit = "358100aa634bd57d3730c3924a1782ba97571841"
+source_commit_url = "https://github.com/h4ckf0r0day/obscura/commit/358100aa634bd57d3730c3924a1782ba97571841"
+source_commit_date = "2026-07-14"
+base_commit = "358100aa634bd57d3730c3924a1782ba97571841"
+removed_paths = [
+  "crates/obscura-cdp/tests/execution_context_pruned_on_navigation.rs",
+]
+base_reverts = []
+case_base_tree = "c7e1af2bc43360a5c934af3dbceda05d477ce4f5"
+case_commit_tree = "14223898a232c6b31c1d6d84b51b6faa7308d797"
+licence = "Apache-2.0"
+licence_path = "LICENSE"
+licence_notice = """
+No copyright line in LICENSE at base_commit (only the Apache-2.0 appendix
+template "Copyright [yyyy] [name of copyright owner]"). The workspace
+Cargo.toml declares license = "Apache-2.0".
+"""
+agent_files = ["AGENTS.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "h4ckf0r0day__obscura-413"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 8 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["crates/obscura-cdp/src/domains/page.rs"]
+
+[repro]
+reproduced = true
+image = "rust@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1"
+command = "cargo test -p obscura-cdp --test execution_context_pruned_on_navigation"
+test_files = [
+  "crates/obscura-cdp/tests/execution_context_pruned_on_navigation.rs",
+]
+fixed_exit = 0
+reverted_exit = 101

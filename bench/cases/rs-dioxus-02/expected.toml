@@ -1,0 +1,16 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["packages/autofmt/src/writer.rs", "packages/autofmt/src/prettier_please.rs"]
+title = "dx fmt prints for-loop patterns via TokenStream Display, inserting spaces before commas in tuple patterns"
+description = """
+`Writer::write_for_loop` (packages/autofmt/src/writer.rs) writes the loop
+pattern with `forloop.pat.clone().into_token_stream()`. The
+`proc_macro2::TokenStream` Display impl puts a space between every token, so
+`dx fmt` rewrites `for (index, name, value) in data { ... }` inside `rsx!` as
+`for (index , name , value) in data { ... }`, which is inconsistent with
+rustfmt and with how the rest of the RSX is formatted (issue #5348). The fix
+adds an `unparse_pat` helper in prettier_please.rs that formats the pattern
+through prettyplease (like `unparse_expr` does for expressions) and uses it
+in `write_for_loop`.
+"""

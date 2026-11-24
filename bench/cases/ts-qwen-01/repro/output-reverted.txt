@@ -1,0 +1,98 @@
+
+> @qwen-code/qwen-code@0.14.5 test
+> vitest run src/ui/hooks/useStatusLine.test.ts
+
+
+ RUN  v3.2.4 /w/repo/packages/cli
+      Coverage enabled with v8
+
+ ❯ src/ui/hooks/useStatusLine.test.ts (32 tests | 2 failed) 2999ms
+   ✓ useStatusLine > config validation > returns null when no statusLine config is set  2938ms
+   ✓ useStatusLine > config validation > returns null when statusLine type is not "command" 2ms
+   ✓ useStatusLine > config validation > returns null when command is empty string 2ms
+   ✓ useStatusLine > config validation > returns null when command is whitespace only 1ms
+   ✓ useStatusLine > command execution > executes configured command on mount 2ms
+   ✓ useStatusLine > command execution > passes correct options to exec 1ms
+   ✓ useStatusLine > command execution > returns first line of stdout as text 2ms
+   ✓ useStatusLine > command execution > returns only the first line when stdout has multiple lines 5ms
+   ✓ useStatusLine > command execution > returns null when command fails 2ms
+   ✓ useStatusLine > command execution > returns null when stdout is empty 1ms
+   ✓ useStatusLine > stdin JSON input > writes JSON to stdin with session context 1ms
+   ✓ useStatusLine > stdin JSON input > includes git branch when available 1ms
+   ✓ useStatusLine > stdin JSON input > omits git when branchName is falsy 1ms
+   ✓ useStatusLine > stdin JSON input > includes vim mode when enabled 1ms
+   ✓ useStatusLine > stdin JSON input > omits vim when not enabled 1ms
+   ✓ useStatusLine > stdin JSON input > includes context window usage data 1ms
+   ✓ useStatusLine > stale generation > ignores callback from stale generation and accepts fresh one 2ms
+   ✓ useStatusLine > debouncing > debounces rapid state changes to a single exec 3ms
+   ✓ useStatusLine > config removal > clears output when config is removed 1ms
+   ✓ useStatusLine > cleanup > kills active child process on unmount 1ms
+   ✓ useStatusLine > cleanup > clears debounce timer on unmount 1ms
+   ✓ useStatusLine > stdin error handling > silently handles EPIPE errors 1ms
+   ✓ useStatusLine > stdin error handling > logs non-EPIPE stdin errors 1ms
+   ✓ useStatusLine > command change > re-executes immediately when command changes 1ms
+   ✓ useStatusLine > state change triggers > triggers update when prompt token count changes 1ms
+   ✓ useStatusLine > state change triggers > triggers update when branch changes 1ms
+   ✓ useStatusLine > state change triggers > triggers update when tool calls change 1ms
+   ✓ useStatusLine > state change triggers > triggers update when vim mode is toggled off 1ms
+   ✓ useStatusLine > state change triggers > triggers update when file lines change 1ms
+   ✓ useStatusLine > process management > kills previous process when starting new execution 1ms
+   × useStatusLine > spawn failure handling > does not crash when exec throws synchronously (EBADF) 10ms
+     → expected [Function] to not throw an error but 'Error: spawn EBADF' was thrown
+   × useStatusLine > spawn failure handling > recovers on subsequent state changes after a sync exec failure 5ms
+     → spawn EBADF
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/ui/hooks/useStatusLine.test.ts > useStatusLine > spawn failure handling > does not crash when exec throws synchronously (EBADF)
+AssertionError: expected [Function] to not throw an error but 'Error: spawn EBADF' was thrown
+
+- Expected: 
+undefined
+
++ Received: 
+"Error: spawn EBADF"
+
+ ❯ src/ui/hooks/useStatusLine.test.ts:604:14
+    602|       expect(() => {
+    603|         result = renderHook(() => useStatusLine()).result;
+    604|       }).not.toThrow();
+       |              ^
+    605|       expect(result!.current.text).toBeNull();
+    606|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/ui/hooks/useStatusLine.test.ts > useStatusLine > spawn failure handling > recovers on subsequent state changes after a sync exec failure
+Error: spawn EBADF
+ ❯ src/ui/hooks/useStatusLine.test.ts:612:21
+    610|       // Verifies activeChildRef and generationRef don't get wedged.
+    611|       vi.mocked(child_process.exec).mockImplementationOnce((() => {
+    612|         const err = new Error('spawn EBADF') as NodeJS.ErrnoException;
+       |                     ^
+    613|         err.code = 'EBADF';
+    614|         throw err;
+ ❯ src/ui/hooks/useStatusLine.ts:272:19
+ ❯ src/ui/hooks/useStatusLine.ts:381:5
+ ❯ Object.react_stack_bottom_frame ../../node_modules/react-dom/cjs/react-dom-client.development.js:25989:20
+ ❯ runWithFiberInDEV ../../node_modules/react-dom/cjs/react-dom-client.development.js:874:13
+ ❯ commitHookEffectListMount ../../node_modules/react-dom/cjs/react-dom-client.development.js:13249:29
+ ❯ commitHookPassiveMountEffects ../../node_modules/react-dom/cjs/react-dom-client.development.js:13336:11
+ ❯ commitPassiveMountOnFiber ../../node_modules/react-dom/cjs/react-dom-client.development.js:15484:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 30 passed (32)
+   Start at  22:54:55
+   Duration  5.63s (transform 1.63s, setup 37ms, collect 126ms, tests 3.00s, environment 258ms, prepare 80ms)
+
+JUNIT report written to /w/repo/packages/cli/junit.xml
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /w/repo/packages/cli
+npm error workspace @qwen-code/qwen-code@0.14.5
+npm error location /w/repo/packages/cli
+npm error command failed
+npm error command sh -c vitest run src/ui/hooks/useStatusLine.test.ts

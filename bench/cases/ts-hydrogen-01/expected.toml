@@ -1,0 +1,14 @@
+[[defect]]
+id = "D1"
+severity = "high"
+files = ["packages/hydrogen-react/src/parse-metafield.ts"]
+title = "parseMetafield returns money values with snake_case currency_code although typed as MoneyV2 with currencyCode"
+description = """
+parseMetafield (packages/hydrogen-react/src/parse-metafield.ts) handles the `money`
+metafield type in the generic JSON branch, returning the parsed JSON unchanged. The
+Storefront API encodes money metafield values as `{"amount": "30.0", "currency_code":
+"USD"}`, so parsedValue has `currency_code` at runtime while its TypeScript type is
+MoneyV2, which declares `currencyCode`. Code reading `parsedValue.currencyCode` gets
+undefined (issue #3071). The fix maps currency_code to currencyCode and keeps values
+that already use currencyCode.
+"""

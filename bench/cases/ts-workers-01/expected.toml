@@ -1,0 +1,28 @@
+[[defect]]
+id = "D1"
+severity = "high"
+files = ["packages/miniflare/src/workers/d1/dumpSql.ts"]
+title = "D1 SQL dump does not escape column and table identifiers, failing on reserved words and special characters"
+description = """
+dumpSql (packages/miniflare/src/workers/d1/dumpSql.ts) builds `PRAGMA table_info="<table>"`
+and `SELECT <col1>, <col2> FROM "<table>"` with raw, unescaped column names, and writes
+INSERT statements with sqliteQuote, which only quotes some names. A column named with
+a reserved word (default, group, order) or containing a hyphen (step01-q01) makes the
+SELECT fail, so `wrangler d1 export` aborts or writes `ERROR near "default": syntax
+error` into the output file (issues #5920, #6357, #8377). Identifiers should be
+double-quoted with embedded quotes doubled.
+"""
+
+[[defect]]
+id = "D2"
+severity = "medium"
+files = ["packages/miniflare/src/workers/d1/dumpSql.ts"]
+title = "D1 SQL dump formats cell values by declared column type instead of the value's runtime type"
+description = """
+When formatting row values, dumpSql emits a cell unquoted if the declared column type is
+INTEGER and quotes it as a string if the declared type is TEXT, regardless of the value's
+actual type. SQLite is dynamically typed, so a TEXT value stored in an INTEGER column (or a
+blob in a TEXT column) is written as invalid or wrong SQL, and the dump cannot be imported
+back faithfully. Values should be escaped based on their runtime type (number, string,
+ArrayBuffer, null).
+"""

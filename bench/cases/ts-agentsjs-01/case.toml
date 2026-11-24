@@ -1,0 +1,29 @@
+schema = 1
+id = "ts-agentsjs-01"
+kind = "bug"
+language = "typescript"
+source_repo = "https://github.com/openai/openai-agents-js"
+source_commit = "ed66acffbbdb8440c1ad06a2313384058452e743"
+source_commit_url = "https://github.com/openai/openai-agents-js/commit/ed66acffbbdb8440c1ad06a2313384058452e743"
+source_commit_date = "2025-07-14"
+base_commit = "ed66acffbbdb8440c1ad06a2313384058452e743"
+removed_paths = [".changeset/twelve-poets-mate.md", "packages/agents-core/test/run.stream.test.ts"]
+base_reverts = []
+case_base_tree = "56a66ca081a173cf677e2fd592874d8dd0018d00"
+case_commit_tree = "106bc319317d6e3fca7926e2768cbe09dab72b10"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) 2025 OpenAI
+"""
+agent_files = ["AGENTS.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "openai__openai-agents-js-205"
+
+[repro]
+reproduced = true
+image = "docker.io/library/node:22-bookworm@sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+command = "corepack enable && pnpm install --frozen-lockfile && pnpm build && pnpm vitest run packages/agents-core/test/run.stream.test.ts"
+test_files = ["packages/agents-core/test/run.stream.test.ts"]
+fixed_exit = 0
+reverted_exit = 1

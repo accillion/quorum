@@ -1,0 +1,39 @@
+diff --git a/packages/agents-realtime/src/realtimeSession.ts b/packages/agents-realtime/src/realtimeSession.ts
+index 8455df5..3c4f22e 100644
+--- a/packages/agents-realtime/src/realtimeSession.ts
++++ b/packages/agents-realtime/src/realtimeSession.ts
+@@ -183,7 +183,6 @@ export class RealtimeSession<
+   #shouldIncludeAudioData: boolean;
+   #interruptedByGuardrail: Record<string, boolean> = {};
+   #audioStarted = false;
+-  #lastSessionConfig: Partial<RealtimeSessionConfig> | null = null;
+ 
+   constructor(
+     public readonly initialAgent:
+@@ -314,24 +313,14 @@ export class RealtimeSession<
+       );
+     }
+ 
+-    const base: Partial<RealtimeSessionConfig> = {
+-      ...(this.#lastSessionConfig ?? {}),
+-      ...(this.options.config ?? {}),
+-      ...(additionalConfig ?? {}),
+-    };
+-
+-    const fullConfig: Partial<RealtimeSessionConfig> = {
+-      ...base,
++    return {
+       instructions,
+       voice: this.#currentAgent.voice,
+       model: this.options.model,
+       tools: this.#currentTools,
+       tracing: tracingConfig,
++      ...additionalConfig,
+     };
+-
+-    this.#lastSessionConfig = fullConfig;
+-
+-    return fullConfig;
+   }
+ 
+   async updateAgent(newAgent: RealtimeAgent<TBaseContext>) {

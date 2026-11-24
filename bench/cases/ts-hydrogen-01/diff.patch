@@ -1,0 +1,54 @@
+diff --git a/packages/hydrogen-react/src/parse-metafield.ts b/packages/hydrogen-react/src/parse-metafield.ts
+index 0d475fa..b56070b 100644
+--- a/packages/hydrogen-react/src/parse-metafield.ts
++++ b/packages/hydrogen-react/src/parse-metafield.ts
+@@ -1,6 +1,5 @@
+ import type {
+   Collection,
+-  CurrencyCode,
+   GenericFile,
+   Metafield as MetafieldBaseType,
+   MoneyV2,
+@@ -64,41 +63,8 @@ export function parseMetafield<ReturnGeneric>(
+       } as ReturnGeneric;
+ 
+     // TODO: 'money' should probably be parsed even further to like `useMoney()`, but that logic needs to be extracted first so it's not a hook
+-    case 'money': {
+-      let parsedValue: MoneyV2 | null = null;
+-      try {
+-        const parsed = parseJSON(metafield.value ?? '');
+-        if (parsed && typeof parsed === 'object' && 'currency_code' in parsed) {
+-          const moneyData = parsed as {amount: string; currency_code: string};
+-          parsedValue = {
+-            amount: moneyData.amount,
+-            currencyCode: moneyData.currency_code as CurrencyCode,
+-          };
+-        } else if (
+-          parsed &&
+-          typeof parsed === 'object' &&
+-          'currencyCode' in parsed
+-        ) {
+-          parsedValue = parsed as MoneyV2;
+-        } else {
+-          parsedValue = parsed as MoneyV2 | null;
+-        }
+-      } catch (err) {
+-        const parseError = `parseMetafield(): attempted to JSON.parse the 'metafield.value' property, but failed.`;
+-        if (__HYDROGEN_DEV__) {
+-          throw new Error(parseError);
+-        } else {
+-          console.error(`${parseError} Returning 'null' for 'parsedValue'`);
+-        }
+-        parsedValue = null;
+-      }
+-      return {
+-        ...metafield,
+-        parsedValue,
+-      } as ReturnGeneric;
+-    }
+-
+     case 'dimension':
++    case 'money':
+     case 'json':
+     case 'rating':
+     case 'volume':

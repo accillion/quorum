@@ -1,0 +1,31 @@
+schema = 1
+id = "clean-ts-excalidraw-02"
+kind = "clean"
+language = "typescript"
+source_repo = "https://github.com/excalidraw/excalidraw"
+source_commit = "cde46793f8db57187616b9c869027c41dfdc9862"
+source_commit_url = "https://github.com/excalidraw/excalidraw/commit/cde46793f8db57187616b9c869027c41dfdc9862"
+source_commit_date = "2025-07-13"
+base_commit = "2d127f8c225b274768e3908c40c779a69767f9ab"
+removed_paths = []
+base_reverts = []
+case_base_tree = "0790c04451c8fb90f161c69859b3babb1f937961"
+case_commit_tree = "7f2ee8f6401be1c59e6bbc465fe8ca9294c61c14"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) 2020 Excalidraw
+"""
+agent_files = ["CLAUDE.md"]
+dataset = "hand-picked"
+dataset_instance = ""
+
+[clean]
+head_checked = "9c2e462ec23e54c4cf0493328840d6a27191c674"
+head_checked_date = "2026-11-21"
+retained_share = 0.906
+later_commits = [
+  "46ddd60948b82f804c36b7c6325b6144187185cf feat(editor): support embedding google drive videos (#10788)",
+  "974f054bafad6787e7eb1c781e12df4b93372405 fix(editor): embed YouTube live links (#12178)",
+]
+verdict = "no later fix, revert or substantial rewrite: 46ddd609 renamed parseYouTubeTimestamp to parseYouTubeLikeTimestamp to reuse it for Google Drive, and 974f054b added a live/ path to RE_YOUTUBE (a URL form neither version handled); neither changed the timestamp parsing the commit added"

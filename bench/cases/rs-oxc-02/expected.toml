@@ -1,0 +1,16 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["crates/oxc_formatter/src/print/mod.rs"]
+title = "Dangling comments in an empty TS enum body are printed inline, so a line comment swallows the closing brace"
+description = """
+For an empty `TSEnumBody`, the formatter writes the dangling comments inside a
+`group` followed by a `soft_line_break`, instead of formatting them with block
+indent as it already does for empty objects, functions and interfaces. When the
+group fits on one line the comment is printed right after `{`. For an
+`enum Baz { ... }` whose body is only a `// Enum comment` line (issue #21145),
+oxfmt outputs
+`enum Baz {// Enum comment, this will break after formatting}`: the line comment
+now swallows the closing brace, so the formatted file no longer parses and
+differs from Prettier, which keeps the comment on its own indented line.
+"""

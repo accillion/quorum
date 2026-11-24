@@ -1,0 +1,190 @@
+
+ RUN  v3.2.4 /w/repo
+
+ ❯ tests/fixtures.test.ts (147 tests | 1 failed) 2937ms
+   ✓ Fixtures Tests > should have fixtures to test 1ms
+   ✓ Fixtures Tests > should process fixture: 'author-contact-block' 54ms
+   ✓ Fixtures Tests > should process fixture: 'author-share-widget' 12ms
+   ✓ Fixtures Tests > should process fixture: 'callouts--obsidian-publish-callouts' 48ms
+   ✓ Fixtures Tests > should process fixture: 'code-blocks--chroma-linenums' 24ms
+   ✓ Fixtures Tests > should process fixture: 'code-blocks--hexo-br' 22ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--chatgpt-codemirror' 30ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--chroma-inline-linenums' 23ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--chroma-line-spans' 17ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--code-pre-nesting' 10ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--flex-row-gutter' 15ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--mintlify' 22ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--pygments-lineno' 20ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--react-syntax-highlighter-…' 19ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--rehype-pretty-code' 10ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--rehype-pretty-copy' 9ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--rockthejvm.com-articles-k…' 13ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--rouge-linenums' 27ms
+   ✓ Fixtures Tests > should process fixture: 'codeblocks--stripe' 50ms
+   ✓ Fixtures Tests > should process fixture: 'comments--news.ycombinator.com-item-i…' 8ms
+   ✓ Fixtures Tests > should process fixture: 'comments--old.reddit.com-r-test-comme…' 7ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--card-grid-stripped-…' 14ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--code-block-boilerpl…' 14ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--heading-introduced-…' 8ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--iso-date-and-read-t…' 10ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--leading-breadcrumb' 4ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--live-blog-metadata' 8ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--social-counter-link' 7ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--social-engagement-c…' 6ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--socket-dev-blog' 14ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--trailing-related-po…' 6ms
+   ✓ Fixtures Tests > should process fixture: 'content-patterns--trailing-subscribe-…' 7ms
+   ✓ Fixtures Tests > should process fixture: 'custom-elements--swiper-carousel' 15ms
+   ✓ Fixtures Tests > should process fixture: 'elements--base64-placeholder-removal' 12ms
+   ✓ Fixtures Tests > should process fixture: 'elements--bootstrap-alerts' 18ms
+   ✓ Fixtures Tests > should process fixture: 'elements--complex-tables' 23ms
+   ✓ Fixtures Tests > should process fixture: 'elements--data-table' 11ms
+   ✓ Fixtures Tests > should process fixture: 'elements--embedded-videos' 12ms
+   ✓ Fixtures Tests > should process fixture: 'elements--empty-p-br' 10ms
+   × Fixtures Tests > should process fixture: 'elements--empty-table' 13ms
+     → expected '```json\n{\n  "title": "Empty table t…' to deeply equal '```json\n{\n  "title": "Empty table t…'
+   ✓ Fixtures Tests > should process fixture: 'elements--farsi-zwnj' 6ms
+   ✓ Fixtures Tests > should process fixture: 'elements--figure-content-wrapper' 13ms
+   ✓ Fixtures Tests > should process fixture: 'elements--hugo-admonitions' 20ms
+   ✓ Fixtures Tests > should process fixture: 'elements--image-dedup' 8ms
+   ✓ Fixtures Tests > should process fixture: 'elements--javascript-links' 5ms
+   ✓ Fixtures Tests > should process fixture: 'elements--lazy-image' 25ms
+   ✓ Fixtures Tests > should process fixture: 'elements--nbsp-handling' 6ms
+   ✓ Fixtures Tests > should process fixture: 'elements--srcset-normalization' 5ms
+   ✓ Fixtures Tests > should process fixture: 'elements--whitespace-newlines' 5ms
+   ✓ Fixtures Tests > should process fixture: 'extractor--bbcode-data' 3ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--aside-ol-start' 11ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--child-anchor-id' 14ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--google-docs-ftnt' 7ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--heading-notes' 12ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--hidden-section' 13ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--hr-continuation' 7ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--hr-strong-numbered' 13ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--hr-sup-numbered' 10ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--inline-footnote-span' 10ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--maggieappleton.com-xanadu-…' 97ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--named-anchor' 13ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--nested-prose' 12ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--no-false-positive-equation…' 4ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--numeric-anchor-id' 9ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--p-class-footnote' 5ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--sidenote-inline-with-list' 5ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--word-ftn-ftnref' 11ms
+   ✓ Fixtures Tests > should process fixture: 'footnotes--wp-block-footnotes' 6ms
+   ✓ Fixtures Tests > should process fixture: 'general--12gramsofcarbon.com-p-ilyas-…' 57ms
+   ✓ Fixtures Tests > should process fixture: 'general--apnews-link-enhancement' 4ms
+   ✓ Fixtures Tests > should process fixture: 'general--appendix-heading' 4ms
+   ✓ Fixtures Tests > should process fixture: 'general--back-nav-link' 3ms
+   ✓ Fixtures Tests > should process fixture: 'general--cp4space-jordan-algebra' 43ms
+   ✓ Fixtures Tests > should process fixture: 'general--daringfireball.net-2025-02-t…' 28ms
+   ✓ Fixtures Tests > should process fixture: 'general--developer.mozilla.org-en-US-…' 9ms
+   ✓ Fixtures Tests > should process fixture: 'general--github.com-issue-56' 80ms
+   ✓ Fixtures Tests > should process fixture: 'general--github.com-test-owner-test-r…' 7ms
+   ✓ Fixtures Tests > should process fixture: 'general--inline-comments-and-link-lis…' 7ms
+   ✓ Fixtures Tests > should process fixture: 'general--lesswrong.com-s-N7nDePaNabJd…' 194ms
+   ✓ Fixtures Tests > should process fixture: 'general--multi-article-portfolio' 5ms
+   ✓ Fixtures Tests > should process fixture: 'general--news.ycombinator.com-item-id…' 2ms
+   ✓ Fixtures Tests > should process fixture: 'general--obsidian-publish-cjk' 13ms
+   ✓ Fixtures Tests > should process fixture: 'general--obsidian.md-blog-verify-obsi…' 20ms
+   ✓ Fixtures Tests > should process fixture: 'general--react-streaming-ssr' 3ms
+   ✓ Fixtures Tests > should process fixture: 'general--scp-wiki.wikidot.com-scp-9935' 11ms
+   ✓ Fixtures Tests > should process fixture: 'general--stephango.com-buy-wisely' 20ms
+   ✓ Fixtures Tests > should process fixture: 'general--substack-app' 141ms
+   ✓ Fixtures Tests > should process fixture: 'general--substack-custom-domain' 9ms
+   ✓ Fixtures Tests > should process fixture: 'general--substack-note-permalink' 2ms
+   ✓ Fixtures Tests > should process fixture: 'general--substack-note' 2ms
+   ✓ Fixtures Tests > should process fixture: 'general--svg-content-preservation' 9ms
+   ✓ Fixtures Tests > should process fixture: 'general--svg-external-css-fallback' 13ms
+   ✓ Fixtures Tests > should process fixture: 'general--tailwind-hidden-blog-index' 11ms
+   ✓ Fixtures Tests > should process fixture: 'general--trailing-cta-newsletter' 3ms
+   ✓ Fixtures Tests > should process fixture: 'general--wikipedia' 40ms
+   ✓ Fixtures Tests > should process fixture: 'general--www.figma.com-blog-introduci…' 30ms
+   ✓ Fixtures Tests > should process fixture: 'general--x.com-article-2026-02-13' 33ms
+   ✓ Fixtures Tests > should process fixture: 'general--x.com-article' 2ms
+   ✓ Fixtures Tests > should process fixture: 'headings--permalink-title-match' 3ms
+   ✓ Fixtures Tests > should process fixture: 'hidden--nodes' 2ms
+   ✓ Fixtures Tests > should process fixture: 'hidden--visibility' 3ms
+   ✓ Fixtures Tests > should process fixture: 'issues--106-menu-id' 6ms
+   ✓ Fixtures Tests > should process fixture: 'issues--114-leading-hr' 3ms
+   ✓ Fixtures Tests > should process fixture: 'issues--120-dhammatalks-footnotes' 22ms
+   ✓ Fixtures Tests > should process fixture: 'issues--131-category-links' 5ms
+   ✓ Fixtures Tests > should process fixture: 'issues--132-hero-class' 4ms
+   ✓ Fixtures Tests > should process fixture: 'issues--136-time-element' 3ms
+   ✓ Fixtures Tests > should process fixture: 'issues--141-arxiv-equation-tables' 16ms
+   ✓ Fixtures Tests > should process fixture: 'issues--142-arxiv-multi-citations' 14ms
+   ✓ Fixtures Tests > should process fixture: 'issues--143-arxiv-cross-references' 20ms
+   ✓ Fixtures Tests > should process fixture: 'issues--144-arxiv-footnote-marks' 36ms
+   ✓ Fixtures Tests > should process fixture: 'issues--159-lean-heading-permalink-em…' 23ms
+   ✓ Fixtures Tests > should process fixture: 'issues--159-lean-verso-code-blocks' 17ms
+   ✓ Fixtures Tests > should process fixture: 'issues--159-lean-verso-empty-line-pre…' 29ms
+   ✓ Fixtures Tests > should process fixture: 'issues--159-lean-verso-grouped-blocks' 24ms
+   ✓ Fixtures Tests > should process fixture: 'issues--159-lean-verso-missing-sectio…' 23ms
+   ✓ Fixtures Tests > should process fixture: 'issues--161-x-status-url-author' 4ms
+   ✓ Fixtures Tests > should process fixture: 'issues--162-aria-hidden-main-content' 19ms
+   ✓ Fixtures Tests > should process fixture: 'issues--167-partial-selector-inside-c…' 15ms
+   ✓ Fixtures Tests > should process fixture: 'issues--168-links-inside-inline-code' 9ms
+   ✓ Fixtures Tests > should process fixture: 'issues--169-svg-classname-crash' 8ms
+   ✓ Fixtures Tests > should process fixture: 'issues--196-og-title-brand-name' 9ms
+   ✓ Fixtures Tests > should process fixture: 'issues--217-writerside-docs' 34ms
+   ✓ Fixtures Tests > should process fixture: 'issues--218-footnote-wrapper-text-lost' 17ms
+   ✓ Fixtures Tests > should process fixture: 'issues--221-nextjs-noscript-images' 23ms
+   ✓ Fixtures Tests > should process fixture: 'issues--227-noscript-lazy-images' 56ms
+   ✓ Fixtures Tests > should process fixture: 'issues--header-with-subtitle-p' 13ms
+   ✓ Fixtures Tests > should process fixture: 'issues--header-wraps-content' 7ms
+   ✓ Fixtures Tests > should process fixture: 'issues--span-with-block-children-and-…' 19ms
+   ✓ Fixtures Tests > should process fixture: 'math--katex-centraliser' 165ms
+   ✓ Fixtures Tests > should process fixture: 'math--katex' 36ms
+   ✓ Fixtures Tests > should process fixture: 'math--mathjax-svg' 25ms
+   ✓ Fixtures Tests > should process fixture: 'math--mathjax-tex-scripts' 17ms
+   ✓ Fixtures Tests > should process fixture: 'math--mathjax' 188ms
+   ✓ Fixtures Tests > should process fixture: 'math--raw-latex' 8ms
+   ✓ Fixtures Tests > should process fixture: 'math--temml' 29ms
+   ✓ Fixtures Tests > should process fixture: 'math--wikipedia-mathml' 25ms
+   ✓ Fixtures Tests > should process fixture: 'metadata--author-by-prefix-and-url' 6ms
+   ✓ Fixtures Tests > should process fixture: 'metadata--date-adjacent-category-link' 7ms
+   ✓ Fixtures Tests > should process fixture: 'metadata--h1-sibling-byline' 7ms
+   ✓ Fixtures Tests > should process fixture: 'scoring--related-posts-byline' 19ms
+   ✓ Fixtures Tests > should process fixture: 'scoring--table-with-links' 23ms
+   ✓ Fixtures Tests > should process fixture: 'selectors--arm-newsroom' 24ms
+   ✓ Fixtures Tests > should process fixture: 'small-images--svg-icon-viewbox' 6ms
+   ✓ Fixtures Tests > should process fixture: 'table-layout--blogger-two-column' 9ms
+   ✓ Fixtures Tests > should process fixture: 'table-layout--paulgraham.com-makerssc…' 21ms
+   ✓ Fixtures Tests > should process fixture: 'table-layout--single-column' 14ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/fixtures.test.ts > Fixtures Tests > should process fixture: 'elements--empty-table'
+AssertionError: expected '```json\n{\n  "title": "Empty table t…' to deeply equal '```json\n{\n  "title": "Empty table t…'
+
+- Expected
++ Received
+
+@@ -5,8 +5,11 @@
+    "site": "",
+    "published": ""
+  }
+  ```
+
++ |  |  |  |
++ | --- | --- | --- |
++
+  ## Article Title
+
+  This is the article content. It has enough words to be considered real content by the scoring algorithm. The quick brown fox jumps over the lazy dog. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+
+ ❯ tests/fixtures.test.ts:114:29
+    112| 
+    113|     if (expected) {
+    114|       expect(result.trim()).toEqual(expected.trim());
+       |                             ^
+    115|     }
+    116| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 146 passed (147)
+   Start at  22:52:20
+   Duration  3.77s (transform 313ms, setup 0ms, collect 510ms, tests 2.94s, environment 0ms, prepare 67ms)
+

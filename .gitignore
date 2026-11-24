@@ -5,6 +5,8 @@ Cargo.lock
 
 # Local CC prompts
 prompts/
+# ...but not the benchmark's frozen model prompts (bench/DESIGN.md).
+!bench/prompts/
 
 # Local Quorum state
 # Reviews are per-machine artifacts and should not be committed.
@@ -30,5 +32,12 @@ Thumbs.db
 # Local dev credentials, never commit
 .env
 
-# CarryForward / cross-project spec drops (not Quorum content)
-packages/
+# Benchmark harness (v0.6 Stage 1, AC 247): materialized repos, raw run
+# outputs and vendor keys stay local.
+bench/.cache/
+bench/runs/
+bench/.env.local
+
+# CarryForward / cross-project spec drops (not Quorum content). Anchored
+# to the root so that benchmark cases' `packages/...` paths are tracked.
+/packages/

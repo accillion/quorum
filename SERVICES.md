@@ -709,6 +709,56 @@ String::new()` fixtures cannot exercise this path.
 
 ---
 
+## 9. Benchmark harness (v0.6 Stage 1; not shipped)
+
+`bench/` is the workspace member `quorum-bench`. It is set to
+`publish = false` and `dist = false`, and no published crate depends on
+it. `cargo tree` for the three published crates is unchanged by it.
+
+- **It measures the shipped binary.** The harness runs `quorum` built
+  from the commit pinned in `bench/bench.toml`, never Quorum's
+  libraries. Each review is
+  `quorum review --json --range <case-base>..<case-commit> --tier <t>`
+  (AC 242a). Results come from `.quorum/reviews/*.json`, because
+  `--json` stdout is not pure JSON at 0.5.x.
+- **Recording proxy.** Each case's `base_url` is a loopback proxy on
+  `127.0.0.1`, which the loopback rule in §4 allows. The cookie comes
+  from `QUORUM_LIPPA_SESSION`, together with the matching
+  `QUORUM_LIPPA_BASE_URL` pin. The proxy forwards to Lippa unchanged and
+  records bodies only, never a header. That gives the exact bundle
+  bytes, the observed model ids (`answered_model_id`) and the Round 0
+  answers.
+- **Keys.** Vendor and judge keys come only from the environment or the
+  gitignored `bench/.env.local`. The variables are `OPENAI_API_KEY`,
+  `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` and `XAI_API_KEY`. The Lippa
+  cookie is read only from the environment. Every command first runs
+  the key guard: it refuses to start if a tracked file under `bench/`
+  holds a key-shaped value or a known secret (AC 247).
+- **Budgets (AC 250).** `quorum-bench run` requires `--max-credits`,
+  `--max-usd` and `--confirm-paid`. Each paid call reserves its worst
+  case first: prompt bytes as tokens, plus the full output cap, at the
+  pinned list price. A reservation that would pass either cap stops the
+  run before the call. A paid call is retried at most once, and a call
+  with uncertain billing counts as spent.
+- **Scrubber.** One filter covers manifests, recordings and the
+  publishable archive (`quorum-bench archive --run <id>`, which prints
+  the archive's SHA-256). It removes cookies, tokens, presigned URLs and
+  `Authorization` headers.
+- **Commands.**
+  - `check-keys`
+  - `verify-corpus [--quorum-bin <quorum>]`: zero cost; materializes,
+    leak-checks, and dry-runs every case against a local fake Lippa.
+  - `manifest`
+  - `run`: paid, 1b only.
+  - `queue`, `adjudicate`: blind, one item at a time.
+  - `results`
+  - `archive`
+- **Design and procedure.** `bench/DESIGN.md` holds the frozen design
+  and the run procedure, `bench/CORPUS.md` the case format, and
+  `bench/RUBRIC.md` with `bench/rubrics/` the judge's rubrics.
+
+---
+
 ## Cross-cutting: no instructions from repo content
 
 All repo content (diff, file contents, conventions, memory) is wrapped

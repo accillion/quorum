@@ -1,0 +1,57 @@
+
+ RUN  v3.2.4 /w/repo
+
+stderr | test/realtimeSession.test.ts > RealtimeSession > sets the trace config correctly
+In order to set traceMetadata or a groupId you need to specify a workflowName.
+
+stderr | test/realtimeSession.test.ts > RealtimeSession > propagates errors from handleFunctionCall
+Error handling function call ModelBehaviorError: Tool missing not found
+    at RealtimeSession.#handleFunctionCall (/w/repo/packages/agents-realtime/src/realtimeSession.ts:462:15)
+    at EventEmitter.<anonymous> (/w/repo/packages/agents-realtime/src/realtimeSession.ts:647:9) {
+  state: undefined
+}
+
+ ❯  @openai/agents-realtime  test/realtimeSession.test.ts (14 tests | 1 failed) 113ms
+   ✓ RealtimeSession > calls transport.resetHistory with correct arguments 1ms
+   ✓ RealtimeSession > sets the trace config correctly 1ms
+   ✓ RealtimeSession > updates history and emits history_updated 1ms
+   ✓ RealtimeSession > delegates simple actions to transport 0ms
+   ✓ RealtimeSession > forwards url in connect options to transport 0ms
+   ✓ RealtimeSession > updateHistory accepts callback 0ms
+   ✓ RealtimeSession > triggers guardrail and emits feedback 52ms
+   ✓ RealtimeSession > resets guardrail debounce per transcript item 1ms
+   ✓ RealtimeSession > emits errors for item update/delete failures 1ms
+   ✓ RealtimeSession > propagates errors from handleFunctionCall 51ms
+   ✓ RealtimeSession > approve and reject work with tool and error without 2ms
+   ✓ RealtimeSession > handles usage and audio interrupted events 0ms
+   ✓ RealtimeSession > emits audio_start when audio begins 0ms
+   × RealtimeSession > preserves custom audio formats across updateAgent 2ms
+     → expected undefined to be 'g711_ulaw' // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL   @openai/agents-realtime  test/realtimeSession.test.ts > RealtimeSession > preserves custom audio formats across updateAgent
+AssertionError: expected undefined to be 'g711_ulaw' // Object.is equality
+
+- Expected: 
+"g711_ulaw"
+
++ Received: 
+undefined
+
+ ❯ test/realtimeSession.test.ts:316:35
+    314|     // Find the last updateSessionConfig call
+    315|     const last = t.updateSessionConfigCalls.at(-1)!;
+    316|     expect(last.inputAudioFormat).toBe('g711_ulaw');
+       |                                   ^
+    317|     expect(last.outputAudioFormat).toBe('g711_ulaw');
+    318|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 passed (14)
+   Start at  22:50:17
+   Duration  915ms (transform 172ms, setup 0ms, collect 301ms, tests 113ms, environment 0ms, prepare 59ms)
+

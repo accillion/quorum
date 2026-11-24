@@ -1,0 +1,44 @@
+== CASE COMMIT tree + repro/files
+   Compiling pacquet-resolving-npm-resolver v0.0.1 (/work/src/pnpm/crates/resolving-npm-resolver)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.07s
+     Running unittests src/lib.rs (/work/target/debug/deps/pacquet_resolving_npm_resolver-129bf91f0e8c108a)
+
+running 12 tests
+test fetch_full_metadata_cached::tests::stale_cache_refreshes_mirror_on_200 ... ok
+test fetch_full_metadata_cached::tests::body_read_failure_retries_and_writes_mirror ... ok
+test fetch_full_metadata_cached::tests::a_full_doc_served_for_an_abbreviated_request_is_normalized_before_caching ... ok
+test fetch_full_metadata_cached::tests::filtered_full_cache_writes_filtered_mirror_on_200 ... ok
+test fetch_full_metadata_cached::tests::no_cache_dir_skips_mirror_io ... ok
+test fetch_full_metadata_cached::tests::unsolicited_304_retries_without_cache ... FAILED
+test fetch_full_metadata_cached::tests::read_only_cache_dir_does_not_fail_the_call ... ok
+test fetch_full_metadata_cached::tests::cold_cache_writes_mirror_on_200 ... ok
+test fetch_full_metadata_cached::tests::a_doc_served_with_the_abbreviated_content_type_is_cached_verbatim ... ok
+test fetch_full_metadata_cached::tests::repeated_unsolicited_304_reports_missing_cache ... FAILED
+test fetch_full_metadata_cached::tests::a_304_renews_the_mirror_mtime ... ok
+test fetch_full_metadata_cached::tests::warm_cache_serves_from_mirror_on_304 ... ok
+
+failures:
+
+---- fetch_full_metadata_cached::tests::unsolicited_304_retries_without_cache stdout ----
+
+thread 'fetch_full_metadata_cached::tests::unsolicited_304_retries_without_cache' (5766) panicked at pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata_cached/tests.rs:135:63:
+retry returns metadata: CacheMissingAfter304 { pkg_name: "acme" }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- fetch_full_metadata_cached::tests::repeated_unsolicited_304_reports_missing_cache stdout ----
+[pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata_cached/tests.rs:174:5] &error = CacheMissingAfter304 {
+    pkg_name: "acme",
+}
+
+thread 'fetch_full_metadata_cached::tests::repeated_unsolicited_304_reports_missing_cache' (5764) panicked at pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata_cached/tests.rs:175:5:
+assertion failed: matches!(error, FetchMetadataError::NotModifiedWithoutCache { ref pkg_name }
+    if pkg_name == "acme")
+
+
+failures:
+    fetch_full_metadata_cached::tests::repeated_unsolicited_304_reports_missing_cache
+    fetch_full_metadata_cached::tests::unsolicited_304_retries_without_cache
+
+test result: FAILED. 10 passed; 2 failed; 0 ignored; 0 measured; 274 filtered out; finished in 0.09s
+
+error: test failed, to rerun pass `-p pacquet-resolving-npm-resolver --lib`

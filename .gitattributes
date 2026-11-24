@@ -1,0 +1,10 @@
+# Benchmark data and frozen design files must stay byte-exact: a patch, a
+# pinned tree hash or a frozen file's SHA-256 (bench/DESIGN.md) breaks if a
+# Windows checkout rewrites line endings, and the prompt templates refuse CR.
+bench/cases/** -text
+bench/MANIFEST.toml -text
+bench/bench.toml -text
+bench/prices.toml -text
+bench/RUBRIC.md -text
+bench/rubrics/** -text
+bench/prompts/** -text

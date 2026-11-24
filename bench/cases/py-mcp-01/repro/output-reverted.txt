@@ -1,0 +1,200 @@
+tests/shared/test_uri_template.py::test_match[logs://{service}{?level}-logs://api?level=error#section1-expected30] PASSED [ 71%]
+tests/shared/test_uri_template.py::test_match[search{?q}-search#frag-expected31] PASSED [ 71%]
+tests/shared/test_uri_template.py::test_match[api{?v}{&page,limit}-api?limit=10&v=2-expected32] PASSED [ 72%]
+tests/shared/test_uri_template.py::test_match[api{&page}-api&page=2-expected33] PASSED [ 72%]
+tests/shared/test_uri_template.py::test_match[api?x{?page}-api?x?page=2-expected34] PASSED [ 72%]
+tests/shared/test_uri_template.py::test_match[page{#section}{?q}-page#intro?q=x-expected35] PASSED [ 73%]
+tests/shared/test_uri_template.py::test_match[page#lit{?q}-page#lit?q=x-expected36] PASSED [ 73%]
+tests/shared/test_uri_template.py::test_match[search{?q}-search?&q=hello&-expected37] PASSED [ 73%]
+tests/shared/test_uri_template.py::test_match[search{?q}-search?q=first&q=second-expected38] PASSED [ 73%]
+tests/shared/test_uri_template.py::test_match[api://x{?token}-api://x?%74oken=evil&token=real-expected39] PASSED [ 74%]
+tests/shared/test_uri_template.py::test_match[api://x{?token}-api://x?%74oken=evil-expected40] PASSED [ 74%]
+tests/shared/test_uri_template.py::test_match[?a=1{&b}-?a=1&b=2-expected41] PASSED [ 74%]
+tests/shared/test_uri_template.py::test_match[/files{/path*}-/files/a/b/c-expected42] PASSED [ 75%]
+tests/shared/test_uri_template.py::test_match[/files{/path*}-/files-expected43] PASSED [ 75%]
+tests/shared/test_uri_template.py::test_match[/files{/path*}/edit-/files/a/b/edit-expected44] PASSED [ 75%]
+tests/shared/test_uri_template.py::test_match[host{.labels*}-host.example.com-expected45] PASSED [ 76%]
+tests/shared/test_uri_template.py::test_match[///{a}////{b}////-///x////y////-expected46] PASSED [ 76%]
+tests/shared/test_uri_template.py::test_match_no_match[file://docs/{name}-file://other/readme.txt] PASSED [ 76%]
+tests/shared/test_uri_template.py::test_match_no_match[{a}/{b}-foo] PASSED [ 76%]
+tests/shared/test_uri_template.py::test_match_no_match[file{.ext}-file] PASSED [ 77%]
+tests/shared/test_uri_template.py::test_match_no_match[static-different] PASSED [ 77%]
+tests/shared/test_uri_template.py::test_match_no_match[/users/{id}-/users/123/extra] PASSED [ 77%]
+tests/shared/test_uri_template.py::test_match_no_match[/users/{id}/posts/{pid}-/users/1/posts/2/extra] PASSED [ 78%]
+tests/shared/test_uri_template.py::test_match_no_match[///{a}////{b}////-//x////y////] PASSED [ 78%]
+tests/shared/test_uri_template.py::test_match_no_match[item{;id}-item;identity=john] PASSED [ 78%]
+tests/shared/test_uri_template.py::test_match_no_match[item{;id}-item;ident] PASSED [ 78%]
+tests/shared/test_uri_template.py::test_match_no_match[item{;keys*}-item;admin=true] PASSED [ 79%]
+tests/shared/test_uri_template.py::test_match_no_match[item{;keys*}-item;keys=a;admin=true] PASSED [ 79%]
+tests/shared/test_uri_template.py::test_match_no_match[api/{name}{?q}-wrong/path?q=x] PASSED [ 79%]
+tests/shared/test_uri_template.py::test_match_no_match[item{;keys*}{?q}-item;wrong=x?q=1] PASSED [ 80%]
+tests/shared/test_uri_template.py::test_match_explode_preserves_empty_list_items PASSED [ 80%]
+tests/shared/test_uri_template.py::test_match_adjacent_vars_disambiguated_by_literal PASSED [ 80%]
+tests/shared/test_uri_template.py::test_match_leading_literal_appears_in_value[prefix-{id}-variables0] PASSED [ 81%]
+tests/shared/test_uri_template.py::test_match_leading_literal_appears_in_value[u{s}-variables1] PASSED [ 81%]
+tests/shared/test_uri_template.py::test_match_leading_literal_appears_in_value[_{x}-variables2] PASSED [ 81%]
+tests/shared/test_uri_template.py::test_match_leading_literal_appears_in_value[~{v}~-variables3] PASSED [ 81%]
+tests/shared/test_uri_template.py::test_match_leading_literal_appears_in_value[L{a}L{b}-variables4] PASSED [ 82%]
+tests/shared/test_uri_template.py::test_match_leading_literal_appears_in_value[api/{name}-variables5] PASSED [ 82%]
+tests/shared/test_uri_template.py::test_match_no_backtracking_on_pathological_input[{a}-{+b}x---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------] PASSED [ 82%]
+tests/shared/test_uri_template.py::test_match_no_backtracking_on_pathological_input[{a}L{b}L{c}L{d}M-LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL] PASSED [ 83%]
+tests/shared/test_uri_template.py::test_match_greedy_rejection_paths[file://{+path}-http://x] PASSED [ 83%]
+tests/shared/test_uri_template.py::test_match_greedy_rejection_paths[file://{+path}.txt-file://x] PASSED [ 83%]
+tests/shared/test_uri_template.py::test_match_greedy_rejection_paths[{a}@{+path}-no-at-sign-here] PASSED [ 84%]
+tests/shared/test_uri_template.py::test_match_greedy_rejection_paths[foo{+a}oob-fooob] PASSED [ 84%]
+tests/shared/test_uri_template.py::test_match_greedy_rejection_paths[api://{+path}-api://foo?bar] PASSED [ 84%]
+tests/shared/test_uri_template.py::test_match_greedy_rejection_paths[X{/path*}-Xnoslash] PASSED [ 84%]
+tests/shared/test_uri_template.py::test_match_greedy_rejection_paths[X{/path*}-X/a?b] PASSED [ 85%]
+tests/shared/test_uri_template.py::test_match_greedy_rejection_paths[api{;key}suffix/{+p}-api;keyZ/x] PASSED [ 85%]
+tests/shared/test_uri_template.py::test_match_greedy_rejection_paths[api://{+path}/{id}-api://foo] PASSED [ 85%]
+tests/shared/test_uri_template.py::test_match_greedy_rejection_paths[docs/{+path}/v/{name}-docs/v/x] PASSED [ 86%]
+tests/shared/test_uri_template.py::test_match_prefix_scan_edge_cases[api{;key}=base/{+path}-api;key=base/a/b-expected0] PASSED [ 86%]
+tests/shared/test_uri_template.py::test_match_prefix_scan_edge_cases[api{;key}=base/{+path}-api;key=v=base/x-expected1] PASSED [ 86%]
+tests/shared/test_uri_template.py::test_match_suffix_ifemp_equals_in_value[item{;id}-item;id=a=b-expected0] PASSED [ 86%]
+tests/shared/test_uri_template.py::test_match_suffix_ifemp_equals_in_value[{;a}{;b}-;a=x=y;b=z-expected1] PASSED [ 87%]
+tests/shared/test_uri_template.py::test_match_prefix_ifemp_empty_before_non_stop_literal PASSED [ 87%]
+tests/shared/test_uri_template.py::test_match_large_uri_against_greedy_template PASSED [ 87%]
+tests/shared/test_uri_template.py::test_match_decodes_percent_encoding PASSED [ 88%]
+tests/shared/test_uri_template.py::test_match_escapes_template_literals PASSED [ 88%]
+tests/shared/test_uri_template.py::test_match_encoded_delimiters_roundtrip[file://docs/{name}-file://docs/a%2Fb-expected0] PASSED [ 88%]
+tests/shared/test_uri_template.py::test_match_encoded_delimiters_roundtrip[{var}-a%3Fb-expected1] PASSED [ 89%]
+tests/shared/test_uri_template.py::test_match_encoded_delimiters_roundtrip[{var}-a%23b-expected2] PASSED [ 89%]
+tests/shared/test_uri_template.py::test_match_encoded_delimiters_roundtrip[{var}-a%26b-expected3] PASSED [ 89%]
+tests/shared/test_uri_template.py::test_match_encoded_delimiters_roundtrip[file{.ext}-file.a%2Eb-expected4] PASSED [ 89%]
+tests/shared/test_uri_template.py::test_match_encoded_delimiters_roundtrip[api{/v}-api/a%2Fb-expected5] PASSED [ 90%]
+tests/shared/test_uri_template.py::test_match_encoded_delimiters_roundtrip[search{?q}-search?q=a%26b-expected6] PASSED [ 90%]
+tests/shared/test_uri_template.py::test_match_encoded_delimiters_roundtrip[{;filter}-;filter=a%3Bb-expected7] PASSED [ 90%]
+tests/shared/test_uri_template.py::test_match_reserved_expansion_handles_slash PASSED [ 91%]
+tests/shared/test_uri_template.py::test_match_double_encoding_decoded_once PASSED [ 91%]
+tests/shared/test_uri_template.py::test_match_rejects_oversized_uri PASSED [ 91%]
+tests/shared/test_uri_template.py::test_match_accepts_uri_within_custom_limit PASSED [ 92%]
+tests/shared/test_uri_template.py::test_match_default_uri_length_limit PASSED [ 92%]
+tests/shared/test_uri_template.py::test_match_explode_encoded_separator_in_segment PASSED [ 92%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[{var}-variables0] PASSED [ 92%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[file://docs/{name}-variables1] PASSED [ 93%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[file://docs/{+path}-variables2] PASSED [ 93%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[search{?q,lang}-variables3] PASSED [ 93%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[file{.ext}-variables4] PASSED [ 94%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[/files{/path*}-variables5] PASSED [ 94%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[{var}-variables6] PASSED [ 94%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[item{;id}-variables7] PASSED [ 94%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[item{;id}-variables8] PASSED [ 95%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[page{#section}-variables9] PASSED [ 95%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[file{.ext}-variables10] PASSED [ 95%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[api{/v}-variables11] PASSED [ 96%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[x{name}y-variables12] PASSED [ 96%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[item{;keys*}-variables13] PASSED [ 96%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[item{;keys*}-variables14] PASSED [ 97%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[{/path*}-variables15] PASSED [ 97%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[{/path*}-variables16] PASSED [ 97%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[host{.labels*}-variables17] PASSED [ 97%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[logs://{service}{?since,level}-variables18] PASSED [ 98%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[logs://{service}{?since,level}-variables19] PASSED [ 98%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[logs://{service}{?since,level}-variables20] PASSED [ 98%]
+tests/shared/test_uri_template.py::test_roundtrip_expand_then_match[api{;key}=base/{+path}-variables21] PASSED [ 99%]
+tests/shared/test_uri_template.py::test_match_simple_var_accepts_empty PASSED [ 99%]
+tests/shared/test_uri_template.py::test_match_inverts_expand_for_every_parseable_template PASSED [ 99%]
+tests/shared/test_uri_template.py::test_match_never_raises PASSED        [100%]
+
+=================================== FAILURES ===================================
+__ test_validate_tool_name_rejects_invalid_characters[with_trailing_newline] ___
+
+tool_name = 'valid_name\n', expected_char = "'\\n'"
+
+    @pytest.mark.parametrize(
+        "tool_name,expected_char",
+        [
+            ("get user profile", "' '"),
+            ("get,user,profile", "','"),
+            ("user/profile/update", "'/'"),
+            ("user@domain.com", "'@'"),
+            # a single trailing newline slipped past `$` with re.match
+            ("valid_name\n", "'\\n'"),
+            ("a" * 127 + "\n", "'\\n'"),
+        ],
+        ids=[
+            "with_spaces",
+            "with_commas",
+            "with_slashes",
+            "with_at_symbol",
+            "with_trailing_newline",
+            "max_length_with_trailing_newline",
+        ],
+    )
+    def test_validate_tool_name_rejects_invalid_characters(tool_name: str, expected_char: str) -> None:
+        """Names with invalid characters should be rejected."""
+        result = validate_tool_name(tool_name)
+>       assert result.is_valid is False
+E       assert True is False
+E        +  where True = ToolNameValidationResult(is_valid=True, warnings=[]).is_valid
+
+tests/shared/test_tool_name_validation.py:84: AssertionError
+_ test_validate_tool_name_rejects_invalid_characters[max_length_with_trailing_newline] _
+
+tool_name = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n'
+expected_char = "'\\n'"
+
+    @pytest.mark.parametrize(
+        "tool_name,expected_char",
+        [
+            ("get user profile", "' '"),
+            ("get,user,profile", "','"),
+            ("user/profile/update", "'/'"),
+            ("user@domain.com", "'@'"),
+            # a single trailing newline slipped past `$` with re.match
+            ("valid_name\n", "'\\n'"),
+            ("a" * 127 + "\n", "'\\n'"),
+        ],
+        ids=[
+            "with_spaces",
+            "with_commas",
+            "with_slashes",
+            "with_at_symbol",
+            "with_trailing_newline",
+            "max_length_with_trailing_newline",
+        ],
+    )
+    def test_validate_tool_name_rejects_invalid_characters(tool_name: str, expected_char: str) -> None:
+        """Names with invalid characters should be rejected."""
+        result = validate_tool_name(tool_name)
+>       assert result.is_valid is False
+E       assert True is False
+E        +  where True = ToolNameValidationResult(is_valid=True, warnings=[]).is_valid
+
+tests/shared/test_tool_name_validation.py:84: AssertionError
+__________________ test_parse_rejects_invalid_varname[foo\n] ___________________
+
+name = 'foo\n'
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "-bad",
+            "bad-name",
+            "bad name",
+            "bad/name",
+            # RFC §2.3: dots only between varchars, not consecutive or trailing
+            "foo..bar",
+            "foo.",
+            # a single trailing newline slipped past `$` with re.match
+            "foo\n",
+        ],
+    )
+    def test_parse_rejects_invalid_varname(name: str):
+>       with pytest.raises(InvalidUriTemplate, match="Invalid variable name"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'mcp.shared.uri_template.InvalidUriTemplate'>
+
+tests/shared/test_uri_template.py:152: Failed
+                              Summary of Failures                               
+┏━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃               ┃               ┃  Function     ┃              ┃               ┃
+┃  File         ┃  Function     ┃  Line         ┃  Error Line  ┃  Error        ┃
+┡━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│  tests/shar…  │  test_valid…  │  61           │  84          │  AssertionE…  │
+│  tests/shar…  │  test_valid…  │  61           │  84          │  AssertionE…  │
+│  tests/shar…  │  test_parse…  │  137          │  152         │  Failed       │
+└───────────────┴───────────────┴───────────────┴──────────────┴───────────────┘
+Results (0.44s):
+         3 failed
+       335 passed

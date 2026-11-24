@@ -1,0 +1,26 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = [
+  "pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata.rs",
+  "pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata_cached.rs",
+  "pnpm11/resolving/npm-resolver/src/fetch.ts",
+]
+title = "Metadata fetch trusts a 304 Not Modified even when no If-None-Match or If-Modified-Since was sent"
+description = """
+The package-metadata fetchers treat any `304 Not Modified` reply as "the
+cached copy is still valid", without checking that the request carried a
+validator. In the Rust port, `fetch_full_metadata` and
+`fetch_full_metadata_cached` (pnpm/crates/resolving-npm-resolver) return
+`NotModified` / try to serve the mirror for every 304, and in the
+TypeScript resolver `fetchMetadataFromFromRegistry`
+(pnpm11/resolving/npm-resolver/src/fetch.ts) resolves `{ notModified: true }`
+for every 304. With a cold metadata cache pnpm sends an unconditional
+request; a registry or caching proxy that answers 304 anyway (RFC 9110
+forbids it, but Dependabot's proxy does it) leaves pnpm with no body, and
+the install fails with `ERR_PNPM_CACHE_MISSING_AFTER_304`, a message that
+looks like local cache corruption (issue #12882). The fix retries an
+unsolicited 304 once with `Cache-Control: no-cache` and, if the retry is
+also a 304, reports `ERR_PNPM_META_NOT_MODIFIED_WITHOUT_CACHE`, in both
+implementations.
+"""

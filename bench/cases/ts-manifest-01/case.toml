@@ -1,0 +1,36 @@
+schema = 1
+id = "ts-manifest-01"
+kind = "bug"
+language = "typescript"
+source_repo = "https://github.com/mnfst/manifest"
+source_commit = "837799bf8ecff20b12e7a516dd816cd00d7b6210"
+source_commit_url = "https://github.com/mnfst/manifest/commit/837799bf8ecff20b12e7a516dd816cd00d7b6210"
+source_commit_date = "2026-04-20"
+base_commit = "837799bf8ecff20b12e7a516dd816cd00d7b6210"
+removed_paths = [
+  ".changeset/fix-custom-provider-multi-segment-model-id.md",
+  "packages/backend/src/routing/proxy/__tests__/provider-client.spec.ts",
+]
+base_reverts = []
+case_base_tree = "4f76387d37a13c70f5962eedf9d2b08b42d052f7"
+case_commit_tree = "e35ebe25571113aa08fad2b7a1cb646af26212f5"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) 2026 MNFST, Inc
+"""
+agent_files = ["CLAUDE.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "mnfst__manifest-1635"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 4 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["packages/backend/src/routing/proxy/provider-client.ts"]
+
+[repro]
+reproduced = true
+image = "docker.io/library/node:22-bookworm@sha256:e13726ca604184d7a91fcacab1fc09eefd642dc28e79ac34e85540dd93b78cfb"
+command = "npm ci && npm run build --workspace=packages/shared && npm test --workspace=packages/backend -- src/routing/proxy/__tests__/provider-client.spec.ts"
+test_files = ["packages/backend/src/routing/proxy/__tests__/provider-client.spec.ts"]
+fixed_exit = 0
+reverted_exit = 1
