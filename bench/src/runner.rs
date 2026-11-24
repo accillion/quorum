@@ -65,6 +65,23 @@ pub struct Deps {
     pub http: reqwest::Client,
 }
 
+impl Deps {
+    /// The judge model with the extraction step's output cap.
+    pub fn extractor(&self) -> Judge {
+        Judge {
+            output_cap: self.cfg.extraction.output_cap,
+            ..self.judge.clone()
+        }
+    }
+    /// The judge model with the clustering step's output cap.
+    pub fn clusterer(&self) -> Judge {
+        Judge {
+            output_cap: self.cfg.clustering.output_cap,
+            ..self.judge.clone()
+        }
+    }
+}
+
 /// One Round 0 seat of a session.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Seat {
@@ -369,7 +386,7 @@ pub async fn run_case_repeat(
                     };
                     match extract(
                         &mut ctx,
-                        &deps.judge,
+                        &deps.extractor(),
                         &deps.extraction,
                         &cid,
                         repeat,
@@ -452,7 +469,7 @@ pub async fn run_case_repeat(
         };
         match extract(
             &mut ctx,
-            &deps.judge,
+            &deps.extractor(),
             &deps.extraction,
             &cid,
             repeat,
@@ -494,7 +511,7 @@ pub async fn run_case_repeat(
         };
         match cluster(
             &mut ctx,
-            &deps.judge,
+            &deps.clusterer(),
             &deps.clustering,
             &cid,
             repeat,

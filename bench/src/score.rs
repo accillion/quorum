@@ -43,6 +43,7 @@ pub struct SideCounts {
     pub duplicates: u32,
     pub pre_existing: u32,
     pub unexpected_tp: u32,
+    pub no_issue: u32,
     pub errors: u32,
 }
 
@@ -116,6 +117,7 @@ pub fn score(
                 Class::FalseAlarm => fp += 1,
                 Class::PreExisting => side.pre_existing += 1,
                 Class::UnexpectedTp => side.unexpected_tp += 1,
+                Class::NoIssue => side.no_issue += 1,
                 Class::Unresolved => {
                     missing.insert(format!(
                         "{}: finding {} is still unresolved",
@@ -224,6 +226,33 @@ mod tests {
             (1, 1, 1)
         );
         assert!(s.hits[0].found && s.hits[0].high);
+    }
+
+    /// [S1a-ADJ-2] (proposed): an approval is neither TP nor FP.
+    #[test]
+    fn a_no_issue_finding_is_not_a_false_alarm() {
+        let (_td, c) = case();
+        let cases = BTreeMap::from([("rs-x-01".to_string(), &c)]);
+        let q = Arm::Q("high".into());
+        let o = ArmOutput {
+            arm: q.clone(),
+            case_id: "rs-x-01".into(),
+            repeat: 1,
+            status: Status::Completed,
+            findings: vec![raw(&q, 0, "The change looks correct")],
+        };
+        let ds = final_decisions(
+            &[dec(
+                "The change looks correct",
+                Class::NoIssue,
+                None,
+                "judge",
+            )],
+            &[],
+        );
+        let s = score(&cases, &[o], &ds).unwrap();
+        assert_eq!((s.obs[0].tp, s.obs[0].fp, s.obs[0].fn_), (0, 0, 1));
+        assert_eq!(s.side["Q-high"].no_issue, 1);
     }
 
     #[test]

@@ -75,7 +75,7 @@ impl Item {
 pub struct HumanDecision {
     pub item: String,
     /// finding: `match:<defect>`, `false_alarm`, `pre_existing`,
-    /// `unexpected_tp`; clustering / extraction: `ok`, `wrong`.
+    /// `unexpected_tp`, `no_issue`; clustering / extraction: `ok`, `wrong`.
     pub decision: String,
     #[serde(default)]
     pub note: String,
@@ -279,6 +279,7 @@ pub fn human_decisions(run_dir: &Path) -> std::io::Result<Vec<Decision>> {
                 "false_alarm" => (Class::FalseAlarm, None),
                 "pre_existing" => (Class::PreExisting, None),
                 "unexpected_tp" => (Class::UnexpectedTp, None),
+                "no_issue" => (Class::NoIssue, None),
                 _ => continue,
             },
         };
@@ -328,7 +329,7 @@ fn show(it: &Item, out: &mut dyn Write) -> std::io::Result<()> {
                     writeln!(out, "  d{}  {}: {}", n + 1, d.id, d.title)?;
                 }
             }
-            writeln!(out, "[m] matches the candidate  [d<N>] matches defect N  [f] false alarm  [p] pre-existing issue  [u] unexpected true positive  [s] skip  [q] quit")?;
+            writeln!(out, "[m] matches the candidate  [d<N>] matches defect N  [f] false alarm  [p] pre-existing issue  [u] unexpected true positive  [o] not an issue (approval, description, question)  [s] skip  [q] quit")?;
         }
         Item::Clustering { groups, .. } => {
             writeln!(out, "CLUSTERING: is each group one underlying concern, and are different groups different concerns?")?;
@@ -379,6 +380,7 @@ fn parse(it: &Item, line: &str) -> Option<Result<String, ()>> {
         (Item::Finding { .. }, "f") => "false_alarm".into(),
         (Item::Finding { .. }, "p") => "pre_existing".into(),
         (Item::Finding { .. }, "u") => "unexpected_tp".into(),
+        (Item::Finding { .. }, "o") => "no_issue".into(),
         (Item::Clustering { .. } | Item::Extraction { .. }, "y") => "ok".into(),
         (Item::Clustering { .. } | Item::Extraction { .. }, "n") => "wrong".into(),
         _ => return Some(Err(())),

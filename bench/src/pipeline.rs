@@ -362,6 +362,10 @@ pub enum Class {
     FalseAlarm,
     PreExisting,
     UnexpectedTp,
+    /// The finding asserts no problem with the change (an approval, a
+    /// description, a question): neither TP nor FP. Proposed as
+    /// [S1a-ADJ-2] to AC 252; see bench/DESIGN.md.
+    NoIssue,
     Unresolved,
 }
 
@@ -394,7 +398,7 @@ pub fn judge_schema() -> Value {
                 "required": ["finding", "class", "defect", "uncertain", "reason"],
                 "properties": {
                     "finding": {"type": "string"},
-                    "class": {"type": "string", "enum": ["match", "false_alarm", "pre_existing", "unexpected_tp", "unresolved"]},
+                    "class": {"type": "string", "enum": ["match", "false_alarm", "pre_existing", "unexpected_tp", "no_issue", "unresolved"]},
                     "defect": {"type": ["string", "null"]},
                     "uncertain": {"type": "boolean"},
                     "reason": {"type": "string"}
