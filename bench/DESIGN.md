@@ -12,7 +12,7 @@ matching, if `MANIFEST.toml` is stale, or if the frozen settings drift.
 
 | File | SHA-256 | Version |
 |---|---|---|
-| `bench/MANIFEST.toml` | 4971638c854ff3a6661813a974cc839aa1a17faffb4cf36189122215750c1838 | corpus of 40 cases |
+| `bench/MANIFEST.toml` | c83f1cb10d8f2985f3508f6ddfb78eb2c943be7abb41dbb09910e2f8c4ab7bde | corpus of 40 cases |
 | `bench/bench.toml` | da534240084eb57ffa7882582b77ef19e7ac9726af8295de0b5e88cf09beca5e | run settings |
 | `bench/prices.toml` | a34ce5840ac2d95d545864f3714c918eb90a518ffc50faee8fdfafb1cf4cd173 | prices read 2026-11-23 |
 | `bench/prompts/single-v1.md` | 899b51fdf38830f417e286784c48363518f3c5d1ac6da2d655fe86e2892c04e4 | single-model prompt v1 |
@@ -103,21 +103,21 @@ Every licence was read at the case base commit.
 Only 7 of the 35 expected defects are high severity, so
 **recall (high) is very noisy** and is descriptive only (AC 254).
 
-**Case notes** for Rolf's review. Each is allowed by the corpus rules
-but worth knowing:
-- **`rs-biome-01`, `rs-biome-02`:** the fix also edits the rule's doc
-  comment (prose and a `vue` example). The reverted diff shows them
-  removed, which is a hint. These are rule documentation, not Rust
-  tests.
-- **`ts-agentsjs-02`, `ts-manifest-01`:** the reverted diff deletes the
-  fix's explanatory comments, also a hint.
-- **`rs-pnpm-01`:** the Rust fix also changes one TypeScript resolver
-  file. Only the Rust test was run.
+**Case notes:**
+- **`rs-pnpm-01`** (Gate B ruling 1: kept as a Rust case). The fix
+  changes both the Rust port and one TypeScript resolver file, so
+  `diff.patch` includes one `.ts` file. Only the Rust test reproduces
+  the bug. This is recorded in the case's `notes`.
+- **`rs-gitoxide-01`** (Gate B ruling 3). Its licence, `MIT OR
+  Apache-2.0`, is taken from the `license` field of
+  `gix-merge/Cargo.toml`, the changed crate's manifest, which matches
+  the root manifest. `licence_path` points there. No copyright line is
+  needed.
+- **`rs-dioxus-01`, `rs-dioxus-02`:** the licence files have no copyright
+  line. `licence_notice` says so.
 - **`rs-leanctx-02`:** the fix commit also updated an unrelated lock
   table, `rust/LOCK_ORDERING.md`. It is kept at its fixed version in
   both trees, so `diff.patch` reverts only the code.
-- **`rs-gitoxide-01`, `rs-dioxus-01`, `rs-dioxus-02`:** the licence
-  files have no copyright line. `licence_notice` says so.
 - **`ts-hydrogen-01`:** `npm ci` rejects the lockfile at this commit,
   so its repro uses `npm install`, and its dependencies are not fully
   pinned.
@@ -128,6 +128,67 @@ but worth knowing:
   `CLAUDE.md` is a symlink to `AGENTS.md`. On a Windows checkout without
   symlink support, it becomes a one-line file, and Quorum reads that
   line.
+
+### Edited cases: the fix's explanatory comments removed (Gate B ruling 2)
+
+A comment the fix added shows up in the reverted diff as a deleted line
+explaining the answer. It leaks the answer to every arm and inflates
+recall. `verify-corpus` therefore fails any bug case whose `diff.patch`
+removes a comment-only line: `//`, `/* */`, `///` and `#` styles, chosen
+by file extension.
+
+`quorum-bench strip-comment-hints` deleted those lines from the case
+base file, stored as `base/<path>` and listed in `base_overrides`. It
+recomputed `case_base_tree` and regenerated `diff.patch` from the edited
+base to the unchanged case commit tree. Each case records `edited =
+true` and an `edit_reason`. No edit could unbalance a `/* */` block, and
+none was refused. The edited lines therefore appear neither in
+`diff.patch` nor in the materialized base.
+
+| Case | Lines removed | File(s) |
+|---|---|---|
+| `py-agents-02` | 1 | `src/agents/sandbox/memory/storage.py` |
+| `py-claudesdk-03` | 4 | `src/claude_agent_sdk/_internal/transport/subprocess_cli.py` |
+| `py-pydanticai-01` | 1 | `pydantic_ai_slim/pydantic_ai/models/test.py` |
+| `rs-biome-01` | 15 | `crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_bind.rs` (rule-doc prose and the `vue` example) |
+| `rs-biome-02` | 26 | `crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_on.rs` (rule-doc prose and the `vue` example) |
+| `rs-biome-04` | 3 | `crates/biome_js_formatter/src/js/expressions/call_arguments.rs` |
+| `rs-biome-05` | 2 | `crates/biome_service/src/file_handlers/html/parse_embedded_nodes.rs` |
+| `rs-dioxus-01` | 2 | `packages/autofmt/src/writer.rs` |
+| `rs-dioxus-02` | 4 | `packages/autofmt/src/prettier_please.rs` |
+| `rs-leanctx-01` | 23 | `rust/src/core/shell_allowlist/mod.rs` |
+| `rs-obscura-01` | 8 | `crates/obscura-cdp/src/domains/page.rs` |
+| `rs-oxc-03` | 1 | `crates/oxc_minifier/src/peephole/remove_unused_expression.rs` |
+| `rs-pnpm-01` | 6 | `pnpm/crates/resolving-npm-resolver/src/errors.rs`, `.../fetch_full_metadata.rs` |
+| `ts-agentsjs-02` | 19 | `packages/agents-realtime/src/realtimeSession.ts` |
+| `ts-defuddle-01` | 1 | `src/standardize.ts` |
+| `ts-hydrogen-01` | 2 | `packages/hydrogen-react/src/parse-metafield.ts` |
+| `ts-manifest-01` | 4 | `packages/backend/src/routing/proxy/provider-client.ts` |
+| `ts-qwen-01` | 6 | `packages/cli/src/ui/hooks/useStatusLine.ts` |
+| `ts-workers-01` | 5 | `packages/miniflare/src/workers/d1/dumpSql.ts` |
+
+That is 19 of the 30 bug cases, 133 lines in all.
+
+- **Clean cases are reported, not edited (middle category).** The check
+  also lists comment-only removed lines in `clean-py-mcp-01` (1) and
+  `clean-rs-harper-01` (4). In a clean case the removed side is the
+  original code before an ordinary commit, which the commit itself
+  rewrote. It explains no fix and points at no defect, so editing it
+  would only change the commit under review. `verify-corpus` prints
+  them as `note` lines.
+- **What stays.** A comment sharing a line with code is not
+  comment-only, and it stays. Python docstrings are strings, not
+  comments, and also stay. Both can still carry a hint. A scan of every
+  bug case's removed lines for code with a trailing comment found two,
+  left as they are because the ruling covers comment-only lines. Rolf
+  may rule on them:
+  - `rs-leanctx-01`: `b'\\' => i += 1, // escaped brace is data, not a
+    group delimiter`. This partly explains the fix.
+  - `ts-qwen-01`: `if (gen !== generationRef.current) return; // stale`.
+    This is a one-word label.
+
+The AC 244 leakage check and the dry run were re-run on all 40 cases
+after the edits (§2).
 
 ### Excluded cases (the bundle budget cut them)
 

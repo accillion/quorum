@@ -27,7 +27,7 @@ removed_paths = [
   ".changeset/nasty-spies-begin.md",
 ]
 base_reverts = []
-case_base_tree = "4d4e25a8b6a25bfb48a9f33123d06104ec70aafa"
+case_base_tree = "8d19b0158c66a51ba8bf60f61cb2eb0cc5ce2b91"
 case_commit_tree = "e0ab975c3d09fec120a01da0337d2d7be76b3898"
 licence = "MIT OR Apache-2.0"
 licence_path = "LICENSE-MIT"
@@ -39,6 +39,10 @@ Copyright (c) 2020-2023 Rome Tools is Rome Tools, Inc. and its affiliates.
 agent_files = ["AGENTS.md", "CLAUDE.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "biomejs__biome-10853"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 2 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["crates/biome_service/src/file_handlers/html/parse_embedded_nodes.rs"]
 
 [repro]
 reproduced = true

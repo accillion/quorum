@@ -12,7 +12,7 @@ removed_paths = [
   "packages/backend/src/routing/proxy/__tests__/provider-client.spec.ts",
 ]
 base_reverts = []
-case_base_tree = "9be9f3405c4e1fed4316a83547952da30d7cbc72"
+case_base_tree = "4f76387d37a13c70f5962eedf9d2b08b42d052f7"
 case_commit_tree = "e35ebe25571113aa08fad2b7a1cb646af26212f5"
 licence = "MIT"
 licence_path = "LICENSE"
@@ -22,6 +22,10 @@ Copyright (c) 2026 MNFST, Inc
 agent_files = ["CLAUDE.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "mnfst__manifest-1635"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 4 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["packages/backend/src/routing/proxy/provider-client.ts"]
 
 [repro]
 reproduced = true

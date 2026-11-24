@@ -13,7 +13,7 @@ removed_paths = [
   ".changeset/public-pants-beg.md",
 ]
 base_reverts = []
-case_base_tree = "94d2cc26ee8f4869c74f41f13775058594d6a116"
+case_base_tree = "64c0e9436485f51298ff0442ff831f7fca0116ae"
 case_commit_tree = "c06b6642387d39bea2c1bf92e13da290ed38e19b"
 licence = "MIT OR Apache-2.0"
 licence_path = "LICENSE-MIT"
@@ -25,6 +25,10 @@ Copyright (c) 2020-2023 Rome Tools is Rome Tools, Inc. and its affiliates.
 agent_files = ["AGENTS.md", "CLAUDE.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "biomejs__biome-10886"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 3 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["crates/biome_js_formatter/src/js/expressions/call_arguments.rs"]
 
 [repro]
 reproduced = true

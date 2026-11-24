@@ -1,12 +1,11 @@
 diff --git a/crates/oxc_minifier/src/peephole/remove_unused_expression.rs b/crates/oxc_minifier/src/peephole/remove_unused_expression.rs
-index 26a4cd5..fd29723 100644
+index f2cfa96..fd29723 100644
 --- a/crates/oxc_minifier/src/peephole/remove_unused_expression.rs
 +++ b/crates/oxc_minifier/src/peephole/remove_unused_expression.rs
-@@ -152,8 +152,6 @@ impl<'a> PeepholeOptimizations {
+@@ -152,7 +152,6 @@ impl<'a> PeepholeOptimizations {
                              {
                                  assignment_expr.span = *logical_span;
                                  assignment_expr.operator = AssignmentOperator::LogicalNullish;
--                                // `??=` reads the LHS to check for nullish, so update reference flags.
 -                                Self::mark_assignment_target_as_read(&assignment_expr.left, ctx);
                                  *e = logical_right.take_in(ctx.ast);
                                  ctx.state.changed = true;

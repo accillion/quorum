@@ -1,5 +1,5 @@
 diff --git a/src/agents/sandbox/memory/storage.py b/src/agents/sandbox/memory/storage.py
-index a0673db..019b5b8 100644
+index 797c5e0..019b5b8 100644
 --- a/src/agents/sandbox/memory/storage.py
 +++ b/src/agents/sandbox/memory/storage.py
 @@ -3,7 +3,6 @@ from __future__ import annotations
@@ -22,7 +22,7 @@ index a0673db..019b5b8 100644
  
  def decode_payload(payload: object) -> str:
      if isinstance(payload, str):
-@@ -231,21 +225,14 @@ class SandboxMemoryStorage:
+@@ -231,20 +225,14 @@ class SandboxMemoryStorage:
  
  
  def _updated_at_sort_key(raw_memory: str) -> tuple[int, str]:
@@ -38,7 +38,6 @@ index a0673db..019b5b8 100644
 -        utc = clock.astimezone(timezone.utc).replace(tzinfo=None)
 -    except (ValueError, OverflowError):
 -        return (1, updated_at)
--    # Compare the original fraction separately so datetime cannot truncate it to microseconds.
 -    fraction = (match["fraction"] or "").rstrip("0")
 -    return (1, f"{utc.isoformat(timespec='seconds')}.{fraction}")
 +    for line in raw_memory.splitlines():

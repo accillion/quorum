@@ -9,7 +9,7 @@ source_commit_date = "2026-05-14"
 base_commit = "6bbad5fc834fda59689e0b01e9ab3b8414816b5a"
 removed_paths = ["tests/test_transport.py"]
 base_reverts = []
-case_base_tree = "ce41c2e885a99287ee5122fbfe903c5b37ac3530"
+case_base_tree = "edb3379f792966ab2e80d40a9726932b223bbc8c"
 case_commit_tree = "d2b6a6b812fcf3fce75493135787fe931fc4e4b4"
 licence = "MIT"
 licence_path = "LICENSE"
@@ -19,6 +19,10 @@ Copyright (c) 2025 Anthropic, PBC
 agent_files = ["CLAUDE.md"]
 dataset = "hand-picked"
 dataset_instance = ""
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 4 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["src/claude_agent_sdk/_internal/transport/subprocess_cli.py"]
 
 [repro]
 reproduced = true

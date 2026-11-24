@@ -1,14 +1,11 @@
 diff --git a/pnpm/crates/resolving-npm-resolver/src/errors.rs b/pnpm/crates/resolving-npm-resolver/src/errors.rs
-index 8d08223..c8500a5 100644
+index 8975dac..c8500a5 100644
 --- a/pnpm/crates/resolving-npm-resolver/src/errors.rs
 +++ b/pnpm/crates/resolving-npm-resolver/src/errors.rs
-@@ -67,11 +67,14 @@ pub enum FetchMetadataError {
+@@ -67,8 +67,14 @@ pub enum FetchMetadataError {
          error: serde_json::Error,
      },
  
--    /// `ERR_PNPM_META_NOT_MODIFIED_WITHOUT_CACHE`. Surfaces when a registry
--    /// repeats an unsolicited 304 after a cache-bypassing retry, leaving no
--    /// body and no validator that could have justified the response.
 +    /// `META_NOT_MODIFIED_WITHOUT_CACHE`. Surfaces only when a
 +    /// stale-but-removed mirror plus an `If-None-Match` header the
 +    /// caller-provided cache headers carried (impossible in pacquet's
@@ -22,7 +19,7 @@ index 8d08223..c8500a5 100644
          #[error(not(source))]
          pkg_name: String,
 diff --git a/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata.rs b/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata.rs
-index fe98d60..94d04bc 100644
+index ec21159..94d04bc 100644
 --- a/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata.rs
 +++ b/pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata.rs
 @@ -18,11 +18,10 @@
@@ -39,7 +36,7 @@ index fe98d60..94d04bc 100644
  
  use crate::{FetchMetadataError, mirror::clear_meta, registry_url::to_registry_url};
  
-@@ -90,75 +89,6 @@ pub enum FetchFullMetadataOutcome {
+@@ -90,72 +89,6 @@ pub enum FetchFullMetadataOutcome {
      NotModified,
  }
  
@@ -54,9 +51,6 @@ index fe98d60..94d04bc 100644
 -    pub retry_opts: RetryOpts,
 -}
 -
--/// Send a metadata GET, retrying an unsolicited 304 once with intermediary
--/// cache reuse disabled. A repeated 304 cannot validate any local body and is
--/// reported with the same error in both pnpm implementations.
 -pub(crate) async fn send_metadata_request<'a>(
 -    opts: &MetadataRequestOptions<'a>,
 -) -> Result<(ThrottledClientGuard<'a>, Response), FetchMetadataError> {
@@ -115,7 +109,7 @@ index fe98d60..94d04bc 100644
  /// Fetch the registry metadata document for `pkg_name`. The
  /// `full_metadata` flag on [`FetchFullMetadataOptions`] picks
  /// between the full and abbreviated packument forms.
-@@ -169,17 +99,25 @@ pub async fn fetch_full_metadata(
+@@ -166,17 +99,25 @@ pub async fn fetch_full_metadata(
      let url = to_registry_url(opts.registry, pkg_name);
      let accept = if opts.full_metadata { ACCEPT_FULL_DOC } else { ACCEPT_ABBREVIATED_DOC };
      retry_async(&url, opts.retry_opts, FetchMetadataError::is_body_retryable, || async {

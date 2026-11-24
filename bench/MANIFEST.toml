@@ -107,7 +107,7 @@ language = "python"
 source_repo = "openai/openai-agents-python"
 reproduced = true
 agent_files = true
-content_sha256 = "eb4baf28eaa64c37aa1c9f87a17485f0b548d6542c6cc0646f131cc28a308ed5"
+content_sha256 = "274c2831a96cc48c3e0b4af74cf3d5452a4bf8bb5a78687226e2f47e3e925b1f"
 
 [[case]]
 id = "py-claudesdk-02"
@@ -125,7 +125,7 @@ language = "python"
 source_repo = "anthropics/claude-agent-sdk-python"
 reproduced = true
 agent_files = true
-content_sha256 = "18a1a9978165d3460a81c0e3c5036cb28b33209ead6847d9843666b143244ded"
+content_sha256 = "da4133fc3566b9e06102e0467313d8b1a78fff64793c2787d13ccd79a49a4fe3"
 
 [[case]]
 id = "py-mcp-01"
@@ -152,7 +152,7 @@ language = "python"
 source_repo = "pydantic/pydantic-ai"
 reproduced = true
 agent_files = true
-content_sha256 = "fe942dd5466369e29ca6f2fbe8c3b979f599da356c8881d5cdb0016c93ad7ef6"
+content_sha256 = "97a42ef80f1a2825a9268cb677a51a8bcc3121ef6a1b103931bf56a305e76754"
 
 [[case]]
 id = "py-pydanticai-02"
@@ -170,7 +170,7 @@ language = "rust"
 source_repo = "biomejs/biome"
 reproduced = true
 agent_files = true
-content_sha256 = "c488f332119a5225d5582eaeb6fff49ac976b1a6f5da4e23d998a8be5b4c2642"
+content_sha256 = "ff918a272f36cc62f9752995a588968fa8f95b6d72807459e069a372a7c618e8"
 
 [[case]]
 id = "rs-biome-02"
@@ -179,7 +179,7 @@ language = "rust"
 source_repo = "biomejs/biome"
 reproduced = true
 agent_files = true
-content_sha256 = "8a386c4a503fadbb8a8bfb059504633b4c552bed7d9cc6aadc28a8491be868b7"
+content_sha256 = "d08fdb97720c245116b8f3f57295a3702bad19c601f831d725cbdf0f3d7a4711"
 
 [[case]]
 id = "rs-biome-03"
@@ -197,7 +197,7 @@ language = "rust"
 source_repo = "biomejs/biome"
 reproduced = true
 agent_files = true
-content_sha256 = "11a3a6d363e0b7249c3a52ad4d759b60e8edb71560dfc832946b3ba15e31f339"
+content_sha256 = "fcca30bc997dfe972c4d948a204b742d3e5567938c6e7997501f3e38605cae2a"
 
 [[case]]
 id = "rs-biome-05"
@@ -206,7 +206,7 @@ language = "rust"
 source_repo = "biomejs/biome"
 reproduced = true
 agent_files = true
-content_sha256 = "f6024388afdb4e9fe8fd3affb975b2c67a02115eff839e4772f38d4996a99bdd"
+content_sha256 = "70d788f465b742f822dadb5e87fb23d1504e0355225e48cbc7d9241895d82737"
 
 [[case]]
 id = "rs-dioxus-01"
@@ -215,7 +215,7 @@ language = "rust"
 source_repo = "dioxuslabs/dioxus"
 reproduced = true
 agent_files = true
-content_sha256 = "5d4c72b3bf0397f084f931cea9a41e02d50c761ddc10f1aac0f0ad9143e6884e"
+content_sha256 = "b09a744c7a7c88c1cdaca3313fa5170f97f458e954e6288484c5c96afea8bcae"
 
 [[case]]
 id = "rs-dioxus-02"
@@ -224,7 +224,7 @@ language = "rust"
 source_repo = "dioxuslabs/dioxus"
 reproduced = true
 agent_files = true
-content_sha256 = "21762381addfc000030bd6fe8a4e52a13753a9e35c3100938d53b707ed724622"
+content_sha256 = "a5d9db43220ce18aab50428c6090a94b21e5d90612b8004fa5cb5ae05c673e12"
 
 [[case]]
 id = "rs-gitoxide-01"
@@ -233,7 +233,7 @@ language = "rust"
 source_repo = "gitoxidelabs/gitoxide"
 reproduced = true
 agent_files = false
-content_sha256 = "10587ba4ccbbf8bdc4a5c0b82738aaa58c5542580167aee049256054e4dcf179"
+content_sha256 = "b07fe6974e17640dcbbb1761ec9a92ecbe810566ad8258281f6f1739cecacec5"
 
 [[case]]
 id = "rs-leanctx-01"
@@ -242,7 +242,7 @@ language = "rust"
 source_repo = "yvgude/lean-ctx"
 reproduced = true
 agent_files = true
-content_sha256 = "d942f029b82278092a5e37874a91084a4f5978921daa048d7331285d560f98c3"
+content_sha256 = "94b679b63335b004be5f7ccb31f1591930456dbe95b2062fa45cded19008a437"
 
 [[case]]
 id = "rs-leanctx-02"
@@ -260,7 +260,7 @@ language = "rust"
 source_repo = "h4ckf0r0day/obscura"
 reproduced = true
 agent_files = true
-content_sha256 = "90512ce121bb4d89808ca7322001225dc1f3010ca35a02b3ed83d345f4c55a4d"
+content_sha256 = "57f024c005284d63cfedf6ab33fb93eaee5bb8c5eba5497a48d8b14115c28e42"
 
 [[case]]
 id = "rs-oxc-02"
@@ -278,7 +278,7 @@ language = "rust"
 source_repo = "oxc-project/oxc"
 reproduced = true
 agent_files = true
-content_sha256 = "f7ae05a82fa64c5ca6cf54fe63668970eb1897758b591a9108731a0478c6d34c"
+content_sha256 = "8f24061005c3b0ea88509ccc1095c6c6ed12fea4fe8f924862e23ca7615916a5"
 
 [[case]]
 id = "rs-pnpm-01"
@@ -287,7 +287,7 @@ language = "rust"
 source_repo = "pnpm/pnpm"
 reproduced = true
 agent_files = true
-content_sha256 = "197d70d52e441a429aaaa697fe69cad784b6902eab41158988679f675b2d1cd7"
+content_sha256 = "58eabbb4823e1eb308bf3db20eca5a55ffb63dbbd978f05c36d53a3cc278d1c7"
 
 [[case]]
 id = "ts-agentsjs-01"
@@ -305,7 +305,7 @@ language = "typescript"
 source_repo = "openai/openai-agents-js"
 reproduced = true
 agent_files = true
-content_sha256 = "d08ebf38ae6a9d029de4ece586d09ef4997629430341bfd5527f6dbbd4e7a92b"
+content_sha256 = "d611319abd296aafea028d4ef7551fd4b1e1bba8bd4449e044f50c4a09f39dcb"
 
 [[case]]
 id = "ts-agentsjs-03"
@@ -323,7 +323,7 @@ language = "typescript"
 source_repo = "kepano/defuddle"
 reproduced = true
 agent_files = true
-content_sha256 = "9bc2d0b80ad449d60126d8b88c2d4fe01c72f24db4844229457248e7cfeeaebe"
+content_sha256 = "27945957641174d4705c83035f8e0d670abd4df0cfdd82c6fd40ed8f11d5d631"
 
 [[case]]
 id = "ts-hydrogen-01"
@@ -332,7 +332,7 @@ language = "typescript"
 source_repo = "shopify/hydrogen"
 reproduced = true
 agent_files = true
-content_sha256 = "fe0969aeb10d129fe3bf8af4bf936c3d9085af5b5058dc31289918a2a78fbc69"
+content_sha256 = "dde566c409c714676e18c73546df20956a435e5e52fc19e4ce6125373c27c503"
 
 [[case]]
 id = "ts-manifest-01"
@@ -341,7 +341,7 @@ language = "typescript"
 source_repo = "mnfst/manifest"
 reproduced = true
 agent_files = true
-content_sha256 = "048d01d4c87f8c35b5eca63bf47aa8d0e0eea5d80f2b72a4ffc413e7412e06c4"
+content_sha256 = "73dee39a18ce865d6896e4520b11f995206190779537f9cc8e17563bc22fe3d2"
 
 [[case]]
 id = "ts-qwen-01"
@@ -350,7 +350,7 @@ language = "typescript"
 source_repo = "qwenlm/qwen-code"
 reproduced = true
 agent_files = true
-content_sha256 = "ede11f62fac4e889e46a16aa2f175568d5eb26d5e3e8923acf250d904d3aff4a"
+content_sha256 = "9348698423956e35ed587a0d893bc4f47422529cdc62e6ba9c4cbe818bb0121b"
 
 [[case]]
 id = "ts-workers-01"
@@ -359,5 +359,5 @@ language = "typescript"
 source_repo = "cloudflare/workers-sdk"
 reproduced = true
 agent_files = true
-content_sha256 = "8735d333044e681870095e4f0fd77f91431144323218b839141e56540dcff7a6"
+content_sha256 = "63a79b4595d85f338581111c48513daf6f226b68915c712a29d3c7c19d04680a"
 

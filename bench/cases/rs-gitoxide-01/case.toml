@@ -14,14 +14,18 @@ base_reverts = []
 case_base_tree = "d216e93b1bfb24eb83640cd11967b620f6a930bf"
 case_commit_tree = "9cc83771f4c34887250d7b0c6e07b992e80c0f26"
 licence = "MIT OR Apache-2.0"
-licence_path = "LICENSE-MIT"
+licence_path = "gix-merge/Cargo.toml"
 licence_notice = """
-No copyright line in LICENSE-MIT or LICENSE-APACHE at base_commit.
-The crate manifest (gix-merge/Cargo.toml) declares license = "MIT OR Apache-2.0".
+license = "MIT OR Apache-2.0" (the `license` field of gix-merge/Cargo.toml,
+the changed crate, and of the root Cargo.toml, at base_commit). The licence
+files carry no copyright line; none is needed (Gate B ruling 3).
 """
 agent_files = []
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "GitoxideLabs__gitoxide-2476"
+notes = [
+  "Licence taken from Cargo.toml's license field (Gate B ruling 3, 2026-11-24).",
+]
 
 [repro]
 reproduced = true

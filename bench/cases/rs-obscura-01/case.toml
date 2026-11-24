@@ -11,7 +11,7 @@ removed_paths = [
   "crates/obscura-cdp/tests/execution_context_pruned_on_navigation.rs",
 ]
 base_reverts = []
-case_base_tree = "e289eeea010124dfe75ee67313b98968fe64cfc9"
+case_base_tree = "c7e1af2bc43360a5c934af3dbceda05d477ce4f5"
 case_commit_tree = "14223898a232c6b31c1d6d84b51b6faa7308d797"
 licence = "Apache-2.0"
 licence_path = "LICENSE"
@@ -23,6 +23,10 @@ Cargo.toml declares license = "Apache-2.0".
 agent_files = ["AGENTS.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "h4ckf0r0day__obscura-413"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 8 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["crates/obscura-cdp/src/domains/page.rs"]
 
 [repro]
 reproduced = true

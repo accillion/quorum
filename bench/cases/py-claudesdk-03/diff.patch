@@ -1,15 +1,11 @@
 diff --git a/src/claude_agent_sdk/_internal/transport/subprocess_cli.py b/src/claude_agent_sdk/_internal/transport/subprocess_cli.py
-index 833cba4..665e481 100644
+index ce8ec87..665e481 100644
 --- a/src/claude_agent_sdk/_internal/transport/subprocess_cli.py
 +++ b/src/claude_agent_sdk/_internal/transport/subprocess_cli.py
-@@ -526,21 +526,13 @@ class SubprocessCLITransport(Transport):
+@@ -526,17 +526,13 @@ class SubprocessCLITransport(Transport):
                  if not line_str:
                      continue
  
--                # Call the stderr callback if provided. Isolate per-line so a
--                # raise in the user's callback doesn't terminate the loop and
--                # silently drop every subsequent line for the rest of the
--                # session.
 +                # Call the stderr callback if provided
                  if self._options.stderr:
 -                    try:

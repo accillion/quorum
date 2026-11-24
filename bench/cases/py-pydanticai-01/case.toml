@@ -9,7 +9,7 @@ source_commit_date = "2026-11-16"
 base_commit = "7d105ad5d606845ba1f14979f49883c385ef516e"
 removed_paths = ["tests/models/test_model_test.py"]
 base_reverts = []
-case_base_tree = "03ded4aab76431f687ce4a00c7eaa292db383c8b"
+case_base_tree = "f1bd806ce7e9464ebf07ceea8d9d9db5778aebb8"
 case_commit_tree = "3b1b299683d49c1272df3253d23b35a1c9147991"
 licence = "MIT"
 licence_path = "LICENSE"
@@ -19,6 +19,10 @@ Copyright (c) Pydantic Services Inc. 2024 to present
 agent_files = ["AGENTS.md", "CLAUDE.md"]
 dataset = "hand-picked"
 dataset_instance = ""
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 1 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["pydantic_ai_slim/pydantic_ai/models/test.py"]
 
 [repro]
 reproduced = true

@@ -11,7 +11,7 @@ removed_paths = [
   "rust/src/core/shell_allowlist/tests.rs",
 ]
 base_reverts = []
-case_base_tree = "09a98c78492b996399a798eba44869df80f067d5"
+case_base_tree = "78e1771bf8284e9e6e5d872d0d7c847dc9dfc42e"
 case_commit_tree = "ee46521aecc19e01eeb170f793b651d8afb7eaf4"
 licence = "Apache-2.0"
 licence_path = "LICENSE"
@@ -21,6 +21,10 @@ Copyright 2026 Yves Gugger
 agent_files = ["AGENTS.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "yvgude__lean-ctx-969"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 23 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["rust/src/core/shell_allowlist/mod.rs"]
 
 [repro]
 reproduced = true

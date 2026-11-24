@@ -43,6 +43,13 @@ Corpus rules that keep the reviewer from seeing the answer:
    checks the real bundle.
 4. No secrets and no personal data beyond the licence's copyright line
    (AC 245).
+5. A bug case's `diff.patch` removes no comment-only line (Gate B ruling
+   2). `verify-corpus` fails a case that does.
+   `quorum-bench strip-comment-hints` removes such lines from the case
+   base:
+   - it writes `base/<path>` and lists the path in `base_overrides`;
+   - it recomputes `case_base_tree` and regenerates `diff.patch`;
+   - it sets `edited = true` with an `edit_reason`.
 
 ## `case.toml`
 
@@ -68,6 +75,10 @@ Copyright (c) ...
 agent_files = ["AGENTS.md"]      # AGENTS.md / CLAUDE.md present at the case base root; [] if none
 dataset = "SWE-bench-Live/MultiLang"   # or "hand-picked"
 dataset_instance = ""            # the dataset's instance id, "" when hand-picked
+notes = []                       # optional facts a results reader needs
+edited = false                   # true when the base differs from upstream beyond removed_paths/base_reverts
+edit_reason = ""                 # required when edited
+base_overrides = []              # paths whose case-base content is `base/<path>` in the case directory
 
 [repro]                          # bug cases only
 reproduced = true

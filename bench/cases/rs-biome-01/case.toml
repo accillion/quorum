@@ -9,7 +9,7 @@ source_commit_date = "2026-06-26"
 base_commit = "36d5aa77d751bf33485cd2c92d89e4c5764e1e50"
 removed_paths = ["crates/biome_html_analyze/tests/specs/correctness/useVueValidVBind/invalid.vue", "crates/biome_html_analyze/tests/specs/correctness/useVueValidVBind/invalid.vue.snap", "crates/biome_html_analyze/tests/specs/correctness/useVueValidVBind/valid.vue", "crates/biome_html_analyze/tests/specs/correctness/useVueValidVBind/valid.vue.snap", ".changeset/fix-use-vue-valid-v-bind-same-name-shorthand.md"]
 base_reverts = []
-case_base_tree = "eb1712c42738b35e70bcfa3c05668770cdde7053"
+case_base_tree = "04bad5675cd164f67e03bd9c6dc5bd8bd197eddb"
 case_commit_tree = "c9238bfc731f55c916ba300b05aa8913a9aa6a2f"
 licence = "MIT OR Apache-2.0"
 licence_path = "LICENSE-MIT"
@@ -20,6 +20,10 @@ Copyright (c) 2020-2023 Rome Tools is Rome Tools, Inc. and its affiliates.
 agent_files = ["AGENTS.md", "CLAUDE.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "biomejs__biome-10767"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 15 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_bind.rs"]
 
 [repro]
 reproduced = true

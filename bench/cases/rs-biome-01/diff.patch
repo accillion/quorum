@@ -1,5 +1,5 @@
 diff --git a/crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_bind.rs b/crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_bind.rs
-index 1843dd97..8cf467cb 100644
+index 0b8a4fe..8cf467c 100644
 --- a/crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_bind.rs
 +++ b/crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_bind.rs
 @@ -3,9 +3,7 @@ use biome_analyze::{
@@ -13,31 +13,15 @@ index 1843dd97..8cf467cb 100644
  use biome_rowan::{AstNode, TextRange};
  use biome_rule_options::use_vue_valid_v_bind::UseVueValidVBindOptions;
  
-@@ -13,11 +11,7 @@ declare_lint_rule! {
+@@ -13,6 +11,7 @@ declare_lint_rule! {
      /// Forbids `v-bind` directives with missing values or invalid modifiers.
      ///
      /// This rule reports v-bind directives in the following cases:
--    /// - The directive has neither a value nor a static argument from which to
--    ///   derive one. E.g. `<div v-bind></div>` or `<div v-bind:[foo]></div>`.
--    ///   `v-bind:foo` and `:foo` are accepted because they are valid Vue 3.4+
--    ///   [same-name shorthand](https://vuejs.org/guide/essentials/template-syntax.html#same-name-shorthand)
--    ///   for `:foo="foo"`.
 +    /// - The directive does not have a value. E.g. `<div v-bind:aaa></div>`
      /// - The directive has invalid modifiers. E.g. `<div v-bind:aaa.bbb="ccc"></div>`
      ///
      /// ## Examples
-@@ -38,10 +32,6 @@ declare_lint_rule! {
-     /// <Foo v-bind:foo="foo" />
-     /// ```
-     ///
--    /// ```vue
--    /// <Foo :foo />
--    /// ```
--    ///
-     pub UseVueValidVBind {
-         version: "2.3.6",
-         name: "useVueValidVBind",
-@@ -74,9 +64,7 @@ impl Rule for UseVueValidVBind {
+@@ -65,9 +64,7 @@ impl Rule for UseVueValidVBind {
                      return None;
                  }
  
@@ -48,7 +32,7 @@ index 1843dd97..8cf467cb 100644
                      return Some(ViolationKind::MissingValue);
                  }
  
-@@ -89,9 +77,7 @@ impl Rule for UseVueValidVBind {
+@@ -80,9 +77,7 @@ impl Rule for UseVueValidVBind {
              AnyVueDirective::VueVBindShorthandDirective(dir) => {
                  // missing argument would be caught by the parser
  
@@ -59,7 +43,7 @@ index 1843dd97..8cf467cb 100644
                      return Some(ViolationKind::MissingValue);
                  }
  
-@@ -140,22 +126,9 @@ impl Rule for UseVueValidVBind {
+@@ -131,16 +126,9 @@ impl Rule for UseVueValidVBind {
  
  fn find_invalid_modifiers(modifiers: &VueModifierList) -> Option<TextRange> {
      for modifier in modifiers {
@@ -71,12 +55,6 @@ index 1843dd97..8cf467cb 100644
      None
  }
 -
--/// Returns `true` if the directive argument is a static identifier
--/// (e.g. `foo` in `:foo`), as opposed to a dynamic expression
--/// (e.g. `[foo]` in `:[foo]`). Only static arguments can be the
--/// source of a Vue 3.4+ same-name shorthand binding.
--///
--/// See <https://vuejs.org/guide/essentials/template-syntax.html#same-name-shorthand>.
 -fn is_static_arg(arg: &VueDirectiveArgument) -> bool {
 -    matches!(
 -        arg.arg().ok(),

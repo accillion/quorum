@@ -1,13 +1,12 @@
 diff --git a/pydantic_ai_slim/pydantic_ai/models/test.py b/pydantic_ai_slim/pydantic_ai/models/test.py
-index 91b765f..4c187be 100644
+index 4c02a3e..4c187be 100644
 --- a/pydantic_ai_slim/pydantic_ai/models/test.py
 +++ b/pydantic_ai_slim/pydantic_ai/models/test.py
-@@ -521,9 +521,6 @@ class _JsonSchemaTestData:
+@@ -521,8 +521,6 @@ class _JsonSchemaTestData:
              case None:
                  # if there's no type or ref, we can't generate anything
                  return self._char()
 -            case [_, *_] as types:
--                # a JSON Schema type list: the seed picks one member, as an `anyOf` does
 -                return self._gen_any({**schema, 'type': types[self.seed % len(types)]})
              case 'object':
                  return self._object_gen(schema)

@@ -1,5 +1,5 @@
 diff --git a/packages/autofmt/src/prettier_please.rs b/packages/autofmt/src/prettier_please.rs
-index 88c6e4a..2b24c9d 100644
+index 18156ce..2b24c9d 100644
 --- a/packages/autofmt/src/prettier_please.rs
 +++ b/packages/autofmt/src/prettier_please.rs
 @@ -7,10 +7,6 @@ impl Writer<'_> {
@@ -13,14 +13,10 @@ index 88c6e4a..2b24c9d 100644
  }
  
  // we use weird unicode alternatives to avoid conflicts with the actual rsx! macro
-@@ -167,32 +163,6 @@ pub fn unparse_inner(expr: &Expr) -> String {
+@@ -167,28 +163,6 @@ pub fn unparse_inner(expr: &Expr) -> String {
      unwrapped(wrapped)
  }
  
--/// Unparse a pattern into a properly formatted string using prettyplease.
--///
--/// Wraps the pattern in `fn main() { for PAT in () {} }`, formats with prettyplease,
--/// then extracts just the pattern text between "for " and " in".
 -pub fn unparse_pat(pat: &syn::Pat) -> String {
 -    let file = File {
 -        shebang: None,

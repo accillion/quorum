@@ -9,7 +9,7 @@ source_commit_date = "2026-11-18"
 base_commit = "e7ce15a25b336bb3d0840ad16dee597f69a6e6d3"
 removed_paths = ["tests/sandbox/test_memory.py"]
 base_reverts = []
-case_base_tree = "dcf1e563b10f77ef78f83ed8cb38a71046e3f341"
+case_base_tree = "331233f767ba6d9c8c8f955e38bcb7d02ebdcf7a"
 case_commit_tree = "fdf7f8435fff9c4e589b04ea0c139882b4a3e04e"
 licence = "MIT"
 licence_path = "LICENSE"
@@ -19,6 +19,10 @@ Copyright (c) 2025 OpenAI
 agent_files = ["AGENTS.md", "CLAUDE.md"]
 dataset = "hand-picked"
 dataset_instance = ""
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 1 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["src/agents/sandbox/memory/storage.py"]
 
 [repro]
 reproduced = true

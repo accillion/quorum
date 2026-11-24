@@ -9,7 +9,7 @@ source_commit_date = "2026-04-20"
 base_commit = "d676e0ca5b9431976ea1ba201547c659ffbf34a9"
 removed_paths = ["crates/oxc_minifier/tests/peephole/remove_unused_expression.rs"]
 base_reverts = []
-case_base_tree = "bb3ad5409f1221c053c2dd9b6c89401de390b10c"
+case_base_tree = "3d24d63c273c9c02ad7654d59f3c772086e2015f"
 case_commit_tree = "28ce599db5bb8213e6c5adf9f08a3c4a27eb3dd8"
 licence = "MIT"
 licence_path = "LICENSE"
@@ -20,6 +20,10 @@ Copyright (c) 2023 Boshen
 agent_files = ["AGENTS.md", "CLAUDE.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "oxc-project__oxc-21546"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 1 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["crates/oxc_minifier/src/peephole/remove_unused_expression.rs"]
 
 [repro]
 reproduced = true

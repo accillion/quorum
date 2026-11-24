@@ -12,7 +12,7 @@ removed_paths = [
   "packages/autofmt/tests/samples/forloop_tuple.rsx",
 ]
 base_reverts = []
-case_base_tree = "c96d18f4540517d926ee993855e9d79ae4aaaf93"
+case_base_tree = "98210ba7fea69772c9559b26266c06c52dc11afc"
 case_commit_tree = "b593ba8847243eb56d1d5beac95fdaee91d95f8f"
 licence = "MIT OR Apache-2.0"
 licence_path = "LICENSE-MIT"
@@ -23,6 +23,10 @@ The crate manifest (packages/autofmt/Cargo.toml) declares license = "MIT OR Apac
 agent_files = ["AGENTS.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "DioxusLabs__dioxus-5384"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 4 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["packages/autofmt/src/prettier_please.rs"]
 
 [repro]
 reproduced = true

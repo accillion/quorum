@@ -13,7 +13,7 @@ removed_paths = [
   "pnpm11/resolving/npm-resolver/test/ifModifiedSince.test.ts",
 ]
 base_reverts = []
-case_base_tree = "e28298e07a407a1e89ace255a6629a7d6483b5dd"
+case_base_tree = "735539d2b0c58296c82ab0086420666f2b274e61"
 case_commit_tree = "5e4743c6fc143e478f21856f22eacb92e6e66ec7"
 licence = "MIT"
 licence_path = "LICENSE"
@@ -24,6 +24,13 @@ Copyright (c) 2016-2026 Zoltan Kochan and other contributors
 agent_files = ["AGENTS.md", "CLAUDE.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "pnpm__pnpm-12888"
+notes = [
+  "A Rust case whose diff.patch also includes one TypeScript file: the fix changed both the Rust port and the TS resolver (pnpm11/.../fetch.ts). Only the Rust test reproduces it (Gate B ruling 1, 2026-11-24).",
+]
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 6 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["pnpm/crates/resolving-npm-resolver/src/errors.rs", "pnpm/crates/resolving-npm-resolver/src/fetch_full_metadata.rs"]
 
 [repro]
 reproduced = true

@@ -9,7 +9,7 @@ source_commit_date = "2026-04-13"
 base_commit = "0fc57fab6a1a91e7d30cae68febad953d075fb95"
 removed_paths = ["tests/expected/elements--empty-table.md", "tests/fixtures/elements--empty-table.html"]
 base_reverts = []
-case_base_tree = "c9f93624446c2e4377812155d8e17e9234266460"
+case_base_tree = "4e9078f04f4800c2b05efb23abd8b84d1a836895"
 case_commit_tree = "bb5d5bc15c172711ca4b9fe53062487cd1b2afca"
 licence = "MIT"
 licence_path = "LICENSE"
@@ -19,6 +19,10 @@ Copyright (c) 2025 Steph Ango (@kepano)
 agent_files = ["CLAUDE.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "kepano__defuddle-243"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 1 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["src/standardize.ts"]
 
 [repro]
 reproduced = true

@@ -1,5 +1,5 @@
 diff --git a/crates/biome_js_formatter/src/js/expressions/call_arguments.rs b/crates/biome_js_formatter/src/js/expressions/call_arguments.rs
-index 34663147..8e708738 100644
+index f56359e..8e70873 100644
 --- a/crates/biome_js_formatter/src/js/expressions/call_arguments.rs
 +++ b/crates/biome_js_formatter/src/js/expressions/call_arguments.rs
 @@ -43,15 +43,15 @@ impl FormatNodeRule<JsCallArguments> for FormatJsCallArguments {
@@ -38,14 +38,11 @@ index 34663147..8e708738 100644
          {
              let l_paren = format_with(|f: &mut JsFormatter| {
                  if f.options().delimiter_spacing().value() {
-@@ -1266,17 +1264,6 @@ fn can_group_expression_argument(
+@@ -1266,14 +1264,6 @@ fn can_group_expression_argument(
      Ok(result)
  }
  
 -fn is_curried_test_each_call(call: &JsCallExpression) -> SyntaxResult<bool> {
--    // Matches `test.each([...])("name", callback)`: the outer call is applied to
--    // the result of the inner `test.each(...)` call, so it should use the normal
--    // breakable argument layout instead of the direct test-call single-line layout.
 -    let AnyJsExpression::JsCallExpression(inner_call) = call.callee()? else {
 -        return Ok(false);
 -    };

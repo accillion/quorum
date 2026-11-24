@@ -9,7 +9,7 @@ source_commit_date = "2025-08-11"
 base_commit = "a0b1f3b659df112d67d75cdb291f31426a080504"
 removed_paths = [".changeset/preserve-audio-formats-on-agent-update.md", "packages/agents-realtime/test/realtimeSession.test.ts"]
 base_reverts = []
-case_base_tree = "ddc14aab93fda3856f2cba9b49104674ecb72bbb"
+case_base_tree = "616e4bf5954f663f07ba6668e7373f59636e49cd"
 case_commit_tree = "82449d43f88b1022ea24c59b47dc075729dff426"
 licence = "MIT"
 licence_path = "LICENSE"
@@ -19,6 +19,10 @@ Copyright (c) 2025 OpenAI
 agent_files = ["AGENTS.md"]
 dataset = "SWE-bench-Live/MultiLang"
 dataset_instance = "openai__openai-agents-js-318"
+
+edited = true
+edit_reason = "Gate B ruling 2 (2026-11-24): 19 comment-only line(s) the fix added are removed from the case base, so the reverted diff does not show the fix's explanation."
+base_overrides = ["packages/agents-realtime/src/realtimeSession.ts"]
 
 [repro]
 reproduced = true
