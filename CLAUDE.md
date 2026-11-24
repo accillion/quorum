@@ -168,7 +168,14 @@ quorum/
 
 ## Current Milestone Status
 
-**Active:** **none. 0.5.1 shipped on 23 Nov 2026:** tag `v0.5.1` on
+**Active: v0.6 Stage 1 (benchmark pilot, ACs 242–255).** Stage 1a
+(harness, corpus, frozen design; zero paid calls) is **in review** at
+Gate B. It awaits Rolf's approval of the design and the budget.
+Stage 1b, the paid pilot run, has not started. The harness is the
+`bench/` member (`quorum-bench`, `publish = false`, `dist = false`).
+Its rules are in SERVICES.md §9, the frozen design in `bench/DESIGN.md`,
+and the AC 248a amendment in spec §0.0 ([S1a-ADJ]).
+**Previous: 0.5.1 shipped on 23 Nov 2026:** tag `v0.5.1` on
 `22c1847` (PR #20's merge), run 45245754747, all 10 jobs green. All
 three crates are on crates.io at 0.5.1 through Trusted Publishing. The
 GitHub Release is live, and its assets pass `gh attestation verify`.
@@ -182,8 +189,8 @@ SERVICES.md §7 ("Pre-push coverage"). The locked v0.6 spec is
 Earlier: 0.5.0 (`530a5bf`, run 45039747819; the Consensus `tier`,
 SERVICES.md §3), 0.4.1 (`9aae2a3`, run 45018870330) and 0.4.0
 (`024ed97`, run 44931991241).
-**Next: v0.4 Stages 2–4, retargeted to 0.6.x, not started.** Each
-stage needs Rolf's go.
+**Next: v0.6 Stage 1b, then v0.4 Stages 2–4 (retargeted to 0.6.x),
+not started.** Each stage needs Rolf's go.
 
 0.4.0 shipped v0.4 Stage 1 (ACs 176–194) plus AC 211a, SEC-1 (PR #2),
 DL Part 1 (PR #5), DL Part 2 (PR #7), two-factor login (PR #6) and
@@ -221,6 +228,8 @@ derivation mechanism at v0.3.3 proportions. AC 211a is done. Of AC
 Repo state on `main` (`22c1847`, tagged `v0.5.1`): 559 tests pass, 1
 ignored, on Linux, and 558 on Windows. clippy
 `-D warnings` and fmt `--check` are clean. `../lippa` is untouched.
+With the Stage 1a branch (in review), the counts are 673 passed and 1
+ignored on Linux, and 672 on Windows: `quorum-bench` adds 114 tests.
 Open items, including the Stage 1 deferrals, are in `BACKLOG.md`.
 
 ---

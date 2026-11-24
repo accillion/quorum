@@ -5,6 +5,41 @@ Group by next-target version. Most-recent first.
 
 ---
 
+## Surfaced by v0.6 Stage 1a, the benchmark pilot design (24 Nov 2026)
+
+- **The archive should record model ids (Stage 3 candidate).**
+  `review.rs:120–133` fills `model_names` from `models[].vendor`.
+  Lippa's tier profiles report vendor spellings (`openai`, `claude`,
+  `google`), so the archive cannot say which model served a seat, and
+  it misses a same-vendor fallback (`rounds[].answered_model_id`). The
+  benchmark gets them from its recording proxy instead. Stage 3
+  ("honest metadata") is the natural place to add them.
+- **`quorum review` writes `.gitignore` into the reviewed repository.**
+  On first use it appends its dismissals-store line, and it prints
+  `wrote .gitignore: ...` on stderr, even for `--json` and range
+  reviews. That is a write to user files, which "read-only side effects"
+  arguably excludes. The bench works around it by checking each case's
+  tree before the run.
+- **Spec §11 item 6, refined.** Lippa already exposes each seat's Round
+  0 *prose* in the public session detail (`rounds[].raw_response`,
+  round 0). What it does not expose is the seat's Round 0 *claims*:
+  `strip_claims_block` removes them, and the claim groups use only the
+  final round. The upstream ask is now "per-seat Round 0 claims", which
+  would remove the bench's extraction step ([S1a-ADJ]).
+- **Lippa seeds project-linked sessions with project memory.** Every
+  session created with a `project_id` gets that project's confirmed
+  and pinned memory items prepended to every seat's prompt
+  (`_generate_seeding_context`), and Quorum always sends the linked
+  project. This is invisible to Quorum users and changes what the
+  panel sees. The bench keeps its project empty (preflight). For
+  users, document it in SERVICES.md at Stage 2 (policy and context
+  inputs).
+- **git2 is built without a TLS transport.** No Quorum crate can fetch
+  over HTTPS with libgit2. The bench fetches case sources as GitHub
+  tarballs, verified against tree ids. If a product feature ever needs
+  a fetch, it needs the `https` feature and its OpenSSL or WinHTTP
+  dependency, which is a tech-stack ruling.
+
 ## Surfaced by the 0.5.1 pre-push coverage fix (23 Nov 2026)
 
 - **General truncation handling waits for v0.6 AC 270/272.** 0.5.1
