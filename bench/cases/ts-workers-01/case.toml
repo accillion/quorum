@@ -1,0 +1,29 @@
+schema = 1
+id = "ts-workers-01"
+kind = "bug"
+language = "typescript"
+source_repo = "https://github.com/cloudflare/workers-sdk"
+source_commit = "7e5585dbf844fda0e1688797ce31c7e634f3f4ba"
+source_commit_url = "https://github.com/cloudflare/workers-sdk/commit/7e5585dbf844fda0e1688797ce31c7e634f3f4ba"
+source_commit_date = "2025-07-18"
+base_commit = "7e5585dbf844fda0e1688797ce31c7e634f3f4ba"
+removed_paths = [".changeset/mean-schools-see.md", "packages/miniflare/test/plugins/d1/suite.ts", "packages/wrangler/src/__tests__/d1/export.test.ts"]
+base_reverts = []
+case_base_tree = "72a26487d3a746105f5b3eee86a99ce91245cb9e"
+case_commit_tree = "df1e12995689a5badf7195ae1c99311800eeb2f9"
+licence = "MIT OR Apache-2.0"
+licence_path = "LICENSE-MIT"
+licence_notice = """
+Copyright (c) 2020 Cloudflare, Inc. <wrangler@cloudflare.com>
+"""
+agent_files = ["CLAUDE.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "cloudflare__workers-sdk-9866"
+
+[repro]
+reproduced = true
+image = "docker.io/library/node:20-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5"
+command = "corepack enable && pnpm install --frozen-lockfile && pnpm turbo build --filter=miniflare && pnpm -F miniflare build && cd packages/miniflare && pnpm exec ava test/plugins/d1/index.spec.ts"
+test_files = ["packages/miniflare/test/plugins/d1/suite.ts", "packages/wrangler/src/__tests__/d1/export.test.ts"]
+fixed_exit = 0
+reverted_exit = 1

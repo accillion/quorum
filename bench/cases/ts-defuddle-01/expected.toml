@@ -1,0 +1,12 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["src/standardize.ts"]
+title = "Tables whose cells contain no text and no media are kept and rendered as empty Markdown tables"
+description = """
+standardizeElements (src/standardize.ts) does not remove tables in which every td/th
+cell is empty and the table contains no media (img, picture, video, audio, iframe, svg,
+math). Decorative tables such as Wikisource's `pr_quality` proofreading progress bar
+(coloured empty cells) survive extraction, so the Markdown output starts with an empty
+table like `|  |  |  |` followed by a `| --- |` separator row (issue #242).
+"""

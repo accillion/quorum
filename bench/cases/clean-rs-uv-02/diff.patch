@@ -1,0 +1,119 @@
+diff --git a/crates/uv-auth/src/providers.rs b/crates/uv-auth/src/providers.rs
+index 85a5a0ec7..2c531d3da 100644
+--- a/crates/uv-auth/src/providers.rs
++++ b/crates/uv-auth/src/providers.rs
+@@ -5,7 +5,7 @@ use url::Url;
+ use uv_static::EnvVars;
+ 
+ use crate::Credentials;
+-use crate::realm::Realm;
++use crate::realm::{Realm, RealmRef};
+ 
+ /// The [`Realm`] for the Hugging Face platform.
+ static HUGGING_FACE_REALM: LazyLock<Realm> = LazyLock::new(|| {
+@@ -37,7 +37,7 @@ pub(crate) struct HuggingFaceProvider;
+ impl HuggingFaceProvider {
+     /// Returns the credentials for the Hugging Face platform, if available.
+     pub(crate) fn credentials_for(url: &Url) -> Option<Credentials> {
+-        if Realm::from(url) == *HUGGING_FACE_REALM {
++        if RealmRef::from(url) == *HUGGING_FACE_REALM {
+             if let Some(token) = HUGGING_FACE_TOKEN.as_ref() {
+                 return Some(Credentials::Bearer {
+                     token: token.clone(),
+diff --git a/crates/uv-auth/src/realm.rs b/crates/uv-auth/src/realm.rs
+index cfedf299c..03b3c8fcf 100644
+--- a/crates/uv-auth/src/realm.rs
++++ b/crates/uv-auth/src/realm.rs
+@@ -1,5 +1,5 @@
++use std::hash::{Hash, Hasher};
+ use std::{fmt::Display, fmt::Formatter};
+-
+ use url::Url;
+ use uv_small_str::SmallString;
+ 
+@@ -22,7 +22,7 @@ use uv_small_str::SmallString;
+ // The port is only allowed to differ if it matches the "default port" for the scheme.
+ // However, `url` (and therefore `reqwest`) sets the `port` to `None` if it matches the default port
+ // so we do not need any special handling here.
+-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
++#[derive(Debug, Clone)]
+ pub(crate) struct Realm {
+     scheme: SmallString,
+     host: Option<SmallString>,
+@@ -59,6 +59,76 @@ impl Display for Realm {
+     }
+ }
+ 
++impl PartialEq for Realm {
++    fn eq(&self, other: &Self) -> bool {
++        RealmRef::from(self) == RealmRef::from(other)
++    }
++}
++
++impl Eq for Realm {}
++
++impl Hash for Realm {
++    fn hash<H: Hasher>(&self, state: &mut H) {
++        RealmRef::from(self).hash(state);
++    }
++}
++
++/// A reference to a [`Realm`] that can be used for zero-allocation comparisons.
++#[derive(Debug, Copy, Clone)]
++pub(crate) struct RealmRef<'a> {
++    scheme: &'a str,
++    host: Option<&'a str>,
++    port: Option<u16>,
++}
++
++impl<'a> From<&'a Url> for RealmRef<'a> {
++    fn from(url: &'a Url) -> Self {
++        Self {
++            scheme: url.scheme(),
++            host: url.host_str(),
++            port: url.port(),
++        }
++    }
++}
++
++impl PartialEq for RealmRef<'_> {
++    fn eq(&self, other: &Self) -> bool {
++        self.scheme == other.scheme && self.host == other.host && self.port == other.port
++    }
++}
++
++impl Eq for RealmRef<'_> {}
++
++impl Hash for RealmRef<'_> {
++    fn hash<H: Hasher>(&self, state: &mut H) {
++        self.scheme.hash(state);
++        self.host.hash(state);
++        self.port.hash(state);
++    }
++}
++
++impl<'a> PartialEq<RealmRef<'a>> for Realm {
++    fn eq(&self, rhs: &RealmRef<'a>) -> bool {
++        RealmRef::from(self) == *rhs
++    }
++}
++
++impl PartialEq<Realm> for RealmRef<'_> {
++    fn eq(&self, rhs: &Realm) -> bool {
++        *self == RealmRef::from(rhs)
++    }
++}
++
++impl<'a> From<&'a Realm> for RealmRef<'a> {
++    fn from(realm: &'a Realm) -> Self {
++        Self {
++            scheme: &realm.scheme,
++            host: realm.host.as_deref(),
++            port: realm.port,
++        }
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use url::{ParseError, Url};

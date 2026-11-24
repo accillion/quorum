@@ -1,0 +1,13 @@
+# Key-guard exceptions (AC 247). Each entry names a path and the SHA-256 of
+# the exact text the guard matched, with a reason. The guard never prints a
+# matched value; review an entry by opening the file at the reported line.
+
+[[allow]]
+path = "bench/cases/py-agents-02/repro/files/tests/sandbox/test_memory.py"
+sha256 = "befb3d7198d75fddbd06c29d4e2523b0dda558cd9f7d005063a02c618f693219"
+reason = "Upstream openai-agents-python test code: a Python keyword argument named session, set to chat_session, not a cookie (lines 1425, 1431)."
+
+[[allow]]
+path = "bench/cases/py-agents-02/repro/files/tests/sandbox/test_memory.py"
+sha256 = "01a71ae223a37c049eb83ed7753c62213c4e6332345ce670df104c97dc2daf71"
+reason = "Upstream openai-agents-python test code: a Python keyword argument named session, set to an SQLiteSession(...), not a cookie (lines 1491, 1497)."

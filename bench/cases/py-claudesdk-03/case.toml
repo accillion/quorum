@@ -1,0 +1,29 @@
+schema = 1
+id = "py-claudesdk-03"
+kind = "bug"
+language = "python"
+source_repo = "https://github.com/anthropics/claude-agent-sdk-python"
+source_commit = "6bbad5fc834fda59689e0b01e9ab3b8414816b5a"
+source_commit_url = "https://github.com/anthropics/claude-agent-sdk-python/commit/6bbad5fc834fda59689e0b01e9ab3b8414816b5a"
+source_commit_date = "2026-05-14"
+base_commit = "6bbad5fc834fda59689e0b01e9ab3b8414816b5a"
+removed_paths = ["tests/test_transport.py"]
+base_reverts = []
+case_base_tree = "ce41c2e885a99287ee5122fbfe903c5b37ac3530"
+case_commit_tree = "d2b6a6b812fcf3fce75493135787fe931fc4e4b4"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) 2025 Anthropic, PBC
+"""
+agent_files = ["CLAUDE.md"]
+dataset = "hand-picked"
+dataset_instance = ""
+
+[repro]
+reproduced = true
+image = "python@sha256:4209fae09a3e20afd863e528bfddc235da5fd5977983e1996cd54cc9a72e6267"
+command = 'pip install -q -e ".[dev]" && python -m pytest -p no:cacheprovider tests/test_transport.py'
+test_files = ["tests/test_transport.py"]
+fixed_exit = 0
+reverted_exit = 1

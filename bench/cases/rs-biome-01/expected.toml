@@ -1,0 +1,28 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_bind.rs"]
+title = "useVueValidVBind reports Vue 3.4+ same-name shorthand like `:foo` as a v-bind with a missing value"
+description = """
+The rule reports `MissingValue` for every `v-bind:foo` / `:foo` directive that
+has no initializer. Since Vue 3.4, a directive with a static argument and no
+value is the same-name shorthand for `:foo="foo"` and is valid; only a
+directive with no argument or a dynamic argument (`v-bind:[expr]`, `:[expr]`)
+and no value is invalid. Observable failure (issue #10754): valid templates
+such as `<Foo :foo />` or `<div v-bind:foo></div>` get a false
+`useVueValidVBind` diagnostic.
+"""
+
+[[defect]]
+id = "D2"
+severity = "low"
+files = ["crates/biome_html_analyze/src/lint/correctness/use_vue_valid_v_bind.rs"]
+title = "find_invalid_modifiers compares modifier token text including trailing trivia, flagging valid modifiers"
+description = """
+`find_invalid_modifiers` looks up each modifier name with `modifier_token().text()`,
+which includes trailing trivia, instead of `text_trimmed()` (as
+`no_vue_v_on_number_values` does). When a modifier is followed by whitespace,
+for example `:foo.prop />` with no value, the looked-up name is `"prop "`, which
+is not in `VALID_MODIFIERS`, so a valid modifier is reported as invalid. The PR
+notes this latent bug becomes reachable once same-name shorthand is accepted.
+"""

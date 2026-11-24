@@ -1,0 +1,200 @@
+  i Add a handler, e.g. v-on:click="onClick".
+  
+
+valid.vue:69:9 lint/correctness/useVueValidVOn ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × The v-on directive for this event is missing a handler expression.
+  
+    67 │        effect and are valid without a handler. -->
+    68 │   <div @click.stop></div>
+  > 69 │   <form @submit.prevent></form>
+       │         ^^^^^^^^^^^^^^^
+    70 │   <div v-on:click.stop></div>
+    71 │   <div v-on:submit.prevent></div>
+  
+  i Add a handler, e.g. v-on:click="onClick".
+  
+
+valid.vue:70:8 lint/correctness/useVueValidVOn ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × The v-on directive for this event is missing a handler expression.
+  
+    68 │   <div @click.stop></div>
+    69 │   <form @submit.prevent></form>
+  > 70 │   <div v-on:click.stop></div>
+       │        ^^^^^^^^^^^^^^^
+    71 │   <div v-on:submit.prevent></div>
+    72 │   <div @click.stop.prevent></div>
+  
+  i Add a handler, e.g. v-on:click="onClick".
+  
+
+valid.vue:71:8 lint/correctness/useVueValidVOn ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × The v-on directive for this event is missing a handler expression.
+  
+    69 │   <form @submit.prevent></form>
+    70 │   <div v-on:click.stop></div>
+  > 71 │   <div v-on:submit.prevent></div>
+       │        ^^^^^^^^^^^^^^^^^^^
+    72 │   <div @click.stop.prevent></div>
+    73 │   <div @click.prevent.exact></div>
+  
+  i Add a handler, e.g. v-on:click="onClick".
+  
+
+valid.vue:72:8 lint/correctness/useVueValidVOn ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × The v-on directive for this event is missing a handler expression.
+  
+    70 │   <div v-on:click.stop></div>
+    71 │   <div v-on:submit.prevent></div>
+  > 72 │   <div @click.stop.prevent></div>
+       │        ^^^^^^^^^^^^^^^^^^^
+    73 │   <div @click.prevent.exact></div>
+    74 │ 
+  
+  i Add a handler, e.g. v-on:click="onClick".
+  
+
+valid.vue:73:8 lint/correctness/useVueValidVOn ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × The v-on directive for this event is missing a handler expression.
+  
+    71 │   <div v-on:submit.prevent></div>
+    72 │   <div @click.stop.prevent></div>
+  > 73 │   <div @click.prevent.exact></div>
+       │        ^^^^^^^^^^^^^^^^^^^^
+    74 │ 
+    75 │   <!-- Verb-modifier-only on a self-closing component (modifier is
+  
+  i Add a handler, e.g. v-on:click="onClick".
+  
+
+valid.vue:78:14 lint/correctness/useVueValidVOn ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Invalid v-on modifier.
+  
+    76 │        followed by whitespace + `/>`, so the modifier-name lookup must
+    77 │        trim trivia). -->
+  > 78 │   <Foo @click.stop />
+       │              ^^^^^
+    79 │   <Foo @submit.prevent />
+    80 │   <Foo v-on:click.stop />
+  
+  i Remove or correct the invalid modifier.
+  
+  i Allowed modifiers:
+  
+  - delete
+  - native
+  - capture
+  - down
+  - self
+  - meta
+  - left
+  - stop
+  - enter
+  - space
+  - up
+  - once
+  - middle
+  - ctrl
+  - alt
+  - tab
+  - exact
+  - passive
+  - prevent
+  - esc
+  - right
+  - shift
+  
+
+valid.vue:79:15 lint/correctness/useVueValidVOn ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Invalid v-on modifier.
+  
+    77 │        trim trivia). -->
+    78 │   <Foo @click.stop />
+  > 79 │   <Foo @submit.prevent />
+       │               ^^^^^^^^
+    80 │   <Foo v-on:click.stop />
+    81 │ </template>
+  
+  i Remove or correct the invalid modifier.
+  
+  i Allowed modifiers:
+  
+  - delete
+  - native
+  - capture
+  - down
+  - self
+  - meta
+  - left
+  - stop
+  - enter
+  - space
+  - up
+  - once
+  - middle
+  - ctrl
+  - alt
+  - tab
+  - exact
+  - passive
+  - prevent
+  - esc
+  - right
+  - shift
+  
+
+valid.vue:80:18 lint/correctness/useVueValidVOn ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × Invalid v-on modifier.
+  
+    78 │   <Foo @click.stop />
+    79 │   <Foo @submit.prevent />
+  > 80 │   <Foo v-on:click.stop />
+       │                  ^^^^^
+    81 │ </template>
+    82 │ 
+  
+  i Remove or correct the invalid modifier.
+  
+  i Allowed modifiers:
+  
+  - delete
+  - native
+  - capture
+  - down
+  - self
+  - meta
+  - left
+  - stop
+  - enter
+  - space
+  - up
+  - once
+  - middle
+  - ctrl
+  - alt
+  - tab
+  - exact
+  - passive
+  - prevent
+  - esc
+  - right
+  - shift
+  
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    specs::correctness::use_vue_valid_v_on::valid_vue
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 515 filtered out; finished in 0.14s
+
+error: test failed, to rerun pass `-p biome_html_analyze --test spec_tests`
+EXIT 101

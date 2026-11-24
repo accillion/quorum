@@ -1,0 +1,18 @@
+[[defect]]
+id = "D1"
+severity = "high"
+files = ["crates/oxc_minifier/src/peephole/remove_unused_expression.rs"]
+title = "Rewriting a nullish check plus assignment into `??=` leaves the LHS write-only, so the guard is later removed"
+description = """
+When the peephole pass rewrites `a == null && (a = b)` (and the equivalent
+`if (a == null) a = b` / `a != null || (a = b)` shapes) into `a ??= b`, it
+changes the operator to `LogicalNullish` but does not mark the assignment target
+as read, unlike the sibling `||=`, `&&=` and `+=` conversions. `??=` reads its
+LHS, but the reference stays flagged Write-only, so on the next unused-removal
+iteration the variable looks unread and the whole assignment, including the
+nullish guard it carries, is removed, leaving only the right-hand side.
+Observable failure (issue #21457, seen with Vite 8): `let rafId; function foo()
+{ if (rafId == null) { rafId = requestAnimationFrame(cb); } }` minifies to
+`function foo() { requestAnimationFrame(cb) }`, so a new frame is scheduled on
+every call instead of at most once. The minifier changes runtime behaviour.
+"""

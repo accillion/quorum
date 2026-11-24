@@ -1,0 +1,122 @@
+ Downloading crates ...
+  Downloaded ppv-lite86 v0.2.17
+  Downloaded derive_builder v0.13.1
+  Downloaded thiserror-impl v1.0.63
+  Downloaded ident_case v1.0.1
+  Downloaded darling_macro v0.14.4
+  Downloaded strsim v0.10.0
+  Downloaded derive_builder_macro v0.13.1
+  Downloaded rand_chacha v0.3.1
+  Downloaded rand_core v0.6.4
+  Downloaded thiserror v1.0.63
+  Downloaded darling_core v0.14.4
+  Downloaded rand v0.8.5
+  Downloaded grit-pattern-matcher v0.5.1
+  Downloaded elsa v1.10.0
+  Downloaded derive_builder_core v0.13.1
+  Downloaded darling v0.14.4
+  Downloaded grit-util v0.5.1
+   Compiling syn v1.0.109
+   Compiling stable_deref_trait v1.2.0
+   Compiling getrandom v0.2.15
+   Compiling strsim v0.10.0
+   Compiling ident_case v1.0.1
+   Compiling thiserror v1.0.63
+   Compiling biome_js_analyze v0.5.7 (/work/biome/crates/biome_js_analyze)
+   Compiling biome_html_analyze v0.5.7 (/work/biome/crates/biome_html_analyze)
+   Compiling thiserror-impl v1.0.63
+   Compiling yoke v0.7.4
+   Compiling ppv-lite86 v0.2.17
+   Compiling elsa v1.10.0
+   Compiling biome_grit_syntax v0.5.7 (/work/biome/crates/biome_grit_syntax)
+   Compiling biome_yaml_factory v0.0.1 (/work/biome/crates/biome_yaml_factory)
+   Compiling rand_core v0.6.4
+   Compiling ring v0.17.13
+   Compiling zerovec v0.10.4
+   Compiling rand_chacha v0.3.1
+   Compiling rand v0.8.5
+   Compiling tinystr v0.7.6
+   Compiling icu_collections v1.5.0
+   Compiling icu_locid v1.5.0
+   Compiling rustls-webpki v0.103.13
+   Compiling icu_provider v1.5.0
+   Compiling biome_grit_factory v0.5.7 (/work/biome/crates/biome_grit_factory)
+   Compiling icu_locid_transform v1.5.0
+   Compiling rustls v0.23.37
+   Compiling icu_properties v1.5.1
+   Compiling darling_core v0.14.4
+   Compiling biome_diagnostics_macros v0.5.7 (/work/biome/crates/biome_diagnostics_macros)
+   Compiling biome_deserialize_macros v0.6.0 (/work/biome/crates/biome_deserialize_macros)
+   Compiling biome_js_type_info_macros v0.0.1 (/work/biome/crates/biome_js_type_info_macros)
+   Compiling biome_diagnostics v0.5.7 (/work/biome/crates/biome_diagnostics)
+   Compiling darling_macro v0.14.4
+   Compiling darling v0.14.4
+   Compiling derive_builder_core v0.13.1
+   Compiling icu_normalizer v1.5.0
+   Compiling biome_parser v0.5.7 (/work/biome/crates/biome_parser)
+   Compiling biome_fs v0.5.7 (/work/biome/crates/biome_fs)
+   Compiling biome_suppression v0.5.7 (/work/biome/crates/biome_suppression)
+   Compiling idna_adapter v1.2.0
+   Compiling idna v1.1.0
+   Compiling derive_builder_macro v0.13.1
+   Compiling biome_db v0.0.1 (/work/biome/crates/biome_db)
+   Compiling biome_yaml_parser v0.0.1 (/work/biome/crates/biome_yaml_parser)
+   Compiling biome_tailwind_parser v0.0.1 (/work/biome/crates/biome_tailwind_parser)
+   Compiling biome_grit_parser v0.1.0 (/work/biome/crates/biome_grit_parser)
+   Compiling derive_builder v0.13.1
+   Compiling grit-util v0.5.1
+   Compiling url v2.5.8
+   Compiling biome_languages v0.1.0 (/work/biome/crates/biome_languages)
+   Compiling grit-pattern-matcher v0.5.1
+   Compiling ureq v3.3.0
+   Compiling biome_json_parser v0.5.7 (/work/biome/crates/biome_json_parser)
+   Compiling biome_css_parser v0.5.7 (/work/biome/crates/biome_css_parser)
+   Compiling biome_deserialize v0.6.0 (/work/biome/crates/biome_deserialize)
+   Compiling biome_formatter v0.5.7 (/work/biome/crates/biome_formatter)
+   Compiling biome_json_value v0.1.0 (/work/biome/crates/biome_json_value)
+   Compiling biome_glob v0.1.0 (/work/biome/crates/biome_glob)
+   Compiling biome_analyze v0.5.7 (/work/biome/crates/biome_analyze)
+   Compiling biome_aria_metadata v0.5.7 (/work/biome/crates/biome_aria_metadata)
+   Compiling biome_package v0.5.7 (/work/biome/crates/biome_package)
+   Compiling biome_resolver v0.1.0 (/work/biome/crates/biome_resolver)
+   Compiling biome_project_layout v0.0.1 (/work/biome/crates/biome_project_layout)
+   Compiling biome_css_semantic v0.0.0 (/work/biome/crates/biome_css_semantic)
+   Compiling biome_json_formatter v0.5.7 (/work/biome/crates/biome_json_formatter)
+   Compiling biome_css_formatter v0.5.7 (/work/biome/crates/biome_css_formatter)
+   Compiling biome_aria v0.5.7 (/work/biome/crates/biome_aria)
+   Compiling biome_js_syntax v0.5.7 (/work/biome/crates/biome_js_syntax)
+   Compiling biome_html_syntax v0.5.7 (/work/biome/crates/biome_html_syntax)
+   Compiling biome_html_factory v0.5.7 (/work/biome/crates/biome_html_factory)
+   Compiling biome_html_formatter v0.0.0 (/work/biome/crates/biome_html_formatter)
+   Compiling biome_html_parser v0.0.1 (/work/biome/crates/biome_html_parser)
+   Compiling biome_js_factory v0.5.7 (/work/biome/crates/biome_js_factory)
+   Compiling biome_rule_options v0.0.1 (/work/biome/crates/biome_rule_options)
+   Compiling biome_js_parser v0.5.7 (/work/biome/crates/biome_js_parser)
+   Compiling biome_js_formatter v0.5.7 (/work/biome/crates/biome_js_formatter)
+   Compiling biome_jsdoc_comment v0.0.1 (/work/biome/crates/biome_jsdoc_comment)
+   Compiling biome_grit_patterns v0.0.1 (/work/biome/crates/biome_grit_patterns)
+   Compiling biome_js_semantic v0.5.7 (/work/biome/crates/biome_js_semantic)
+   Compiling biome_js_type_info v0.0.1 (/work/biome/crates/biome_js_type_info)
+   Compiling biome_plugin_loader v0.0.1 (/work/biome/crates/biome_plugin_loader)
+   Compiling biome_module_graph v0.0.1 (/work/biome/crates/biome_module_graph)
+   Compiling biome_workspace_db v0.1.0 (/work/biome/crates/biome_workspace_db)
+   Compiling biome_json_analyze v0.5.7 (/work/biome/crates/biome_json_analyze)
+   Compiling biome_css_analyze v0.5.7 (/work/biome/crates/biome_css_analyze)
+   Compiling biome_configuration_macros v0.0.1 (/work/biome/crates/biome_configuration_macros)
+   Compiling biome_configuration v0.0.1 (/work/biome/crates/biome_configuration)
+   Compiling biome_service v0.0.0 (/work/biome/crates/biome_service)
+   Compiling biome_test_utils v0.0.0 (/work/biome/crates/biome_test_utils)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 45.49s
+     Running tests/spec_tests.rs (/target/debug/deps/spec_tests-eb3ae681bac0b0fd)
+
+running 6 tests
+test specs::correctness::no_unsafe_optional_chaining::invalid_ts ... ok
+test specs::correctness::no_unsafe_optional_chaining::invalid_cjs ... ok
+test specs::correctness::no_unsafe_optional_chaining::valid_js ... ok
+test specs::correctness::no_unsafe_optional_chaining::valid_arithmetic_js ... ok
+test specs::correctness::no_unsafe_optional_chaining::valid_ts ... ok
+test specs::correctness::no_unsafe_optional_chaining::invalid_js ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 2680 filtered out; finished in 0.09s
+
+EXIT 0

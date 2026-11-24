@@ -1,0 +1,19 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["src/claude_agent_sdk/_internal/transport/subprocess_cli.py"]
+title = "A raising stderr callback silently ends the stderr read loop, dropping every later stderr line"
+description = """
+In `SubprocessCLITransport._handle_stderr`, the user-supplied
+`options.stderr` callback is called directly inside the `async for` loop over
+the CLI's stderr stream, and the only handler is a single
+`except Exception: pass` outside the loop. If the callback raises even once
+(for one bad line or a transient error in the user's logger), the exception
+escapes the loop, is swallowed by the outer handler, and `_handle_stderr`
+returns: no further stderr lines reach the callback for the rest of the
+session, and nothing is logged, so the user cannot tell it happened. The
+`stderr: Callable[[str], None]` option documents no "must not raise"
+contract. The callback call should be isolated per line (catch and log, then
+continue), and the outer handler should at least log stream-read failures
+instead of passing silently.
+"""

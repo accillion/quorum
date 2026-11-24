@@ -1,0 +1,16 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["src/claude_agent_sdk/_internal/message_parser.py"]
+title = "parse_message iterates non-list assistant content and non-dict blocks, raising TypeError instead of MessageParseError"
+description = """
+In `parse_message`, the `assistant` branch iterates
+`data["message"]["content"]` without checking that it is a list, and both the
+`user` and `assistant` branches index each content block with `block["type"]`
+without checking that it is a dict. An assistant message whose `content` is a
+plain string is iterated character by character, and a non-dict block in a
+content list fails the same way: `block["type"]` raises an uncaught
+`TypeError` ("string indices must be integers") instead of the documented
+`MessageParseError`. Callers that catch `MessageParseError` for malformed CLI
+output crash instead.
+"""

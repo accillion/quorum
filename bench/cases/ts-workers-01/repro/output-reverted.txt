@@ -1,0 +1,58 @@
+
+> miniflare@4.20250712.0 build /w/repo/packages/miniflare
+> node scripts/build.mjs && pnpm run types:build
+
+
+> miniflare@4.20250712.0 types:build /w/repo/packages/miniflare
+> node scripts/types.mjs tsconfig.json && node scripts/types.mjs src/workers/tsconfig.json
+
+
+Bundling types...
+Analysis will use the bundled TypeScript version 5.8.2
+Writing package typings: /w/repo/packages/miniflare/dist/src/index.d.ts
+
+Bundled types with 0 error(s) and 0 warning(s)
+
+  ✔ operations permit strange database names (178ms)
+  ✔ it properly handles ROWS_AND_COLUMNS results format
+  ✔ D1Database: batch (262ms)
+  ✔ D1Database: exec (205ms)
+  ✔ D1PreparedStatement: run (292ms)
+  ✔ D1PreparedStatement: first (335ms)
+  ✔ D1PreparedStatement: all (512ms)
+  ✔ D1PreparedStatement: bind (600ms)
+  ✔ D1PreparedStatement: raw (692ms)
+  ✔ migrates database to new location (1s)
+  ✔ operations persist D1 data (1s)
+  ✘ [fail]: dumpSql exports and imports complete database structure and content correctly Rejected promise returned by test
+  ─
+
+  dumpSql exports and imports complete database structure and content correctly
+
+  Rejected promise returned by test. Reason:
+
+  Error {
+    message: `D1_ERROR: Failed to parse body as JSON, got: Error: near "name": syntax error at offset 24: SQLITE_ERROR␊
+        at dumpSql (file:///w/repo/packages/miniflare/dist/src/workers/d1/database.worker.js:46:29)␊
+        at dumpSql.next (<anonymous>)␊
+        at Array.from (<anonymous>)␊
+        at #doExportData (file:///w/repo/packages/miniflare/dist/src/workers/d1/database.worker.js:339:23)␊
+        at D1DatabaseObject.queryExecute (file:///w/repo/packages/miniflare/dist/src/workers/d1/database.worker.js:318:32)␊
+        at async D1DatabaseObject.fetch (file:///w/repo/packages/miniflare/dist/src/workers/shared/index.worker.js:367:36)␊
+        at async D1DatabaseObject.fetch (file:///w/repo/packages/miniflare/dist/src/workers/shared/index.worker.js:528:14)`,
+  }
+
+  Error: D1_ERROR: Failed to parse body as JSON, got: Error: near "name": syntax error at offset 24: SQLITE_ERROR
+      at dumpSql (file:///w/repo/packages/miniflare/dist/src/workers/d1/database.worker.js:46:29)
+      at dumpSql.next (<anonymous>)
+      at Array.from (<anonymous>)
+      at #doExportData (file:///w/repo/packages/miniflare/dist/src/workers/d1/database.worker.js:339:23)
+      at D1DatabaseObject.queryExecute (file:///w/repo/packages/miniflare/dist/src/workers/d1/database.worker.js:318:32)
+      at async D1DatabaseObject.fetch (file:///w/repo/packages/miniflare/dist/src/workers/shared/index.worker.js:367:36)
+      at async D1DatabaseObject.fetch (file:///w/repo/packages/miniflare/dist/src/workers/shared/index.worker.js:528:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+      at async <anonymous> (/w/repo/packages/miniflare/test/plugins/d1/suite.ts:615:17)
+
+  ─
+
+  1 test failed

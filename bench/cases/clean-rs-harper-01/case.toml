@@ -1,0 +1,28 @@
+schema = 1
+id = "clean-rs-harper-01"
+kind = "clean"
+language = "rust"
+source_repo = "https://github.com/Automattic/harper"
+source_commit = "fa5525247c6dc23be57935eb48a454f529cdb321"
+source_commit_url = "https://github.com/Automattic/harper/commit/fa5525247c6dc23be57935eb48a454f529cdb321"
+source_commit_date = "2025-09-08"
+base_commit = "d6f1d499f7920ecc03d437d2a1e3783dfd716720"
+removed_paths = []
+base_reverts = []
+case_base_tree = "4b911597064f3bc7f96f128f159579d5f0e1a9be"
+case_commit_tree = "baa7fa2ea29459946d8d82b64977d916f069d5b0"
+licence = "Apache-2.0"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright 2024 Elijah Potter
+"""
+agent_files = []
+dataset = "hand-picked"
+dataset_instance = ""
+
+[clean]
+head_checked = "eeaf0d208e56bf55ea1720833177d9451316b4cf"
+head_checked_date = "2026-11-23"
+retained_share = 1.0
+later_commits = []
+verdict = "no later fix, revert or substantial rewrite: share 1.0, no later commit changed any added line"

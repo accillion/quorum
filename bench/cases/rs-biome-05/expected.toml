@@ -1,0 +1,20 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["crates/biome_service/src/file_handlers/html/parse_embedded_nodes.rs"]
+title = "Astro shorthand attributes like <MyComponent {text} /> are not parsed as embedded JS, so used variables look unused"
+description = """
+`parse_embedded_nodes` (crates/biome_service/src/file_handlers/html/parse_embedded_nodes.rs)
+extracts embedded JavaScript expressions from Astro templates (text
+expressions, attribute initializers, spread attributes) so the JS analyzer
+can see which frontmatter bindings the template uses. The Astro branch had no
+case for the shorthand attribute syntax `{name}` (an
+`HtmlAttributeSingleTextExpression` that is not inside an initializer
+clause); only the Svelte branch handled it. A variable that is only
+referenced through Astro shorthand, e.g. `const text = "abc";` used as
+`<MyComponent {text} />`, is never seen as used, so `noUnusedVariables`
+reports a false positive and its fix would delete a used variable
+(regression in v2.5.2, issue #10840). HTML rules that inspect embedded
+expressions in Astro files miss these attributes too. The fix adds the
+shorthand-attribute case to the Astro branch.
+"""

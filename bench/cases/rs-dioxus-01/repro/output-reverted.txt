@@ -1,0 +1,146 @@
+== CASE COMMIT tree + repro/files
+   Compiling dioxus-autofmt v0.7.5 (/work/src/packages/autofmt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.65s
+     Running tests/samples.rs (/work/target/debug/deps/samples-9e7ea0e91b90c2a7)
+
+running 53 tests
+test blank_lines_preserved ... ok
+test collapse_expr ... ok
+test commented_rsx_block ... FAILED
+test commented_rsx_block_between ... ok
+test commented_rsx_block_deep ... FAILED
+test commented_rsx_block_only ... ok
+test collapse ... ok
+test asset ... ok
+test basic_expr ... ok
+test blank_lines ... ok
+test comments_async_closure ... ok
+test attributes ... ok
+test comments_async_closure_is_idempotent ... ok
+test commented_rsx_block_nested ... FAILED
+test emoji ... ok
+test comments_attr_expr_blocks ... ok
+test comments_expr_with_strings ... ok
+test expr_on_conditional ... ok
+test fat_exprs ... ok
+test commentshard ... ok
+test comments_nested_closures ... ok
+test forloop_tuple ... ok
+test letsome ... ok
+test key ... ok
+test comments_attr_expr_blocks_is_idempotent ... ok
+test immediate_expr ... ok
+test ifchain_forloop ... ok
+test comments_expr_with_strings_is_idempotent ... ok
+test comments_nested_closures_is_idempotent ... ok
+test complex ... ok
+test docsite ... ok
+test comments ... ok
+test long ... ok
+test long_exprs ... ok
+test messy_indent ... ok
+test manual_props ... ok
+test multirsx ... ok
+test oneline ... ok
+test misplaced ... ok
+test raw_strings ... ok
+test reallylong ... ok
+test simple ... ok
+test skip ... ok
+test shorthand ... ok
+test many_exprs ... ok
+test t2 ... ok
+test nested ... ok
+test spaces ... ok
+test tiny ... ok
+test tinynoopt ... ok
+test prop_rsx ... ok
+test staged ... ok
+test trailing_expr ... ok
+
+failures:
+
+---- commented_rsx_block stdout ----
+
+thread 'commented_rsx_block' (922) panicked at packages/autofmt/tests/samples.rs:27:1:
+assertion failed: `(left == right)`
+
+Diff < left / right > :
+ rsx! {
+     div {
+         h2 { "Title" }
+         // div { class: "wrapper",
+<        //     p { "A" }
+<        //     p { "B" }
+<        // }
+>    //     p { "A" }
+>    //     p { "B" }
+>    // }
+     }
+ }
+ 
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- commented_rsx_block_deep stdout ----
+
+thread 'commented_rsx_block_deep' (924) panicked at packages/autofmt/tests/samples.rs:27:1:
+assertion failed: `(left == right)`
+
+Diff < left / right > :
+ rsx! {
+     div {
+         div {
+             div {
+                 h2 { "Title" }
+<                // div { class: "deep",
+<                //     p { "A" }
+<                // }
+>                        // div { class: "deep",
+>            //     p { "A" }
+>            // }
+             }
+         }
+     }
+ }
+ 
+
+
+
+---- commented_rsx_block_nested stdout ----
+
+thread 'commented_rsx_block_nested' (925) panicked at packages/autofmt/tests/samples.rs:27:1:
+assertion failed: `(left == right)`
+
+Diff < left / right > :
+ rsx! {
+     Component {
+         field: rsx! {
+             div {
+                 h2 { "Title" }
+<                // div { class: "wrapper",
+<                //     // nested comment
+<                //     p { "A" }
+<                // }
+>            // div { class: "wrapper",
+>            //     // nested comment
+>            //     p { "A" }
+>            // }
+             }
+         },
+     }
+ }
+ 
+
+
+
+
+failures:
+    commented_rsx_block
+    commented_rsx_block_deep
+    commented_rsx_block_nested
+
+test result: FAILED. 50 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+error: test failed, to rerun pass `-p dioxus-autofmt --test samples`

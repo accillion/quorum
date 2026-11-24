@@ -1,0 +1,128 @@
+== CASE COMMIT tree + repro/files
+   Compiling biome_js_formatter v0.5.7 (/work/src/crates/biome_js_formatter)
+   Compiling biome_configuration v0.0.1 (/work/src/crates/biome_configuration)
+   Compiling biome_service v0.0.0 (/work/src/crates/biome_service)
+   Compiling biome_formatter_test v0.0.0 (/work/src/crates/biome_formatter_test)
+   Compiling biome_test_utils v0.0.0 (/work/src/crates/biome_test_utils)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.15s
+     Running tests/spec_tests.rs (/work/target/debug/deps/spec_tests-30a9a6f312ef81e3)
+
+running 1 test
+stored new snapshot /work/src/crates/biome_js_formatter/tests/specs/js/module/each/each.js.snap.new
+test formatter::js_module::module::each::each_js ... FAILED
+
+failures:
+
+---- formatter::js_module::module::each::each_js stdout ----
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ Snapshot Summary ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Snapshot file: crates/biome_js_formatter/tests/specs/js/module/each/each.js.snap
+Snapshot: each.js
+Source: crates/biome_formatter_test/src/snapshot_builder.rs:249
+────────────────────────────────────────────────────────────────────────────────
+js/module/each/each.js
+────────────────────────────────────────────────────────────────────────────────
+-old snapshot
++new results
+────────────┬───────────────────────────────────────────────────────────────────
+  176   176 │ ${11111111111} | ${2} | ${2}
+  177   177 │ ${1} | ${2} | ${3}
+  178   178 │ ${2} | ${1} | ${3}`;
+  179   179 │ 
+  180       │-test.each([[1, 2]])(
+  181       │-	"a description that is long enough to push the hugged opening line beyond the print width",
+  182       │-	(a, b) => {
+  183       │-		expect(a).toBe(b);
+  184       │-	},
+  185       │-);
+        180 │+test.each([
+        181 │+	[1, 2],
+        182 │+])("a description that is long enough to push the hugged opening line beyond the print width", (a, b) => {
+        183 │+	expect(a).toBe(b);
+        184 │+});
+  186   185 │ 
+  187       │-test.each([[1, 2]])(
+  188       │-	"a description that is long enough to push the hugged opening line beyond the print width",
+  189       │-	(a, b) => {
+  190       │-		expect(a).toBe(b);
+  191       │-	},
+  192       │-);
+  193       │-
+  194       │-it.each([[1, 2]])(
+  195       │-	"a description that is long enough to push the hugged opening line beyond the print width",
+  196       │-	(a, b) => {
+  197       │-		expect(a).toBe(b);
+  198       │-	},
+  199       │-);
+        186 │+test.each([
+        187 │+	[1, 2],
+        188 │+])("a description that is long enough to push the hugged opening line beyond the print width", (a, b) => {
+        189 │+	expect(a).toBe(b);
+        190 │+});
+  200   191 │ 
+  201       │-describe.each([[1, 2]])(
+  202       │-	"a description that is long enough to push the hugged opening line beyond the print width",
+  203       │-	(a, b) => {
+  204       │-		test("adds", () => {
+  205       │-			expect(a).toBe(b);
+  206       │-		});
+  207       │-	},
+  208       │-);
+        192 │+it.each([
+        193 │+	[1, 2],
+        194 │+])("a description that is long enough to push the hugged opening line beyond the print width", (a, b) => {
+        195 │+	expect(a).toBe(b);
+        196 │+});
+  209   197 │ 
+  210       │-test.for([[1, 2]])(
+  211       │-	"a description that is long enough to push the hugged opening line beyond the print width",
+  212       │-	(a, b) => {
+        198 │+describe.each([
+        199 │+	[1, 2],
+        200 │+])("a description that is long enough to push the hugged opening line beyond the print width", (a, b) => {
+        201 │+	test("adds", () => {
+  213   202 │ 		expect(a).toBe(b);
+  214       │-	},
+  215       │-);
+        203 │+	});
+        204 │+});
+        205 │+
+        206 │+test.for([
+        207 │+	[1, 2],
+        208 │+])("a description that is long enough to push the hugged opening line beyond the print width", (a, b) => {
+        209 │+	expect(a).toBe(b);
+        210 │+});
+  216   211 │ 
+  217   212 │ ```
+  218   213 │ 
+  219   214 │ # Lines exceeding max width of 80 characters
+┈┈┈┈┈┈┈┈┈┈┈┈┼┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+  221   216 │    22: 	${11}        | ${1}     | ${222}   | ${"unknown column 1"}   | ${"unknown column 2"}
+  222   217 │    29: 	${11}        | ${1}     | ${222}  | ${"unknown column 1"}   | ${"unknown column 2"}
+  223   218 │    54: 	${1} | ${[{ start: 5, end: 15 }]}                        | ${[1, 2, 3, 4, 5, 6, 7, 8]}
+  224   219 │    55: 	${1} | ${[{ start: 5, end: 15 }]}                        | ${["test", "string", "for", "prettier"]}
+  225       │-   73: 	"a description that is long enough to push the hugged opening line beyond the print width",
+  226       │-   80: 	"a description that is long enough to push the hugged opening line beyond the print width",
+  227       │-   87: 	"a description that is long enough to push the hugged opening line beyond the print width",
+  228       │-   94: 	"a description that is long enough to push the hugged opening line beyond the print width",
+  229       │-  103: 	"a description that is long enough to push the hugged opening line beyond the print width",
+        220 │+   74: ])("a description that is long enough to push the hugged opening line beyond the print width", (a, b) => {
+        221 │+   80: ])("a description that is long enough to push the hugged opening line beyond the print width", (a, b) => {
+        222 │+   86: ])("a description that is long enough to push the hugged opening line beyond the print width", (a, b) => {
+        223 │+   92: ])("a description that is long enough to push the hugged opening line beyond the print width", (a, b) => {
+        224 │+  100: ])("a description that is long enough to push the hugged opening line beyond the print width", (a, b) => {
+  230   225 │ ```
+────────────┴───────────────────────────────────────────────────────────────────
+To update snapshots run `cargo insta review`
+Stopped on the first failure. Run `cargo insta test` to run all snapshots.
+
+thread 'formatter::js_module::module::each::each_js' (11314) panicked at /usr/local/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/insta-1.48.0/src/runtime.rs:719:13:
+snapshot assertion for 'each.js' failed in line 249
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    formatter::js_module::module::each::each_js
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 294 filtered out; finished in 0.16s
+
+error: test failed, to rerun pass `-p biome_js_formatter --test spec_tests`

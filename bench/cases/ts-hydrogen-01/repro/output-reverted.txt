@@ -1,0 +1,34 @@
+The CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.
+
+ RUN  v1.0.4 /w/repo/packages/hydrogen-react
+
+ ❯ src/parse-metafield.test.ts  (39 tests | 1 failed | 1 skipped) 11ms
+   ❯ src/parse-metafield.test.ts > parseMetafield > base metafields > money with currency_code (Storefront API format)
+     → expected false to be true // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/parse-metafield.test.ts > parseMetafield > base metafields > money with currency_code (Storefront API format)
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/parse-metafield.test.ts:153:59
+    151|       });
+    152|       expect(parsed?.parsedValue?.amount === '30.0').toBe(true);
+    153|       expect(parsed?.parsedValue?.currencyCode === 'USD').toBe(true);
+       |                                                           ^
+    154|       expectType<null | MoneyV2>(parsed?.parsedValue);
+    155|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 37 passed | 1 skipped (39)
+   Start at  22:54:58
+   Duration  1.07s (transform 183ms, setup 65ms, collect 159ms, tests 11ms, environment 228ms, prepare 271ms)
+

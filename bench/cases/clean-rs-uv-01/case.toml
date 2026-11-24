@@ -1,0 +1,28 @@
+schema = 1
+id = "clean-rs-uv-01"
+kind = "clean"
+language = "rust"
+source_repo = "https://github.com/astral-sh/uv"
+source_commit = "80708dea6e09c998204c61bb09230ac7beda8210"
+source_commit_url = "https://github.com/astral-sh/uv/commit/80708dea6e09c998204c61bb09230ac7beda8210"
+source_commit_date = "2025-07-21"
+base_commit = "aafeda2253369803bc315f0d894e7b58f83c007d"
+removed_paths = []
+base_reverts = []
+case_base_tree = "7703550e3dde171e9a595e6239c7a05cfc5c2d60"
+case_commit_tree = "a6a87a89138fec5f9684fbe3a2f95c9462325f18"
+licence = "MIT OR Apache-2.0"
+licence_path = "LICENSE-MIT"
+licence_notice = """
+Copyright (c) 2025 Astral Software Inc.
+"""
+agent_files = []
+dataset = "hand-picked"
+dataset_instance = ""
+
+[clean]
+head_checked = "d99121a2e246065c28661dc58da9233b0abbd479"
+head_checked_date = "2026-11-23"
+retained_share = 1.0
+later_commits = []
+verdict = "no later fix, revert or substantial rewrite: share 1.0, no later commit changed any added line"

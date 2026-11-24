@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /w/repo
+
+ ✓ tests/fixtures.test.ts (147 tests) 3762ms
+
+ Test Files  1 passed (1)
+      Tests  147 passed (147)
+   Start at  22:52:13
+   Duration  5.02s (transform 567ms, setup 0ms, collect 883ms, tests 3.76s, environment 0ms, prepare 103ms)
+

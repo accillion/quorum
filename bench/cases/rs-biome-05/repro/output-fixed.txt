@@ -1,0 +1,200 @@
+   Compiling biome_text_edit v0.5.7 (/work/src/crates/biome_text_edit)
+   Compiling biome_console v0.5.7 (/work/src/crates/biome_console)
+   Compiling icu_locid_transform v1.5.0
+   Compiling schemars v1.2.1
+   Compiling rustls-webpki v0.103.13
+   Compiling bincode v1.3.3
+   Compiling grit-util v0.5.1
+   Compiling dashmap v5.5.3
+   Compiling parking_lot v0.12.5
+   Compiling mio v1.2.0
+   Compiling cast v0.3.0
+   Compiling subtle v2.5.0
+   Compiling countme v3.0.1
+   Compiling owo-colors v4.3.0
+   Compiling salsa v0.27.2
+   Compiling glob v0.3.2
+   Compiling notify-types v2.0.0
+   Compiling base64 v0.22.1
+   Compiling icu_properties v1.5.1
+   Compiling criterion-plot v0.5.0
+   Compiling biome_rowan v0.5.7 (/work/src/crates/biome_rowan)
+   Compiling codspeed v3.0.5
+   Compiling ureq-proto v0.6.0
+   Compiling clap v4.6.1
+   Compiling notify v8.2.0
+   Compiling bpaf v0.9.26
+   Compiling grit-pattern-matcher v0.5.1
+   Compiling tinytemplate v1.2.1
+   Compiling ciborium v0.2.0
+   Compiling flate2 v1.0.35
+   Compiling plotters v0.3.4
+   Compiling form_urlencoded v1.2.2
+   Compiling webpki-roots v1.0.3
+   Compiling is-terminal v0.4.17
+   Compiling tokio v1.51.1
+   Compiling anes v0.1.6
+   Compiling oorandom v11.1.3
+   Compiling biome_diagnostics v0.5.7 (/work/src/crates/biome_diagnostics)
+   Compiling biome_string_case v0.5.7 (/work/src/crates/biome_string_case)
+   Compiling biome_json_syntax v0.5.7 (/work/src/crates/biome_json_syntax)
+   Compiling biome_yaml_syntax v0.0.1 (/work/src/crates/biome_yaml_syntax)
+   Compiling biome_tailwind_syntax v0.0.1 (/work/src/crates/biome_tailwind_syntax)
+   Compiling biome_css_syntax v0.5.7 (/work/src/crates/biome_css_syntax)
+   Compiling biome_json_factory v0.5.7 (/work/src/crates/biome_json_factory)
+   Compiling biome_deserialize_macros v0.6.0 (/work/src/crates/biome_deserialize_macros)
+   Compiling biome_analyze_macros v0.0.0 (/work/src/crates/biome_analyze_macros)
+   Compiling biome_control_flow v0.5.7 (/work/src/crates/biome_control_flow)
+   Compiling biome_yaml_factory v0.0.1 (/work/src/crates/biome_yaml_factory)
+   Compiling icu_normalizer v1.5.0
+   Compiling biome_tailwind_factory v0.0.1 (/work/src/crates/biome_tailwind_factory)
+   Compiling biome_parser v0.5.7 (/work/src/crates/biome_parser)
+   Compiling biome_fs v0.5.7 (/work/src/crates/biome_fs)
+   Compiling biome_suppression v0.5.7 (/work/src/crates/biome_suppression)
+   Compiling biome_grit_syntax v0.5.7 (/work/src/crates/biome_grit_syntax)
+   Compiling idna_adapter v1.2.0
+   Compiling web-time v1.1.0
+   Compiling idna v1.1.0
+   Compiling utf8-zero v0.8.1
+   Compiling codspeed-criterion-compat v3.0.5
+   Compiling codspeed-criterion-compat-walltime v3.0.5
+   Compiling biome_db v0.0.1 (/work/src/crates/biome_db)
+   Compiling biome_yaml_parser v0.0.1 (/work/src/crates/biome_yaml_parser)
+   Compiling biome_tailwind_parser v0.0.1 (/work/src/crates/biome_tailwind_parser)
+   Compiling globwalk v0.9.1
+   Compiling biome_languages v0.1.0 (/work/src/crates/biome_languages)
+   Compiling url v2.5.8
+   Compiling tempfile v3.23.0
+   Compiling console v0.16.0
+   Compiling case v1.0.0
+   Compiling json_comments v0.2.2
+   Compiling tests_macros v0.0.0 (/work/src/crates/tests_macros)
+   Compiling insta v1.48.0
+   Compiling biome_json_parser v0.5.7 (/work/src/crates/biome_json_parser)
+   Compiling biome_deserialize v0.6.0 (/work/src/crates/biome_deserialize)
+   Compiling ureq v3.3.0
+   Compiling biome_formatter v0.5.7 (/work/src/crates/biome_formatter)
+   Compiling biome_json_value v0.1.0 (/work/src/crates/biome_json_value)
+   Compiling biome_glob v0.1.0 (/work/src/crates/biome_glob)
+   Compiling biome_analyze v0.5.7 (/work/src/crates/biome_analyze)
+   Compiling biome_aria_metadata v0.5.7 (/work/src/crates/biome_aria_metadata)
+   Compiling biome_grit_factory v0.5.7 (/work/src/crates/biome_grit_factory)
+   Compiling biome_package v0.5.7 (/work/src/crates/biome_package)
+   Compiling biome_grit_parser v0.1.0 (/work/src/crates/biome_grit_parser)
+   Compiling biome_resolver v0.1.0 (/work/src/crates/biome_resolver)
+   Compiling biome_project_layout v0.0.1 (/work/src/crates/biome_project_layout)
+   Compiling biome_json_formatter v0.5.7 (/work/src/crates/biome_json_formatter)
+   Compiling biome_aria v0.5.7 (/work/src/crates/biome_aria)
+   Compiling biome_js_syntax v0.5.7 (/work/src/crates/biome_js_syntax)
+   Compiling biome_html_syntax v0.5.7 (/work/src/crates/biome_html_syntax)
+   Compiling biome_html_factory v0.5.7 (/work/src/crates/biome_html_factory)
+   Compiling biome_html_formatter v0.0.0 (/work/src/crates/biome_html_formatter)
+   Compiling biome_css_semantic v0.0.0 (/work/src/crates/biome_css_semantic)
+   Compiling biome_css_factory v0.5.7 (/work/src/crates/biome_css_factory)
+   Compiling biome_css_formatter v0.5.7 (/work/src/crates/biome_css_formatter)
+   Compiling biome_html_parser v0.0.1 (/work/src/crates/biome_html_parser)
+   Compiling biome_css_parser v0.5.7 (/work/src/crates/biome_css_parser)
+   Compiling biome_js_factory v0.5.7 (/work/src/crates/biome_js_factory)
+   Compiling biome_rule_options v0.0.1 (/work/src/crates/biome_rule_options)
+   Compiling biome_js_parser v0.5.7 (/work/src/crates/biome_js_parser)
+   Compiling biome_js_formatter v0.5.7 (/work/src/crates/biome_js_formatter)
+   Compiling biome_jsdoc_comment v0.0.1 (/work/src/crates/biome_jsdoc_comment)
+   Compiling biome_grit_patterns v0.0.1 (/work/src/crates/biome_grit_patterns)
+   Compiling biome_js_semantic v0.5.7 (/work/src/crates/biome_js_semantic)
+   Compiling biome_js_type_info v0.0.1 (/work/src/crates/biome_js_type_info)
+   Compiling biome_plugin_loader v0.0.1 (/work/src/crates/biome_plugin_loader)
+   Compiling biome_module_graph v0.0.1 (/work/src/crates/biome_module_graph)
+   Compiling biome_workspace_db v0.1.0 (/work/src/crates/biome_workspace_db)
+   Compiling tikv-jemallocator v0.6.1
+   Compiling biome_configuration_macros v0.0.1 (/work/src/crates/biome_configuration_macros)
+   Compiling biome_configuration v0.0.1 (/work/src/crates/biome_configuration)
+   Compiling biome_service v0.0.0 (/work/src/crates/biome_service)
+   Compiling biome_test_utils v0.0.0 (/work/src/crates/biome_test_utils)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 03s
+     Running tests/spec_tests.rs (/work/target/debug/deps/spec_tests-eb3ae681bac0b0fd)
+
+running 81 tests
+test specs::correctness::no_unused_variables::invalid_ignore_class_pattern_options_json ... ok
+test specs::correctness::no_unused_variables::invalid_ignore_all_pattern_options_json ... ok
+test specs::correctness::no_unused_variables::invalid_fix_none_options_json ... ok
+test specs::correctness::no_unused_variables::invalid_ignore_wildcard_pattern_options_json ... ok
+test specs::correctness::no_unused_variables::invalid_rest_siblings_options_json ... ok
+test specs::correctness::no_unused_variables::invalid_type_ts ... ok
+test specs::correctness::no_unused_variables::invalidtypeof_ts ... ok
+test specs::correctness::no_unused_variables::issue4114_js ... ok
+test specs::correctness::no_unused_variables::definitionfile_d_ts ... ok
+test specs::correctness::no_unused_variables::issue104_ts ... ok
+test specs::correctness::no_unused_variables::invalid_ignore_wildcard_pattern_js ... ok
+test specs::correctness::no_unused_variables::invalid_namespace_unused_ts ... ok
+test specs::correctness::no_unused_variables::invalid_recursive_functions_js ... ok
+test specs::correctness::no_unused_variables::invalid_fix_none_js ... ok
+test specs::correctness::no_unused_variables::invalid_d_ts ... ok
+test specs::correctness::no_unused_variables::invalid_function_ts ... ok
+test specs::correctness::no_unused_variables::invalid_interface_ts ... ok
+test specs::correctness::no_unused_variables::issue6692_js ... ok
+test specs::correctness::no_unused_variables::invalid_type_param_ts ... ok
+test specs::correctness::no_unused_variables::valid_abstract_class_ts ... ok
+test specs::correctness::no_unused_variables::invalid_variables_ts ... ok
+test specs::correctness::no_unused_variables::valid_ambient_type_param_ts ... ok
+test specs::correctness::no_unused_variables::invalid_self_write_js ... ok
+test specs::correctness::no_unused_variables::invalid_ignore_class_pattern_js ... ok
+test specs::correctness::no_unused_variables::valid_class_and_interface_export_ts ... ok
+test specs::correctness::no_unused_variables::invalid_enum_ts ... ok
+test specs::correctness::no_unused_variables::unused_infer_bogus_conditional_ts ... ok
+test specs::correctness::no_unused_variables::invalid_type_value_same_names_ts ... ok
+test specs::correctness::no_unused_variables::invalid_ignore_all_pattern_js ... ok
+test specs::correctness::no_unused_variables::invalid_rest_siblings_js ... ok
+test specs::correctness::no_unused_variables::valid_declare_ts ... ok
+test specs::correctness::no_unused_variables::valid_enum_ts ... ok
+test specs::correctness::no_unused_variables::valid_for_statement_js ... ok
+test specs::correctness::no_unused_variables::valid_class_ts ... ok
+test specs::correctness::no_unused_variables::valid_export_ts ... ok
+test specs::correctness::no_unused_variables::valid_function_parameter_ts ... ok
+test specs::correctness::no_unused_variables::valid_ignored_pattern_options_json ... ok
+test specs::correctness::no_unused_variables::valid_functions_ts ... ok
+test specs::correctness::no_unused_variables::valid_import_ts ... ok
+test specs::correctness::no_unused_variables::valid_ignored_pattern_js ... ok
+test specs::correctness::no_unused_variables::valid_function_type_ts ... ok
+test specs::correctness::no_unused_variables::valid_inner_used_js ... ok
+test specs::correctness::no_unused_variables::valid_issue861_js ... ok
+test specs::correctness::no_unused_variables::valid_interface_ts ... ok
+test specs::correctness::no_unused_variables::valid_namespace_declaration_merging2_ts ... ok
+test specs::correctness::no_unused_variables::valid_namespace_declaration_merging_enum_ts ... ok
+test specs::correctness::no_unused_variables::valid_namespace_declaration_merging3_ts ... ok
+test specs::correctness::no_unused_variables::valid_namespace_declaration_merging_ts ... ok
+test specs::correctness::no_unused_variables::valid_prefixed_rest_siblings_options_json ... ok
+test specs::correctness::no_unused_variables::valid_namespace_export_type_ts ... ok
+test specs::correctness::no_unused_variables::valid_rest_siblings_options_json ... ok
+test specs::correctness::no_unused_variables::valid_prefixed_rest_siblings_js ... ok
+test specs::correctness::no_unused_variables::valid_rest_siblings_js ... ok
+test specs::correctness::no_unused_variables::valid_type_ts ... ok
+test specs::correctness::no_unused_variables::valid_used_binding_pattern_js ... ok
+test specs::correctness::no_unused_variables::valid_value_export_type_ts ... ok
+test specs::correctness::no_unused_variables::valid_variable_and_export_ts ... ok
+test specs::correctness::no_unused_variables::valid_type_param_ts ... ok
+test specs::correctness::no_unused_variables::valid_variables_tsx ... ok
+test specs::correctness::no_unused_variables::valid_typeof_ts ... ok
+test specs::correctness::no_unused_variables::valid_with_self_assign_js ... ok
+test specs::correctness::no_unused_variables::invalid_svelte_unused_variable_with_undeclared_interpolation_svelte ... ok
+test specs::correctness::no_unused_variables::valid_astro_attribute_expressions_astro ... ok
+test specs::correctness::no_unused_variables::invalid_svelte_unused_variable_svelte ... ok
+test specs::correctness::no_unused_variables::invalid_vue_v_for_vue ... ok
+test specs::correctness::no_unused_variables::valid_astro_embedded_bindings_astro ... ok
+test specs::correctness::no_unused_variables::invalid_svelte_unused_module_binding_svelte ... ok
+test specs::correctness::no_unused_variables::valid_astro_directive_expressions_astro ... ok
+test specs::correctness::no_unused_variables::valid_issue_9589_astro ... ok
+test specs::correctness::no_unused_variables::valid_svelte_attribute_interpolation_svelte ... ok
+test specs::correctness::no_unused_variables::valid_vue_embedded_bindings_vue ... ok
+test specs::correctness::no_unused_variables::valid_issue_10840_astro ... ok
+test specs::correctness::no_unused_variables::valid_svelte_cross_script_references_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_store_subscription_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_bindable_props_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_snippet_params_svelte ... ok
+test specs::correctness::no_unused_variables::valid_vue_directives_vue ... ok
+test specs::correctness::no_unused_variables::valid_svelte_at_html_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_embedded_bindings_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_directives_svelte ... ok
+test specs::correctness::no_unused_variables::valid_vue_v_for_vue ... ok
+
+test result: ok. 81 passed; 0 failed; 0 ignored; 0 measured; 2610 filtered out; finished in 0.28s
+

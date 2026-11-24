@@ -1,0 +1,129 @@
+== CASE COMMIT tree + repro/files
+   Compiling biome_service v0.0.0 (/work/src/crates/biome_service)
+   Compiling biome_test_utils v0.0.0 (/work/src/crates/biome_test_utils)
+   Compiling biome_js_analyze v0.5.7 (/work/src/crates/biome_js_analyze)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.69s
+     Running tests/spec_tests.rs (/work/target/debug/deps/spec_tests-eb3ae681bac0b0fd)
+
+running 81 tests
+test specs::correctness::no_unused_variables::invalid_ignore_all_pattern_options_json ... ok
+test specs::correctness::no_unused_variables::invalid_fix_none_options_json ... ok
+test specs::correctness::no_unused_variables::invalid_ignore_class_pattern_options_json ... ok
+test specs::correctness::no_unused_variables::invalid_ignore_wildcard_pattern_options_json ... ok
+test specs::correctness::no_unused_variables::invalid_rest_siblings_options_json ... ok
+test specs::correctness::no_unused_variables::valid_class_and_interface_export_ts ... ok
+test specs::correctness::no_unused_variables::valid_abstract_class_ts ... ok
+test specs::correctness::no_unused_variables::invalid_rest_siblings_js ... ok
+test specs::correctness::no_unused_variables::invalidtypeof_ts ... ok
+test specs::correctness::no_unused_variables::issue6692_js ... ok
+test specs::correctness::no_unused_variables::invalid_variables_ts ... ok
+test specs::correctness::no_unused_variables::issue4114_js ... ok
+test specs::correctness::no_unused_variables::invalid_d_ts ... ok
+test specs::correctness::no_unused_variables::unused_infer_bogus_conditional_ts ... ok
+test specs::correctness::no_unused_variables::invalid_fix_none_js ... ok
+test specs::correctness::no_unused_variables::invalid_interface_ts ... ok
+test specs::correctness::no_unused_variables::invalid_ignore_class_pattern_js ... ok
+test specs::correctness::no_unused_variables::invalid_function_ts ... ok
+test specs::correctness::no_unused_variables::valid_ambient_type_param_ts ... ok
+test specs::correctness::no_unused_variables::invalid_ignore_wildcard_pattern_js ... ok
+test specs::correctness::no_unused_variables::invalid_type_param_ts ... ok
+test specs::correctness::no_unused_variables::invalid_self_write_js ... ok
+test specs::correctness::no_unused_variables::invalid_type_ts ... ok
+test specs::correctness::no_unused_variables::invalid_recursive_functions_js ... ok
+test specs::correctness::no_unused_variables::issue104_ts ... ok
+test specs::correctness::no_unused_variables::invalid_enum_ts ... ok
+test specs::correctness::no_unused_variables::invalid_type_value_same_names_ts ... ok
+test specs::correctness::no_unused_variables::definitionfile_d_ts ... ok
+test specs::correctness::no_unused_variables::invalid_namespace_unused_ts ... ok
+test specs::correctness::no_unused_variables::invalid_ignore_all_pattern_js ... ok
+test specs::correctness::no_unused_variables::valid_enum_ts ... ok
+test specs::correctness::no_unused_variables::valid_declare_ts ... ok
+test specs::correctness::no_unused_variables::valid_export_ts ... ok
+test specs::correctness::no_unused_variables::valid_for_statement_js ... ok
+test specs::correctness::no_unused_variables::valid_class_ts ... ok
+test specs::correctness::no_unused_variables::valid_function_parameter_ts ... ok
+test specs::correctness::no_unused_variables::valid_ignored_pattern_options_json ... ok
+test specs::correctness::no_unused_variables::valid_function_type_ts ... ok
+test specs::correctness::no_unused_variables::valid_functions_ts ... ok
+test specs::correctness::no_unused_variables::valid_ignored_pattern_js ... ok
+test specs::correctness::no_unused_variables::valid_import_ts ... ok
+test specs::correctness::no_unused_variables::valid_inner_used_js ... ok
+test specs::correctness::no_unused_variables::valid_issue861_js ... ok
+test specs::correctness::no_unused_variables::valid_interface_ts ... ok
+test specs::correctness::no_unused_variables::valid_namespace_declaration_merging2_ts ... ok
+test specs::correctness::no_unused_variables::valid_namespace_declaration_merging3_ts ... ok
+test specs::correctness::no_unused_variables::valid_namespace_declaration_merging_enum_ts ... ok
+test specs::correctness::no_unused_variables::valid_namespace_declaration_merging_ts ... ok
+test specs::correctness::no_unused_variables::valid_namespace_export_type_ts ... ok
+test specs::correctness::no_unused_variables::valid_prefixed_rest_siblings_options_json ... ok
+test specs::correctness::no_unused_variables::valid_rest_siblings_options_json ... ok
+test specs::correctness::no_unused_variables::valid_prefixed_rest_siblings_js ... ok
+test specs::correctness::no_unused_variables::valid_rest_siblings_js ... ok
+test specs::correctness::no_unused_variables::valid_type_ts ... ok
+test specs::correctness::no_unused_variables::valid_used_binding_pattern_js ... ok
+test specs::correctness::no_unused_variables::valid_value_export_type_ts ... ok
+test specs::correctness::no_unused_variables::valid_type_param_ts ... ok
+test specs::correctness::no_unused_variables::valid_variable_and_export_ts ... ok
+test specs::correctness::no_unused_variables::valid_variables_tsx ... ok
+test specs::correctness::no_unused_variables::valid_typeof_ts ... ok
+test specs::correctness::no_unused_variables::valid_with_self_assign_js ... ok
+test specs::correctness::no_unused_variables::invalid_svelte_unused_variable_svelte ... ok
+test specs::correctness::no_unused_variables::invalid_svelte_unused_variable_with_undeclared_interpolation_svelte ... ok
+test specs::correctness::no_unused_variables::valid_astro_embedded_bindings_astro ... ok
+test specs::correctness::no_unused_variables::valid_astro_directive_expressions_astro ... ok
+test specs::correctness::no_unused_variables::invalid_vue_v_for_vue ... ok
+test specs::correctness::no_unused_variables::valid_astro_attribute_expressions_astro ... ok
+test specs::correctness::no_unused_variables::invalid_svelte_unused_module_binding_svelte ... ok
+test specs::correctness::no_unused_variables::valid_issue_10840_astro ... FAILED
+test specs::correctness::no_unused_variables::valid_issue_9589_astro ... ok
+test specs::correctness::no_unused_variables::valid_svelte_store_subscription_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_cross_script_references_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_attribute_interpolation_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_at_html_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_embedded_bindings_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_bindable_props_svelte ... ok
+test specs::correctness::no_unused_variables::valid_vue_embedded_bindings_vue ... ok
+test specs::correctness::no_unused_variables::valid_svelte_directives_svelte ... ok
+test specs::correctness::no_unused_variables::valid_svelte_snippet_params_svelte ... ok
+test specs::correctness::no_unused_variables::valid_vue_directives_vue ... ok
+test specs::correctness::no_unused_variables::valid_vue_v_for_vue ... ok
+
+failures:
+
+---- specs::correctness::no_unused_variables::valid_issue_10840_astro stdout ----
+
+thread 'specs::correctness::no_unused_variables::valid_issue_10840_astro' (10692) panicked at crates/biome_test_utils/src/lib.rs:1124:17:
+This test should not generate diagnostics
+File: /work/src/crates/biome_js_analyze/tests/specs/correctness/noUnusedVariables/valid_issue_10840.astro
+
+Diagnostics: valid_issue_10840.astro:5:7 lint/correctness/noUnusedVariables  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! This variable text is unused.
+  
+    3 │ import MyComponent from "./my-component.astro";
+    4 │ 
+  > 5 │ const text = "abc";
+      │       ^^^^
+    6 │ ---
+    7 │ 
+  
+  i Unused variables are often the result of typos, incomplete refactors, or other sources of bugs.
+  
+  i Unsafe fix: If this is intentional, prepend text with an underscore.
+  
+    1 1 │   import MyComponent from "./my-component.astro";
+    2 2 │   
+    3   │ - const·text·=·"abc";
+      3 │ + const·_text·=·"abc";
+    4 4 │   
+  
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    specs::correctness::no_unused_variables::valid_issue_10840_astro
+
+test result: FAILED. 80 passed; 1 failed; 0 ignored; 0 measured; 2610 filtered out; finished in 0.29s
+
+error: test failed, to rerun pass `-p biome_js_analyze --test spec_tests`

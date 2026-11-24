@@ -1,0 +1,30 @@
+schema = 1
+id = "rs-oxc-03"
+kind = "bug"
+language = "rust"
+source_repo = "https://github.com/oxc-project/oxc"
+source_commit = "d676e0ca5b9431976ea1ba201547c659ffbf34a9"
+source_commit_url = "https://github.com/oxc-project/oxc/commit/d676e0ca5b9431976ea1ba201547c659ffbf34a9"
+source_commit_date = "2026-04-20"
+base_commit = "d676e0ca5b9431976ea1ba201547c659ffbf34a9"
+removed_paths = ["crates/oxc_minifier/tests/peephole/remove_unused_expression.rs"]
+base_reverts = []
+case_base_tree = "bb3ad5409f1221c053c2dd9b6c89401de390b10c"
+case_commit_tree = "28ce599db5bb8213e6c5adf9f08a3c4a27eb3dd8"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) 2024-present VoidZero Inc. & Contributors
+Copyright (c) 2023 Boshen
+"""
+agent_files = ["AGENTS.md", "CLAUDE.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "oxc-project__oxc-21546"
+
+[repro]
+reproduced = true
+image = "rust@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1"
+command = "cargo test --locked -p oxc_minifier --test mod -- peephole::remove_unused_expression"
+test_files = ["crates/oxc_minifier/tests/peephole/remove_unused_expression.rs"]
+fixed_exit = 0
+reverted_exit = 101

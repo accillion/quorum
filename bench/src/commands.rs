@@ -98,7 +98,9 @@ pub async fn cmd_run(root: &Path, keys: &KeySource, o: RunOpts) -> Result<(), St
     for c in &cases {
         mats.push((
             c,
-            crate::materialize::materialize(c, &cache).map_err(|e| e.to_string())?,
+            crate::materialize::materialize(c, &cache)
+                .await
+                .map_err(|e| e.to_string())?,
         ));
     }
     let version = std::process::Command::new(&o.quorum_bin)

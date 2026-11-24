@@ -1,0 +1,15 @@
+diff --git a/gix-merge/src/blob/builtin_driver/text/utils.rs b/gix-merge/src/blob/builtin_driver/text/utils.rs
+index f13c260..cd0b442 100644
+--- a/gix-merge/src/blob/builtin_driver/text/utils.rs
++++ b/gix-merge/src/blob/builtin_driver/text/utils.rs
+@@ -479,9 +479,7 @@ pub fn collect_hunks(
+     side: Side,
+     mut hunks: Vec<Hunk>,
+ ) -> Vec<Hunk> {
+-    let mut diff = imara_diff::Diff::compute(algorithm, input);
+-    diff.postprocess_lines(input);
+-    hunks.extend(diff.hunks().map(|hunk| Hunk {
++    hunks.extend(imara_diff::Diff::compute(algorithm, input).hunks().map(|hunk| Hunk {
+         before: hunk.before,
+         after: hunk.after,
+         side,

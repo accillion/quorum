@@ -1,0 +1,200 @@
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling cpufeatures v0.3.0
+   Compiling rustls v0.23.39
+   Compiling digest v0.10.7
+   Compiling tower-service v0.3.3
+   Compiling cpufeatures v0.2.17
+   Compiling atomic-waker v1.1.2
+   Compiling thiserror v2.0.18
+   Compiling fnv v1.0.7
+   Compiling try-lock v0.2.5
+   Compiling untrusted v0.9.0
+   Compiling chacha20 v0.10.0
+   Compiling want v0.3.1
+   Compiling nom v7.1.3
+   Compiling backtrace v0.3.76
+   Compiling subtle v2.6.1
+   Compiling tinyvec_macros v0.1.1
+   Compiling bytecount v0.6.9
+   Compiling fastrand v2.4.1
+   Compiling httpdate v1.0.3
+   Compiling either v1.15.0
+   Compiling crossbeam-epoch v0.9.20
+   Compiling tempfile v3.27.0
+   Compiling tinyvec v1.11.0
+   Compiling flate2 v1.1.9
+   Compiling rand v0.10.1
+   Compiling backtrace-ext v0.2.1
+   Compiling synstructure v0.13.2
+   Compiling sha2 v0.10.9
+   Compiling lazy_static v1.5.0
+   Compiling compression-core v0.4.32
+   Compiling data-encoding v2.11.0
+   Compiling compression-codecs v0.4.38
+   Compiling regex-automata v0.4.14
+   Compiling sharded-slab v0.1.7
+   Compiling http-body-util v0.1.3
+   Compiling crossbeam-channel v0.5.15
+   Compiling tracing-log v0.2.0
+   Compiling uuid v1.23.1
+   Compiling sync_wrapper v1.0.2
+   Compiling ahash v0.8.12
+   Compiling thread_local v1.1.9
+   Compiling nu-ansi-term v0.50.3
+   Compiling tagptr v0.2.0
+   Compiling openssl-probe v0.2.1
+   Compiling heck v0.5.0
+   Compiling futures-io v0.3.32
+   Compiling pkg-config v0.3.33
+   Compiling vcpkg v0.2.15
+   Compiling tower-layer v0.3.3
+   Compiling rustls-native-certs v0.8.3
+   Compiling moka v0.12.15
+   Compiling sha-1 v0.10.1
+   Compiling encoding_rs v0.8.35
+   Compiling arraydeque v0.5.1
+   Compiling serde_derive v1.0.228
+   Compiling zerofrom-derive v0.1.7
+   Compiling yoke-derive v0.8.2
+   Compiling zerovec-derive v0.11.3
+   Compiling displaydoc v0.2.5
+   Compiling tracing-attributes v0.1.31
+   Compiling tokio-macros v2.7.0
+   Compiling miette-derive v7.6.0
+   Compiling derive_more-impl v2.1.1
+   Compiling thiserror-impl v1.0.69
+   Compiling futures-macro v0.3.32
+   Compiling tokio v1.52.3
+   Compiling zerofrom v0.1.7
+   Compiling thiserror-impl v2.0.18
+   Compiling yoke v0.8.2
+   Compiling zerovec v0.11.6
+   Compiling tracing v0.1.44
+   Compiling zerotrie v0.2.4
+   Compiling futures-util v0.3.32
+   Compiling miette-derive v5.10.0
+   Compiling miette v7.6.0
+   Compiling async-trait v0.1.89
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling icu_locale_core v2.2.0
+   Compiling icu_collections v2.2.0
+   Compiling matchers v0.2.0
+   Compiling libsqlite3-sys v0.37.0
+   Compiling strum_macros v0.28.0
+   Compiling anstyle v1.0.14
+   Compiling pathdiff v0.2.3
+   Compiling resolv-conf v0.7.6
+   Compiling miette v5.10.0
+   Compiling base64 v0.21.7
+   Compiling icu_provider v2.2.0
+   Compiling hex v0.4.3
+   Compiling xxhash-rust v0.8.15
+   Compiling annotate-snippets v0.12.15
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling ipnet v2.12.0
+   Compiling node-semver v2.2.0
+   Compiling tracing-serde v0.2.0
+   Compiling prefix-trie v0.8.4
+   Compiling tracing-subscriber v0.3.23
+   Compiling ssri v9.2.0
+   Compiling encoding_rs_io v0.1.7
+   Compiling idna_adapter v1.2.1
+   Compiling idna v1.1.0
+   Compiling granit-parser v0.0.3
+   Compiling strum v0.28.0
+   Compiling hashbrown v0.16.1
+   Compiling pipe-trait v0.4.0
+   Compiling nohash-hasher v0.2.0
+   Compiling pacquet-crypto-hash v0.0.1 (/work/src/pnpm/crates/crypto-hash)
+   Compiling rmp v0.8.15
+   Compiling url v2.5.8
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling fallible-iterator v0.3.0
+   Compiling hashbrown v0.14.5
+   Compiling hashlink v0.11.0
+   Compiling serde-saphyr v0.0.27
+   Compiling pacquet-diagnostics v0.0.1 (/work/src/pnpm/crates/diagnostics)
+   Compiling rmp-serde v1.3.1
+   Compiling hickory-proto v0.26.1
+   Compiling smart-default v0.7.1
+   Compiling dashmap v6.2.1
+   Compiling tokio-util v0.7.18
+   Compiling async-compression v0.4.42
+   Compiling tower v0.5.3
+   Compiling diffy v0.5.0
+   Compiling derive_more v2.1.1
+   Compiling pacquet-fs v0.0.1 (/work/src/pnpm/crates/fs)
+   Compiling pacquet-package-manifest v0.0.1 (/work/src/pnpm/crates/package-manifest)
+   Compiling pacquet-catalogs-types v0.0.1 (/work/src/pnpm/crates/catalogs-types)
+   Compiling pacquet-workspace-state v0.0.1 (/work/src/pnpm/crates/workspace-state)
+   Compiling h2 v0.4.13
+   Compiling tower-http v0.6.11
+   Compiling pacquet-patching v0.0.1 (/work/src/pnpm/crates/patching)
+   Compiling pacquet-package-is-installable v0.0.1 (/work/src/pnpm/crates/package-is-installable)
+   Compiling pacquet-config-dir v0.0.1 (/work/src/pnpm/crates/config-dir)
+   Compiling iana-time-zone v0.1.65
+   Compiling pacquet-detect-libc v0.0.1 (/work/src/pnpm/crates/detect-libc)
+   Compiling split-first-char v2.0.1
+   Compiling pacquet-env-replace v0.0.1 (/work/src/pnpm/crates/env-replace)
+   Compiling home v0.5.12
+   Compiling chrono v0.4.45
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_core v0.9.5
+   Compiling ryu v1.0.23
+   Compiling assert-json-diff v2.0.2
+   Compiling regex v1.12.3
+   Compiling serde_urlencoded v0.7.1
+   Compiling diff v0.1.13
+   Compiling hickory-net v0.26.1
+   Compiling pacquet-versioning v0.0.1 (/work/src/pnpm/crates/versioning)
+   Compiling pacquet-lockfile v0.0.1 (/work/src/pnpm/crates/lockfile)
+   Compiling rand_chacha v0.9.0
+   Compiling colored v3.1.1
+   Compiling rand v0.9.4
+   Compiling similar v2.7.0
+   Compiling yansi v1.0.1
+   Compiling hickory-resolver v0.26.1
+   Compiling pacquet-resolving-parse-wanted-dependency v0.0.1 (/work/src/pnpm/crates/resolving-parse-wanted-dependency)
+   Compiling pretty_assertions v1.4.1
+   Compiling pacquet-resolving-jsr-specifier-parser v0.0.1 (/work/src/pnpm/crates/resolving-jsr-specifier-parser)
+   Compiling pacquet-workspace-range-resolver v0.0.1 (/work/src/pnpm/crates/workspace-range-resolver)
+   Compiling pacquet-workspace-spec v0.0.1 (/work/src/pnpm/crates/workspace-spec)
+   Compiling hyper v1.9.0
+   Compiling hyper-util v0.1.20
+   Compiling mockito v1.7.2
+   Compiling rusqlite v0.39.0
+   Compiling pacquet-store-dir v0.0.1 (/work/src/pnpm/crates/store-dir)
+   Compiling rustls-webpki v0.103.13
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.13.4
+   Compiling pacquet-network v0.0.1 (/work/src/pnpm/crates/network)
+   Compiling pacquet-config v0.0.1 (/work/src/pnpm/crates/config)
+   Compiling pacquet-registry v0.0.1 (/work/src/pnpm/crates/registry)
+   Compiling pacquet-resolving-resolver-base v0.0.1 (/work/src/pnpm/crates/resolving-resolver-base)
+   Compiling pacquet-resolving-local-resolver v0.0.1 (/work/src/pnpm/crates/resolving-local-resolver)
+   Compiling pacquet-resolving-default-resolver v0.0.1 (/work/src/pnpm/crates/resolving-default-resolver)
+   Compiling pacquet-resolving-npm-resolver v0.0.1 (/work/src/pnpm/crates/resolving-npm-resolver)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 22.84s
+     Running unittests src/lib.rs (/work/target/debug/deps/pacquet_resolving_npm_resolver-129bf91f0e8c108a)
+
+running 12 tests
+test fetch_full_metadata_cached::tests::a_doc_served_with_the_abbreviated_content_type_is_cached_verbatim ... ok
+test fetch_full_metadata_cached::tests::a_304_renews_the_mirror_mtime ... ok
+test fetch_full_metadata_cached::tests::body_read_failure_retries_and_writes_mirror ... ok
+test fetch_full_metadata_cached::tests::no_cache_dir_skips_mirror_io ... ok
+test fetch_full_metadata_cached::tests::read_only_cache_dir_does_not_fail_the_call ... ok
+test fetch_full_metadata_cached::tests::cold_cache_writes_mirror_on_200 ... ok
+test fetch_full_metadata_cached::tests::a_full_doc_served_for_an_abbreviated_request_is_normalized_before_caching ... ok
+test fetch_full_metadata_cached::tests::repeated_unsolicited_304_reports_missing_cache ... ok
+test fetch_full_metadata_cached::tests::unsolicited_304_retries_without_cache ... ok
+test fetch_full_metadata_cached::tests::filtered_full_cache_writes_filtered_mirror_on_200 ... ok
+test fetch_full_metadata_cached::tests::stale_cache_refreshes_mirror_on_200 ... ok
+test fetch_full_metadata_cached::tests::warm_cache_serves_from_mirror_on_304 ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 274 filtered out; finished in 0.08s
+

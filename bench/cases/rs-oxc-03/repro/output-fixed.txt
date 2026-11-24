@@ -1,0 +1,136 @@
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded getrandom v0.4.2
+  Downloaded oxc-browserslist v3.0.2
+  Downloaded insta v1.47.2
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.22
+   Compiling cfg-if v1.0.4
+   Compiling thiserror v2.0.17
+   Compiling siphasher v1.0.1
+   Compiling serde_core v1.0.228
+   Compiling rustversion v1.0.22
+   Compiling itoa v1.0.18
+   Compiling owo-colors v4.2.3
+   Compiling serde v1.0.228
+   Compiling rustc-hash v2.1.2
+   Compiling smawk v0.3.2
+   Compiling unicode-linebreak v0.1.5
+   Compiling fastrand v2.3.0
+   Compiling allocator-api2 v0.2.21
+   Compiling unicode-width v0.2.2
+   Compiling oxc_data_structures v0.126.0 (/work/oxc/crates/oxc_data_structures)
+   Compiling unicode-segmentation v1.12.0
+   Compiling ryu v1.0.20
+   Compiling bitflags v2.11.0
+   Compiling static_assertions v1.1.0
+   Compiling oxc_estree v0.126.0 (/work/oxc/crates/oxc_estree)
+   Compiling cow-utils v0.1.3
+   Compiling dragonbox_ecma v0.1.12
+   Compiling nonmax v0.5.5
+   Compiling unicode-id-start v1.4.0
+   Compiling autocfg v1.5.0
+   Compiling percent-encoding v2.3.2
+   Compiling memchr v2.8.0
+   Compiling libc v0.2.182
+   Compiling either v1.15.0
+   Compiling crc32fast v1.5.0
+   Compiling adler2 v2.0.1
+   Compiling simd-adler32 v0.3.7
+   Compiling zmij v1.0.19
+   Compiling self_cell v1.2.2
+   Compiling phf_shared v0.13.1
+   Compiling getrandom v0.4.2
+   Compiling itertools v0.14.0
+   Compiling rustix v1.1.4
+   Compiling serde_json v1.0.149
+   Compiling textwrap v0.16.2
+   Compiling vsimd v0.8.0
+   Compiling linux-raw-sys v0.12.1
+   Compiling oxc_sourcemap v6.1.1
+   Compiling outref v0.5.2
+   Compiling once_cell v1.21.3
+   Compiling seq-macro v0.3.6
+   Compiling json-escape-simd v3.0.1
+   Compiling miniz_oxide v0.8.9
+   Compiling similar v2.7.0
+   Compiling pico-args v0.5.0
+   Compiling phf_generator v0.13.1
+   Compiling phf v0.13.1
+   Compiling num-traits v0.2.19
+   Compiling hashbrown v0.17.0
+   Compiling base64-simd v0.8.0
+   Compiling castaway v0.2.4
+   Compiling flate2 v1.1.9
+   Compiling compact_str v0.9.0
+   Compiling oxc_allocator v0.126.0 (/work/oxc/crates/oxc_allocator)
+   Compiling syn v2.0.117
+warning: unused import: `bumpalo_alloc::AllocErr`
+  --> crates/oxc_allocator/src/arena/mod.rs:26:9
+   |
+26 | pub use bumpalo_alloc::AllocErr;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling num-integer v0.1.46
+   Compiling console v0.16.3
+   Compiling oxc_str v0.126.0 (/work/oxc/crates/oxc_str)
+   Compiling num-bigint v0.4.6
+warning: `oxc_allocator` (lib) generated 1 warning (run `cargo fix --lib -p oxc_allocator` to apply 1 suggestion)
+   Compiling tempfile v3.27.0
+   Compiling insta v1.47.2
+   Compiling thiserror-impl v2.0.17
+   Compiling serde_derive v1.0.228
+   Compiling oxc-miette-derive v2.7.1
+   Compiling phf_macros v0.13.1
+   Compiling oxc_ast_macros v0.126.0 (/work/oxc/crates/oxc_ast_macros)
+   Compiling javascript-globals v1.5.0
+   Compiling oxc-miette v2.7.1
+   Compiling cobs v0.3.0
+   Compiling oxc_span v0.126.0 (/work/oxc/crates/oxc_span)
+   Compiling oxc_diagnostics v0.126.0 (/work/oxc/crates/oxc_diagnostics)
+   Compiling oxc_regular_expression v0.126.0 (/work/oxc/crates/oxc_regular_expression)
+   Compiling oxc_index v4.1.0
+   Compiling postcard v1.1.3
+   Compiling oxc-browserslist v3.0.2
+   Compiling oxc_syntax v0.126.0 (/work/oxc/crates/oxc_syntax)
+   Compiling oxc_ast v0.126.0 (/work/oxc/crates/oxc_ast)
+   Compiling oxc_compat v0.126.0 (/work/oxc/crates/oxc_compat)
+   Compiling oxc_ecmascript v0.126.0 (/work/oxc/crates/oxc_ecmascript)
+   Compiling oxc_ast_visit v0.126.0 (/work/oxc/crates/oxc_ast_visit)
+   Compiling oxc_semantic v0.126.0 (/work/oxc/crates/oxc_semantic)
+   Compiling oxc_parser v0.126.0 (/work/oxc/crates/oxc_parser)
+   Compiling oxc_mangler v0.126.0 (/work/oxc/crates/oxc_mangler)
+   Compiling oxc_traverse v0.126.0 (/work/oxc/crates/oxc_traverse)
+   Compiling oxc_codegen v0.126.0 (/work/oxc/crates/oxc_codegen)
+   Compiling oxc_minifier v0.126.0 (/work/oxc/crates/oxc_minifier)
+    Finished `test` profile [unoptimized] target(s) in 14.46s
+     Running tests/mod.rs (/target/debug/deps/mod-4555748d6f814057)
+
+running 20 tests
+test peephole::remove_unused_expression::test_array_literal ... ok
+test peephole::remove_unused_expression::test_array_literal_containing_spread ... ok
+test peephole::remove_unused_expression::test_fold_conditional_expression ... ok
+test peephole::remove_unused_expression::remove_unused_class_expression ... ok
+test peephole::remove_unused_expression::test_fold_call_expression ... ok
+test peephole::remove_unused_expression::test_fold_template_literal ... ok
+test peephole::remove_unused_expression::test_fold_binary_expression ... ok
+test peephole::remove_unused_expression::test_fold_sequence_expr ... ok
+test peephole::remove_unused_expression::test_object_literal ... ok
+test peephole::remove_unused_expression::remove_unused_assignment_expression ... ok
+test peephole::remove_unused_expression::treeshake_options_annotations_false ... ok
+test peephole::remove_unused_expression::test_remove_unused_expression ... ok
+test peephole::remove_unused_expression::test_fold_unary_expression_statement ... ok
+test peephole::remove_unused_expression::test_nullish_assign_preserves_guard ... ok
+test peephole::remove_unused_expression::test_update_expression_respects_property_read_side_effects ... ok
+test peephole::remove_unused_expression::no_side_effects ... ok
+test peephole::remove_unused_expression::test_fold_iife ... ok
+test peephole::remove_unused_expression::test_logical_expression ... ok
+test peephole::remove_unused_expression::test_new_constructor_side_effect ... ok
+test peephole::remove_unused_expression::test_property_write_side_effects ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 497 filtered out; finished in 0.01s
+
+EXIT 0

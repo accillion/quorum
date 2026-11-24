@@ -1,0 +1,14 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["packages/agents-core/src/run.ts"]
+title = "Streaming runs never emit the agent_end lifecycle event when the agent produces its final output"
+description = """
+In the streaming run loop of Runner (packages/agents-core/src/run.ts), the
+`next_step_final_output` branch runs the output guardrails and returns without emitting
+`agent_end`, neither on the Runner nor on the agent. The non-streaming path emits
+`agent_end` on both. Handlers registered with `runner.on('agent_end', ...)` or
+`agent.on('agent_end', ...)` are therefore never called for streamed runs, so users who
+collect usage or do cleanup at the end of each agent run get nothing for streaming
+agents (issue #371).
+"""

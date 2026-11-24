@@ -113,7 +113,7 @@ pub async fn verify_case(case: &Case, cache: &Path, quorum_bin: Option<&Path>) -
         id: case.id().into(),
         ..Default::default()
     };
-    let m = match materialize(case, cache) {
+    let m = match materialize(case, cache).await {
         Ok(m) => m,
         Err(e) => {
             r.problems.push(format!("materialize: {e}"));

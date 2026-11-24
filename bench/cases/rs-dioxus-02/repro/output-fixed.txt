@@ -1,0 +1,51 @@
+== FIXED tree e5b9c39f4e53ce86c0b1af2fb077913cf28f9365
+    Updating crates.io index
+   Compiling dioxus-rsx v0.7.4 (/work/src/packages/rsx)
+   Compiling dioxus-autofmt v0.7.4 (/work/src/packages/autofmt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.20s
+     Running tests/samples.rs (/work/target/debug/deps/samples-c0b6de45b5a723cd)
+
+running 40 tests
+test blank_lines_preserved ... ok
+test collapse_expr ... ok
+test emoji ... ok
+test asset ... ok
+test commentshard ... ok
+test basic_expr ... ok
+test expr_on_conditional ... ok
+test collapse ... ok
+test attributes ... ok
+test fat_exprs ... ok
+test blank_lines ... ok
+test forloop_tuple ... ok
+test key ... ok
+test letsome ... ok
+test immediate_expr ... ok
+test messy_indent ... ok
+test ifchain_forloop ... ok
+test oneline ... ok
+test raw_strings ... ok
+test multirsx ... ok
+test reallylong ... ok
+test long_exprs ... ok
+test long ... ok
+test manual_props ... ok
+test simple ... ok
+test skip ... ok
+test shorthand ... ok
+test misplaced ... ok
+test complex ... ok
+test docsite ... ok
+test t2 ... ok
+test tiny ... ok
+test spaces ... ok
+test tinynoopt ... ok
+test comments ... ok
+test staged ... ok
+test trailing_expr ... ok
+test prop_rsx ... ok
+test nested ... ok
+test many_exprs ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+

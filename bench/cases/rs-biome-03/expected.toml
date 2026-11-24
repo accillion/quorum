@@ -1,0 +1,17 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["crates/biome_js_analyze/src/lint/correctness/no_unsafe_optional_chaining.rs"]
+title = "noUnsafeOptionalChaining stops its parent walk at TypeScript `as`/`satisfies`/assertion wrappers and misses unsafe uses"
+description = """
+The rule walks up from an optional chain through transparent parents
+(parenthesized expressions, `await`, ...) to find an unsafe context such as a
+`new` target, `extends` clause, spread or destructuring. TypeScript-only
+wrappers (`TsAsExpression`, `TsSatisfiesExpression`,
+`TsTypeAssertionExpression`, `TsInstantiationExpression`) are not part of the
+rule's node union and are not walked through, so the search stops there and
+nothing is reported. Observable failure (issue #10698):
+`new (arrays[0]?.constructor as { new (length: number): Float64Array })(1)` is
+not reported, while the same code without `as` is. A bundler can later emit
+this as invalid JavaScript ("Invalid optional chain from new expression").
+"""

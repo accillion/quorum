@@ -1,0 +1,66 @@
+schema = 1
+id = "rs-biome-05"
+kind = "bug"
+language = "rust"
+source_repo = "https://github.com/biomejs/biome"
+source_commit = "93d8e5352454bccfbd179db03b3155776599c52c"
+source_commit_url = "https://github.com/biomejs/biome/commit/93d8e5352454bccfbd179db03b3155776599c52c"
+source_commit_date = "2026-07-05"
+base_commit = "93d8e5352454bccfbd179db03b3155776599c52c"
+removed_paths = [
+  "crates/biome_html_analyze/tests/specs/a11y/noAccessKey/astro/invalid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/noAccessKey/astro/invalid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/noAutofocus/astro/invalid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/noAutofocus/astro/invalid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/noRedundantAlt/astro/valid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/noRedundantAlt/astro/valid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/useAltText/astro/valid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/useAltText/astro/valid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/useButtonType/astro/valid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/useButtonType/astro/valid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/useHtmlLang/astro/valid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/useHtmlLang/astro/valid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/useValidLang/astro/valid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/useValidLang/astro/valid.astro.snap",
+  "crates/biome_js_analyze/tests/specs/correctness/noUnusedVariables/valid_issue_10840.astro",
+  "crates/biome_js_analyze/tests/specs/correctness/noUnusedVariables/valid_issue_10840.astro.snap",
+  ".changeset/nasty-spies-begin.md",
+]
+base_reverts = []
+case_base_tree = "4d4e25a8b6a25bfb48a9f33123d06104ec70aafa"
+case_commit_tree = "e0ab975c3d09fec120a01da0337d2d7be76b3898"
+licence = "MIT OR Apache-2.0"
+licence_path = "LICENSE-MIT"
+licence_notice = """
+Copyright (c) 2023-present Biome Developers and Contributors.
+Copyright (c) 2020-2023 Rome Tools is Rome Tools, Inc. and its affiliates.
+(LICENSE-APACHE: Copyright (c) 2023 Biome Developers and Contributors.)
+"""
+agent_files = ["AGENTS.md", "CLAUDE.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "biomejs__biome-10853"
+
+[repro]
+reproduced = true
+image = "rust@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1"
+command = "cargo test -p biome_js_analyze --test spec_tests -- specs::correctness::no_unused_variables::"
+test_files = [
+  "crates/biome_html_analyze/tests/specs/a11y/noAccessKey/astro/invalid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/noAccessKey/astro/invalid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/noAutofocus/astro/invalid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/noAutofocus/astro/invalid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/noRedundantAlt/astro/valid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/noRedundantAlt/astro/valid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/useAltText/astro/valid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/useAltText/astro/valid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/useButtonType/astro/valid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/useButtonType/astro/valid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/useHtmlLang/astro/valid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/useHtmlLang/astro/valid.astro.snap",
+  "crates/biome_html_analyze/tests/specs/a11y/useValidLang/astro/valid.astro",
+  "crates/biome_html_analyze/tests/specs/a11y/useValidLang/astro/valid.astro.snap",
+  "crates/biome_js_analyze/tests/specs/correctness/noUnusedVariables/valid_issue_10840.astro",
+  "crates/biome_js_analyze/tests/specs/correctness/noUnusedVariables/valid_issue_10840.astro.snap",
+]
+fixed_exit = 0
+reverted_exit = 101

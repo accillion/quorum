@@ -1,0 +1,200 @@
+                "2026-11-17T03:30:00.123456002Z",
+                id="nanoseconds",
+            ),
+        ],
+    )
+    async def test_phase_two_selection_tracks_added_retained_and_removed_rollouts(
+        older_timestamp: str, newer_timestamp: str
+    ) -> None:
+        client = FilesystemTestSandboxClient()
+        session = await client.create(manifest=Manifest())
+    
+        try:
+            storage = SandboxMemoryStorage(session=session, layout=MemoryLayoutConfig())
+            await storage.ensure_layout()
+            old_item = PhaseTwoSelectionItem(
+                rollout_id="old-rollout",
+                updated_at=older_timestamp,
+                rollout_path="sessions/old-rollout.jsonl",
+                rollout_summary_file="rollout_summaries/old-rollout.md",
+                terminal_state="completed",
+            )
+            await storage.write_text(
+                storage.raw_memories_dir / "old-rollout.md",
+                _raw_memory_record(
+                    rollout_id=old_item.rollout_id,
+                    updated_at=old_item.updated_at,
+                    rollout_summary_file=old_item.rollout_summary_file,
+                    raw_memory="old raw",
+                ),
+            )
+            await storage.write_text(
+                storage.raw_memories_dir / "new-rollout.md",
+                _raw_memory_record(
+                    rollout_id="new-rollout",
+                    updated_at=newer_timestamp,
+                    rollout_summary_file="rollout_summaries/new-rollout.md",
+                    raw_memory="new raw",
+                ),
+            )
+            await storage.write_phase_two_selection(selected_items=[old_item])
+    
+            selection = await storage.build_phase_two_input_selection(
+                max_raw_memories_for_consolidation=1
+            )
+    
+>           assert [item.rollout_id for item in selection.selected] == ["new-rollout"]
+E           AssertionError: assert ['old-rollout'] == ['new-rollout']
+E             
+E             At index 0 diff: 'old-rollout' != 'new-rollout'
+E             Use -v to get more diff
+
+tests/sandbox/test_memory.py:657: AssertionError
+_ test_phase_two_selection_tracks_added_retained_and_removed_rollouts[tenths] __
+
+older_timestamp = '2026-11-17T03:30:00.1Z'
+newer_timestamp = '2026-11-16T23:30:00.1-05:00'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("older_timestamp", "newer_timestamp"),
+        [
+            pytest.param("2025-03-01T00:00:00Z", "2025-03-02T00:00:00Z", id="utc"),
+            pytest.param("2026-11-17T03:30:00+00:00", "2026-11-16T23:30:00-05:00", id="mixed-offsets"),
+            pytest.param("2026-11-17T03:30:00.1Z", "2026-11-16T23:30:00.1-05:00", id="tenths"),
+            pytest.param("2026-11-17T03:30:00+0000", "2026-11-16T23:30:00-0500", id="compact-offsets"),
+            pytest.param(
+                "2026-11-17T03:30:00.123456001Z",
+                "2026-11-17T03:30:00.123456002Z",
+                id="nanoseconds",
+            ),
+        ],
+    )
+    async def test_phase_two_selection_tracks_added_retained_and_removed_rollouts(
+        older_timestamp: str, newer_timestamp: str
+    ) -> None:
+        client = FilesystemTestSandboxClient()
+        session = await client.create(manifest=Manifest())
+    
+        try:
+            storage = SandboxMemoryStorage(session=session, layout=MemoryLayoutConfig())
+            await storage.ensure_layout()
+            old_item = PhaseTwoSelectionItem(
+                rollout_id="old-rollout",
+                updated_at=older_timestamp,
+                rollout_path="sessions/old-rollout.jsonl",
+                rollout_summary_file="rollout_summaries/old-rollout.md",
+                terminal_state="completed",
+            )
+            await storage.write_text(
+                storage.raw_memories_dir / "old-rollout.md",
+                _raw_memory_record(
+                    rollout_id=old_item.rollout_id,
+                    updated_at=old_item.updated_at,
+                    rollout_summary_file=old_item.rollout_summary_file,
+                    raw_memory="old raw",
+                ),
+            )
+            await storage.write_text(
+                storage.raw_memories_dir / "new-rollout.md",
+                _raw_memory_record(
+                    rollout_id="new-rollout",
+                    updated_at=newer_timestamp,
+                    rollout_summary_file="rollout_summaries/new-rollout.md",
+                    raw_memory="new raw",
+                ),
+            )
+            await storage.write_phase_two_selection(selected_items=[old_item])
+    
+            selection = await storage.build_phase_two_input_selection(
+                max_raw_memories_for_consolidation=1
+            )
+    
+>           assert [item.rollout_id for item in selection.selected] == ["new-rollout"]
+E           AssertionError: assert ['old-rollout'] == ['new-rollout']
+E             
+E             At index 0 diff: 'old-rollout' != 'new-rollout'
+E             Use -v to get more diff
+
+tests/sandbox/test_memory.py:657: AssertionError
+_ test_phase_two_selection_tracks_added_retained_and_removed_rollouts[compact-offsets] _
+
+older_timestamp = '2026-11-17T03:30:00+0000'
+newer_timestamp = '2026-11-16T23:30:00-0500'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("older_timestamp", "newer_timestamp"),
+        [
+            pytest.param("2025-03-01T00:00:00Z", "2025-03-02T00:00:00Z", id="utc"),
+            pytest.param("2026-11-17T03:30:00+00:00", "2026-11-16T23:30:00-05:00", id="mixed-offsets"),
+            pytest.param("2026-11-17T03:30:00.1Z", "2026-11-16T23:30:00.1-05:00", id="tenths"),
+            pytest.param("2026-11-17T03:30:00+0000", "2026-11-16T23:30:00-0500", id="compact-offsets"),
+            pytest.param(
+                "2026-11-17T03:30:00.123456001Z",
+                "2026-11-17T03:30:00.123456002Z",
+                id="nanoseconds",
+            ),
+        ],
+    )
+    async def test_phase_two_selection_tracks_added_retained_and_removed_rollouts(
+        older_timestamp: str, newer_timestamp: str
+    ) -> None:
+        client = FilesystemTestSandboxClient()
+        session = await client.create(manifest=Manifest())
+    
+        try:
+            storage = SandboxMemoryStorage(session=session, layout=MemoryLayoutConfig())
+            await storage.ensure_layout()
+            old_item = PhaseTwoSelectionItem(
+                rollout_id="old-rollout",
+                updated_at=older_timestamp,
+                rollout_path="sessions/old-rollout.jsonl",
+                rollout_summary_file="rollout_summaries/old-rollout.md",
+                terminal_state="completed",
+            )
+            await storage.write_text(
+                storage.raw_memories_dir / "old-rollout.md",
+                _raw_memory_record(
+                    rollout_id=old_item.rollout_id,
+                    updated_at=old_item.updated_at,
+                    rollout_summary_file=old_item.rollout_summary_file,
+                    raw_memory="old raw",
+                ),
+            )
+            await storage.write_text(
+                storage.raw_memories_dir / "new-rollout.md",
+                _raw_memory_record(
+                    rollout_id="new-rollout",
+                    updated_at=newer_timestamp,
+                    rollout_summary_file="rollout_summaries/new-rollout.md",
+                    raw_memory="new raw",
+                ),
+            )
+            await storage.write_phase_two_selection(selected_items=[old_item])
+    
+            selection = await storage.build_phase_two_input_selection(
+                max_raw_memories_for_consolidation=1
+            )
+    
+>           assert [item.rollout_id for item in selection.selected] == ["new-rollout"]
+E           AssertionError: assert ['old-rollout'] == ['new-rollout']
+E             
+E             At index 0 diff: 'old-rollout' != 'new-rollout'
+E             Use -v to get more diff
+
+tests/sandbox/test_memory.py:657: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/anyio/pytest_plugin.py:14
+  /work/.venv/lib/python3.12/site-packages/anyio/pytest_plugin.py:14: PytestRemovedIn10Warning: _pytest.python.CallSpec2 has been renamed to CallSpec.
+  The CallSpec2 alias will be removed in pytest 10.
+  Update imports to use CallSpec instead.
+  See https://docs.pytest.org/en/stable/deprecations.html#callspec2-renamed
+    from _pytest.python import CallSpec2
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/sandbox/test_memory.py::test_phase_two_selection_tracks_added_retained_and_removed_rollouts[mixed-offsets]
+FAILED tests/sandbox/test_memory.py::test_phase_two_selection_tracks_added_retained_and_removed_rollouts[tenths]
+FAILED tests/sandbox/test_memory.py::test_phase_two_selection_tracks_added_retained_and_removed_rollouts[compact-offsets]
+=================== 3 failed, 84 passed, 1 warning in 1.23s ====================

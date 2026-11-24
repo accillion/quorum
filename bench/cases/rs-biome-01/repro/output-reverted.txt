@@ -1,0 +1,142 @@
+   Compiling biome_html_analyze v0.5.7 (/work/biome/crates/biome_html_analyze)
+   Compiling biome_json_analyze v0.5.7 (/work/biome/crates/biome_json_analyze)
+   Compiling biome_css_analyze v0.5.7 (/work/biome/crates/biome_css_analyze)
+   Compiling biome_js_analyze v0.5.7 (/work/biome/crates/biome_js_analyze)
+   Compiling biome_configuration_macros v0.0.1 (/work/biome/crates/biome_configuration_macros)
+   Compiling biome_configuration v0.0.1 (/work/biome/crates/biome_configuration)
+   Compiling biome_service v0.0.0 (/work/biome/crates/biome_service)
+   Compiling biome_test_utils v0.0.0 (/work/biome/crates/biome_test_utils)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 41.66s
+     Running tests/spec_tests.rs (/target/debug/deps/spec_tests-f6b2e7937397ad99)
+
+running 2 tests
+test specs::correctness::use_vue_valid_v_bind::valid_vue ... FAILED
+test specs::correctness::use_vue_valid_v_bind::invalid_vue ... ok
+
+failures:
+
+---- specs::correctness::use_vue_valid_v_bind::valid_vue stdout ----
+
+thread 'specs::correctness::use_vue_valid_v_bind::valid_vue' (307) panicked at crates/biome_test_utils/src/lib.rs:1124:17:
+This test should not generate diagnostics
+File: /work/biome/crates/biome_html_analyze/tests/specs/correctness/useVueValidVBind/valid.vue
+
+Diagnostics: valid.vue:12:6 lint/correctness/useVueValidVBind ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × This v-bind directive is missing a value.
+  
+    11 │ <!-- Vue 3.4+ same-name shorthand: `:foo` is equivalent to `:foo="foo"`. -->
+  > 12 │ <Foo :foo />
+       │      ^^^^
+    13 │ <Foo :foo-bar />
+    14 │ <Foo v-bind:foo />
+  
+  i v-bind directives require a value.
+  
+  i Add a value to the directive, e.g. v-bind:foo="bar".
+  
+
+valid.vue:13:6 lint/correctness/useVueValidVBind ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × This v-bind directive is missing a value.
+  
+    11 │ <!-- Vue 3.4+ same-name shorthand: `:foo` is equivalent to `:foo="foo"`. -->
+    12 │ <Foo :foo />
+  > 13 │ <Foo :foo-bar />
+       │      ^^^^^^^^
+    14 │ <Foo v-bind:foo />
+    15 │ <Foo v-bind:foo-bar />
+  
+  i v-bind directives require a value.
+  
+  i Add a value to the directive, e.g. v-bind:foo="bar".
+  
+
+valid.vue:14:6 lint/correctness/useVueValidVBind ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × This v-bind directive is missing a value.
+  
+    12 │ <Foo :foo />
+    13 │ <Foo :foo-bar />
+  > 14 │ <Foo v-bind:foo />
+       │      ^^^^^^^^^^
+    15 │ <Foo v-bind:foo-bar />
+    16 │ 
+  
+  i v-bind directives require a value.
+  
+  i Add a value to the directive, e.g. v-bind:foo="bar".
+  
+
+valid.vue:15:6 lint/correctness/useVueValidVBind ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × This v-bind directive is missing a value.
+  
+    13 │ <Foo :foo-bar />
+    14 │ <Foo v-bind:foo />
+  > 15 │ <Foo v-bind:foo-bar />
+       │      ^^^^^^^^^^^^^^
+    16 │ 
+    17 │ <!-- Same-name shorthand combined with valid modifiers. -->
+  
+  i v-bind directives require a value.
+  
+  i Add a value to the directive, e.g. v-bind:foo="bar".
+  
+
+valid.vue:18:6 lint/correctness/useVueValidVBind ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × This v-bind directive is missing a value.
+  
+    17 │ <!-- Same-name shorthand combined with valid modifiers. -->
+  > 18 │ <Foo :foo.prop />
+       │      ^^^^^^^^^
+    19 │ <Foo v-bind:foo.prop />
+    20 │ 
+  
+  i v-bind directives require a value.
+  
+  i Add a value to the directive, e.g. v-bind:foo="bar".
+  
+
+valid.vue:19:6 lint/correctness/useVueValidVBind ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × This v-bind directive is missing a value.
+  
+    17 │ <!-- Same-name shorthand combined with valid modifiers. -->
+    18 │ <Foo :foo.prop />
+  > 19 │ <Foo v-bind:foo.prop />
+       │      ^^^^^^^^^^^^^^^
+    20 │ 
+    21 │ <!-- Same-name shorthand referencing a v-for iteration variable. -->
+  
+  i v-bind directives require a value.
+  
+  i Add a value to the directive, e.g. v-bind:foo="bar".
+  
+
+valid.vue:22:40 lint/correctness/useVueValidVBind ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  × This v-bind directive is missing a value.
+  
+    21 │ <!-- Same-name shorthand referencing a v-for iteration variable. -->
+  > 22 │ <Foo v-for="foo of foos" :key="foo.id" :foo />
+       │                                        ^^^^
+    23 │ 
+    24 │ <!-- Valid modifiers from the rule: prop, camel, sync, attr -->
+  
+  i v-bind directives require a value.
+  
+  i Add a value to the directive, e.g. v-bind:foo="bar".
+  
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    specs::correctness::use_vue_valid_v_bind::valid_vue
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 495 filtered out; finished in 0.12s
+
+error: test failed, to rerun pass `-p biome_html_analyze --test spec_tests`
+EXIT 101

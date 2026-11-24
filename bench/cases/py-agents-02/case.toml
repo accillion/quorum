@@ -1,0 +1,29 @@
+schema = 1
+id = "py-agents-02"
+kind = "bug"
+language = "python"
+source_repo = "https://github.com/openai/openai-agents-python"
+source_commit = "e7ce15a25b336bb3d0840ad16dee597f69a6e6d3"
+source_commit_url = "https://github.com/openai/openai-agents-python/commit/e7ce15a25b336bb3d0840ad16dee597f69a6e6d3"
+source_commit_date = "2026-11-18"
+base_commit = "e7ce15a25b336bb3d0840ad16dee597f69a6e6d3"
+removed_paths = ["tests/sandbox/test_memory.py"]
+base_reverts = []
+case_base_tree = "dcf1e563b10f77ef78f83ed8cb38a71046e3f341"
+case_commit_tree = "fdf7f8435fff9c4e589b04ea0c139882b4a3e04e"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) 2025 OpenAI
+"""
+agent_files = ["AGENTS.md", "CLAUDE.md"]
+dataset = "hand-picked"
+dataset_instance = ""
+
+[repro]
+reproduced = true
+image = "python@sha256:4209fae09a3e20afd863e528bfddc235da5fd5977983e1996cd54cc9a72e6267"
+command = 'pip install -q uv==0.13.9 && uv sync --frozen && uv run --frozen --no-sync pytest -p no:cacheprovider tests/sandbox/test_memory.py'
+test_files = ["tests/sandbox/test_memory.py"]
+fixed_exit = 0
+reverted_exit = 1

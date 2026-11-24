@@ -1,0 +1,19 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["packages/autofmt/src/writer.rs"]
+title = "dx fmt dedents trailing full-line comments before an RSX block's closing brace to the parent indentation level"
+description = """
+In `Writer::write_rsx_block` (packages/autofmt/src/writer.rs), full-line
+comments that sit after the last child and before the closing `}` are
+written with `apply_line_comments` right after `tabbed_line()` has already
+indented the line for the closing brace. The comments therefore come out at
+the parent's indentation level instead of the children's level. Commented-out
+RSX blocks (`// div { ... }` lines inside an element) get mangled by `dx fmt`:
+either every line after the first is dedented by one level, or, in nested
+`rsx!` blocks, the whole commented block is dedented, so formatting is not
+idempotent and changes the user's comment layout. This is a regression since
+v0.7.4 (the comment-handling rewrite in PR #5257, issue #5463). The fix
+truncates the tab written by `tabbed_line()` and bumps the indent level by
+one while writing those comments, as `write_trailing_body_comments` does.
+"""

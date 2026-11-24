@@ -13,6 +13,7 @@ pub mod config;
 pub mod corpus;
 pub mod fake_lippa;
 pub mod findings;
+pub mod github;
 pub mod keyguard;
 pub mod manifest;
 pub mod materialize;

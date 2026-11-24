@@ -1,0 +1,87 @@
+== CASE COMMIT tree + repro/files
+   Compiling dioxus-autofmt v0.7.4 (/work/src/packages/autofmt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.02s
+     Running tests/samples.rs (/work/target/debug/deps/samples-c0b6de45b5a723cd)
+
+running 40 tests
+test collapse_expr ... ok
+test emoji ... ok
+test letsome ... ok
+test messy_indent ... ok
+test blank_lines_preserved ... ok
+test key ... ok
+test immediate_expr ... ok
+test expr_on_conditional ... ok
+test commentshard ... ok
+test ifchain_forloop ... ok
+test collapse ... ok
+test forloop_tuple ... FAILED
+test asset ... ok
+test basic_expr ... ok
+test attributes ... ok
+test fat_exprs ... ok
+test oneline ... ok
+test blank_lines ... ok
+test multirsx ... ok
+test long_exprs ... ok
+test complex ... ok
+test long ... ok
+test manual_props ... ok
+test misplaced ... ok
+test reallylong ... ok
+test raw_strings ... ok
+test simple ... ok
+test nested ... ok
+test skip ... ok
+test shorthand ... ok
+test docsite ... ok
+test comments ... ok
+test prop_rsx ... ok
+test spaces ... ok
+test t2 ... ok
+test staged ... ok
+test tiny ... ok
+test tinynoopt ... ok
+test many_exprs ... ok
+test trailing_expr ... ok
+
+failures:
+
+---- forloop_tuple stdout ----
+
+thread 'forloop_tuple' (238) panicked at packages/autofmt/tests/samples.rs:27:1:
+assertion failed: `(left == right)`
+
+Diff < left / right > :
+ rsx! {
+<    for (index, name, value) in data.iter() {
+>    for (index , name , value) in data.iter() {
+         div { "{index}: {name} = {value}" }
+     }
+ 
+     for item in items {
+         div { "{item}" }
+     }
+ 
+<    for (a, b) in pairs.iter().enumerate() {
+>    for (a , b) in pairs.iter().enumerate() {
+         span { "{a}-{b}" }
+     }
+ 
+<    for (_, value) in pairs {
+>    for (_ , value) in pairs {
+         span { "{value}" }
+     }
+ }
+ 
+
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    forloop_tuple
+
+test result: FAILED. 39 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+error: test failed, to rerun pass `-p dioxus-autofmt --test samples`

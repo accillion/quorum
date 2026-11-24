@@ -1,0 +1,30 @@
+schema = 1
+id = "clean-py-pydanticai-02"
+kind = "clean"
+language = "python"
+source_repo = "https://github.com/pydantic/pydantic-ai"
+source_commit = "86b645f4064202955ad297daa3cdf8dd0f777a4a"
+source_commit_url = "https://github.com/pydantic/pydantic-ai/commit/86b645f4064202955ad297daa3cdf8dd0f777a4a"
+source_commit_date = "2025-11-07"
+base_commit = "f6665978848a9f6c33e74a6f5f02e52124f7d80d"
+removed_paths = []
+base_reverts = []
+case_base_tree = "709629ac2abc211c0ea111df50b96a346156f2a0"
+case_commit_tree = "22cc9196d20af4737a868fbe2dc875f7f3f6aaee"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) Pydantic Services Inc. 2024 to present
+"""
+agent_files = ["AGENTS.md", "CLAUDE.md"]
+dataset = "hand-picked"
+dataset_instance = ""
+
+[clean]
+head_checked = "d725f563f563145d6ee6080a987036b38acdedce"
+head_checked_date = "2026-11-23"
+retained_share = 0.933
+later_commits = [
+  "c456f5e972a96735ad8a088222192c7917d5016a fix: exclude resumed requests from `new_messages()` even with current `run_id` (#4731)",
+]
+verdict = "no later fix, revert or substantial rewrite: the only later commit touching an added line (c456f5e9) reworded the AgentRun.new_messages docstring and changed no code the commit added"

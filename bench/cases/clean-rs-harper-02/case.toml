@@ -1,0 +1,31 @@
+schema = 1
+id = "clean-rs-harper-02"
+kind = "clean"
+language = "rust"
+source_repo = "https://github.com/Automattic/harper"
+source_commit = "3526dcf35c98327418f0968a9fb2984f47555258"
+source_commit_url = "https://github.com/Automattic/harper/commit/3526dcf35c98327418f0968a9fb2984f47555258"
+source_commit_date = "2025-08-27"
+base_commit = "45543a3485f26e8f56a51870fb55876c268b84a8"
+removed_paths = []
+base_reverts = []
+case_base_tree = "f3bbf0b4a9595444b27293863d9da66cd667974f"
+case_commit_tree = "a95d8442879ff2e2aa00cab30d50657de87e42c4"
+licence = "Apache-2.0"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright 2024 Elijah Potter
+"""
+agent_files = []
+dataset = "hand-picked"
+dataset_instance = ""
+
+[clean]
+head_checked = "eeaf0d208e56bf55ea1720833177d9451316b4cf"
+head_checked_date = "2026-11-23"
+retained_share = 0.977
+later_commits = [
+  "48f1d868ff391cf4b7cec296795f91ccd27b7f6b feat: sync language support (#2123)",
+  "3909d2e4db3502ea0a990c469e651d571de78992 refactor: use `Span::empty` to create empty spans (#2658)",
+]
+verdict = "no later fix, revert or substantial rewrite: later commits only switched an empty-span constructor to Span::empty and re-sorted the language match during a language-support sync"

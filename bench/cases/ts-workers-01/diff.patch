@@ -1,0 +1,84 @@
+diff --git a/packages/miniflare/src/workers/d1/dumpSql.ts b/packages/miniflare/src/workers/d1/dumpSql.ts
+index 42b9068..b3cfed7 100644
+--- a/packages/miniflare/src/workers/d1/dumpSql.ts
++++ b/packages/miniflare/src/workers/d1/dumpSql.ts
+@@ -19,14 +19,13 @@ export function* dumpSql(
+ 	// Taken from SQLite shell.c.in https://github.com/sqlite/sqlite/blob/105c20648e1b05839fd0638686b95f2e3998abcb/src/shell.c.in#L8463-L8469
+ 	// @ts-ignore (SqlStorageStatement needs to be callable)
+ 	const tables_cursor = db.prepare(`
+-    SELECT name, type, sql
+-      FROM sqlite_schema AS o
+-    WHERE (true) AND type=='table'
+-      AND sql NOT NULL
++    SELECT name, type, sql 
++      FROM sqlite_schema AS o 
++    WHERE (true) AND type=='table' 
++      AND sql NOT NULL 
+     ORDER BY tbl_name='sqlite_sequence', rowid;
+   `)();
+-	const tables: { name: string; type: string; sql: string }[] =
+-		Array.from(tables_cursor);
++	const tables: any[] = Array.from(tables_cursor);
+ 
+ 	for (const { name: table, sql } of tables) {
+ 		if (filterTables.size > 0 && !filterTables.has(table)) continue;
+@@ -55,18 +54,10 @@ export function* dumpSql(
+ 		}
+ 
+ 		if (noData) continue;
+-		const columns_cursor = db.exec(`PRAGMA table_info=${escapeId(table)}`);
+-
+-		const columns = Array.from(columns_cursor) as {
+-			cid: string;
+-			name: string;
+-			type: string;
+-			notnull: number;
+-			dflt_val: string | null;
+-			pk: number;
+-		}[];
+-
+-		const select = `SELECT ${columns.map((c) => escapeId(c.name)).join(", ")} FROM ${escapeId(table)};`;
++		const columns_cursor = db.exec(`PRAGMA table_info="${table}"`);
++		const columns = Array.from(columns_cursor);
++		const select = `SELECT ${columns.map((c) => c.name).join(", ")}
++                            FROM "${table}";`;
+ 		const rows_cursor = db.exec(select);
+ 		for (const dataRow of rows_cursor.raw()) {
+ 			const formattedCells = dataRow.map((cell: unknown, i: number) => {
+@@ -74,9 +65,9 @@ export function* dumpSql(
+ 				const cellType = typeof cell;
+ 				if (cell === null) {
+ 					return "NULL";
+-				} else if (cellType === "number") {
++				} else if (colType === "INTEGER" || cellType === "number") {
+ 					return cell;
+-				} else if (cellType === "string") {
++				} else if (colType === "TEXT" || cellType === "string") {
+ 					return outputQuotedEscapedString(cell);
+ 				} else if (cell instanceof ArrayBuffer) {
+ 					return `X'${Array.prototype.map
+@@ -88,7 +79,7 @@ export function* dumpSql(
+ 				}
+ 			});
+ 
+-			yield `INSERT INTO ${escapeId(table)} VALUES(${formattedCells.join(",")});`;
++			yield `INSERT INTO ${sqliteQuote(table)} VALUES(${formattedCells.join(",")});`;
+ 		}
+ 	}
+ 
+@@ -147,15 +138,6 @@ export function sqliteQuote(token: string) {
+ 		: token;
+ }
+ 
+-/**
+- * Escape an identifier for use in SQL statements.
+- * @param id - The identifier to escape.
+- * @returns
+- */
+-function escapeId(id: string) {
+-	return `"${id.replace(/"/g, '""')}"`;
+-}
+-
+ // List taken from `aKeywordTable` inhttps://github.com/sqlite/sqlite/blob/378bf82e2bc09734b8c5869f9b148efe37d29527/tool/mkkeywordhash.c#L172
+ // prettier-ignore
+ export const SQLITE_KEYWORDS = new Set([

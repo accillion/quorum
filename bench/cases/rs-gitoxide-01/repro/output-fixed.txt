@@ -1,0 +1,150 @@
+== FIXED tree 172bd22b8241aba9187fc6e5134e3f454053c2be
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /work/src/gix-imara-diff/Cargo.toml
+workspace: /work/src/Cargo.toml
+    Updating crates.io index
+ Downloading crates ...
+  Downloaded shell-words v1.1.1
+  Downloaded faster-hex v0.10.0
+  Downloaded kstring v2.0.2
+  Downloaded hash32 v0.3.1
+  Downloaded termtree v1.0.0
+  Downloaded crc v3.4.0
+  Downloaded nonempty v0.12.0
+  Downloaded io-close v0.3.7
+  Downloaded derive_arbitrary v1.4.2
+  Downloaded arbitrary v1.4.2
+  Downloaded crc-catalog v2.4.0
+  Downloaded signal-hook v0.4.3
+  Downloaded arc-swap v1.9.0
+  Downloaded prodash v31.0.0
+  Downloaded heapless v0.8.0
+  Downloaded winnow v1.0.0
+  Downloaded sha1-checked v0.10.0
+   Compiling libc v0.2.183
+   Compiling memchr v2.8.0
+   Compiling cfg-if v1.0.4
+   Compiling regex-automata v0.4.14
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling smallvec v1.15.1
+   Compiling tinyvec_macros v0.1.1
+   Compiling parking_lot_core v0.9.12
+   Compiling thiserror v2.0.18
+   Compiling fastrand v2.3.0
+   Compiling tinyvec v1.11.0
+   Compiling scopeguard v1.2.0
+   Compiling lock_api v0.4.14
+   Compiling gix-trace v0.1.18 (/work/src/gix-trace)
+   Compiling crc32fast v1.5.0
+   Compiling typenum v1.19.0
+   Compiling same-file v1.0.6
+   Compiling version_check v0.9.5
+   Compiling walkdir v2.5.0
+   Compiling unicode-normalization v0.1.25
+   Compiling zlib-rs v0.6.3
+   Compiling byteorder v1.5.0
+   Compiling heapless v0.8.0
+   Compiling hash32 v0.3.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling generic-array v0.14.7
+   Compiling bitflags v2.11.0
+   Compiling cpufeatures v0.2.17
+   Compiling foldhash v0.2.0
+   Compiling equivalent v1.0.2
+   Compiling allocator-api2 v0.2.21
+   Compiling itoa v1.0.18
+   Compiling gix-utils v0.3.1 (/work/src/gix-utils)
+   Compiling jiff v0.2.23
+   Compiling winnow v1.0.0
+   Compiling bstr v1.12.1
+   Compiling getrandom v0.4.2
+   Compiling hashbrown v0.16.1
+   Compiling rustix v1.1.4
+   Compiling faster-hex v0.10.0
+   Compiling once_cell v1.21.4
+   Compiling linux-raw-sys v0.12.1
+   Compiling syn v2.0.117
+   Compiling crossbeam-utils v0.8.21
+   Compiling gix-validate v0.11.0 (/work/src/gix-validate)
+   Compiling gix-error v0.2.1 (/work/src/gix-error)
+   Compiling memmap2 v0.9.10
+   Compiling parking_lot v0.12.5
+   Compiling gix-chunk v0.7.0 (/work/src/gix-chunk)
+   Compiling crypto-common v0.1.7
+   Compiling block-buffer v0.10.4
+   Compiling errno v0.3.14
+   Compiling signal-hook v0.4.3
+   Compiling digest v0.10.7
+   Compiling signal-hook-registry v1.4.8
+   Compiling hashbrown v0.14.5
+   Compiling prodash v31.0.0
+   Compiling nonempty v0.12.0
+   Compiling sha1 v0.10.6
+   Compiling gix-quote v0.7.0 (/work/src/gix-quote)
+   Compiling sha1-checked v0.10.0
+   Compiling static_assertions v1.1.0
+   Compiling unicode-bom v2.0.3
+   Compiling kstring v2.0.2
+   Compiling filetime v0.2.27
+   Compiling gix-bitmap v0.3.0 (/work/src/gix-bitmap)
+   Compiling fnv v1.0.7
+   Compiling shell-words v1.1.1
+   Compiling rustversion v1.0.22
+   Compiling encoding_rs v0.8.35
+   Compiling gix-imara-diff v0.2.0 (/work/src/gix-imara-diff)
+   Compiling gix-sec v0.13.2 (/work/src/gix-sec)
+   Compiling crc-catalog v2.4.0
+   Compiling dashmap v6.1.0
+   Compiling crc v3.4.0
+   Compiling tar v0.4.45
+   Compiling io-close v0.3.7
+   Compiling is_ci v1.2.0
+   Compiling diff v0.1.13
+   Compiling fs_extra v1.3.0
+   Compiling yansi v1.0.1
+   Compiling termtree v1.0.0
+   Compiling arc-swap v1.9.0
+   Compiling pretty_assertions v1.4.1
+   Compiling tempfile v3.27.0
+   Compiling thiserror-impl v2.0.18
+   Compiling derive_arbitrary v1.4.2
+   Compiling arbitrary v1.4.2
+   Compiling gix-path v0.11.2 (/work/src/gix-path)
+   Compiling gix-packetline v0.21.2 (/work/src/gix-packetline)
+   Compiling gix-date v0.15.1 (/work/src/gix-date)
+   Compiling gix-features v0.46.2 (/work/src/gix-features)
+   Compiling gix-command v0.8.0 (/work/src/gix-command)
+   Compiling gix-actor v0.40.0 (/work/src/gix-actor)
+   Compiling gix-hash v0.23.0 (/work/src/gix-hash)
+   Compiling gix-fs v0.19.2 (/work/src/gix-fs)
+   Compiling gix-glob v0.24.0 (/work/src/gix-glob)
+   Compiling gix-hashtable v0.13.0 (/work/src/gix-hashtable)
+   Compiling gix-commitgraph v0.35.0 (/work/src/gix-commitgraph)
+   Compiling gix-object v0.58.0 (/work/src/gix-object)
+   Compiling gix-tempfile v21.0.2 (/work/src/gix-tempfile)
+   Compiling gix-attributes v0.31.0 (/work/src/gix-attributes)
+   Compiling gix-ignore v0.19.1 (/work/src/gix-ignore)
+   Compiling gix-lock v21.0.2 (/work/src/gix-lock)
+   Compiling gix-revwalk v0.29.0 (/work/src/gix-revwalk)
+   Compiling gix-ref v0.61.0 (/work/src/gix-ref)
+   Compiling gix-filter v0.28.0 (/work/src/gix-filter)
+   Compiling gix-pack v0.68.0 (/work/src/gix-pack)
+   Compiling gix-traverse v0.55.0 (/work/src/gix-traverse)
+   Compiling gix-revision v0.43.0 (/work/src/gix-revision)
+   Compiling gix-index v0.49.0 (/work/src/gix-index)
+   Compiling gix-odb v0.78.0 (/work/src/gix-odb)
+   Compiling gix-discover v0.49.0 (/work/src/gix-discover)
+   Compiling gix-worktree v0.50.0 (/work/src/gix-worktree)
+   Compiling gix-diff v0.61.0 (/work/src/gix-diff)
+   Compiling gix-testtools v0.19.0 (/work/src/tests/tools)
+   Compiling gix-merge v0.14.0 (/work/src/gix-merge)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.07s
+     Running tests/merge/main.rs (/work/target/debug/deps/merge-cfb32c54a5dfd19a)
+
+running 1 test
+test blob::builtin_driver::text::false_conflict::myers_false_conflict_with_blank_line_ambiguity ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s
+

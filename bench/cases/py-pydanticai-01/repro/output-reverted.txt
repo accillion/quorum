@@ -1,0 +1,200 @@
+seed = 1
+expected = {'nullable': None, 'null_first': 'b', 'multi': 'bb', 'list': None, 'obj': None}
+
+    @pytest.mark.parametrize(
+        'seed,expected',
+        [
+            (0, snapshot({'nullable': 'a', 'null_first': None, 'multi': 3, 'list': [0], 'obj': {'x': False}})),
+            (1, snapshot({'nullable': None, 'null_first': 'b', 'multi': 'bb', 'list': None, 'obj': None})),
+        ],
+    )
+    def test_tool_type_list_args(seed: int, expected: dict[str, object]) -> None:
+        """The seed picks one member of a JSON Schema `type` list, as it picks an `anyOf` member.
+    
+        The picked type keeps the sibling keywords (`minimum`, `minLength`, `items`, `properties`), and type lists
+        nested under `items` and an object property are generated the same way. `TestModel` makes no provider
+        request, so there is nothing to record.
+        """
+        calls: list[dict[str, object]] = []
+    
+        def lookup(**kwargs: object) -> str:
+            calls.append(kwargs)
+            return 'ok'
+    
+        schema: dict[str, object] = {
+            'type': 'object',
+            'properties': {
+                'nullable': {'type': ['string', 'null']},
+                'null_first': {'type': ['null', 'string']},
+                'multi': {'type': ['integer', 'string'], 'minimum': 3, 'minLength': 2},
+                'list': {'type': ['array', 'null'], 'minItems': 1, 'items': {'type': ['integer', 'null']}},
+                'obj': {
+                    'type': ['object', 'null'],
+                    'properties': {'x': {'type': ['boolean', 'null']}},
+                    'required': ['x'],
+                },
+            },
+            'required': ['nullable', 'null_first', 'multi', 'list', 'obj'],
+        }
+        tool = Tool.from_schema(lookup, name='lookup', description='Look something up.', json_schema=schema)
+>       Agent(TestModel(seed=seed), tools=[tool]).run_sync('hello')
+
+tests/models/test_model_test.py:896: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+pydantic_ai_slim/pydantic_ai/agent/abstract.py:856: in run_sync
+    return _utils.run_until_complete(
+pydantic_ai_slim/pydantic_ai/_utils.py:113: in run_until_complete
+    return _graph_run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/_utils.py:121: in run_until_complete
+    return loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.12/asyncio/base_events.py:691: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/agent/abstract.py:696: in run
+    node = await agent_run.next(node)  # pyright: ignore[reportArgumentType]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:732: in next
+    return await self._run_node_with_hooks(node, self._stream_and_advance)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:642: in _run_node_with_hooks
+    result = await lifecycle(node)
+             ^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:622: in lifecycle
+    result = await step_fn(lifecycle_node)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:750: in _stream_and_advance
+    return await self._advance_graph(node)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/run.py:531: in _advance_graph
+    task = await self._graph_run.next(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/graph_builder.py:603: in next
+    return await anext(self)
+           ^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/graph_builder.py:576: in __anext__
+    raise self._next.error
+pydantic_graph/pydantic_graph/graph_builder.py:873: in _run_tracked_task
+    result = await self._run_task(t_)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/graph_builder.py:931: in _run_task
+    output = await node.call(step_context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_graph/pydantic_graph/step.py:253: in _call_node
+    return await node.run(GraphRunContext(state=ctx.state, deps=ctx.deps))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:2327: in run
+    return await self._make_request(ctx)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:2748: in _make_request
+    model_response = await _outside_attempts(model_handler(request_context))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:2228: in _outside_attempts
+    return await awaitable
+           ^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:2734: in model_handler
+    return await self._request_attempts(ctx, run_context, req_ctx, state)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:2817: in _request_attempts
+    return await self._request_attempt(ctx, run_context, request_context, state, failed)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:2873: in _request_attempt
+    recovered = await self._recover_model_request_error(ctx, run_context, request_context, e, failed, start)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:3679: in _recover_model_request_error
+    raise error
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:2849: in _request_attempt
+    outcome = await model_request(
+pydantic_ai_slim/pydantic_ai/_agent_graph.py:1950: in model_request
+    new_response = await model.request(
+tests/function_model_prefix.py:112: in request
+    return await _original(self, messages, model_settings, model_request_parameters)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/__init__.py:260: in budgeted
+    return await method(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/__init__.py:1177: in restoring_request
+    response = await request(self, *args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/test.py:137: in request
+    model_response = self._request(messages, model_settings, model_request_parameters)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/test.py:263: in _request
+    return self._tool_calls_response(tool_calls)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/test.py:298: in _tool_calls_response
+    parts.append(ToolCallPart(name, self.gen_tool_args(args), tool_call_id=tool_call_id))
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/test.py:194: in gen_tool_args
+    return _JsonSchemaTestData(tool_def.parameters_json_schema, self.seed).generate()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/test.py:499: in generate
+    return self._gen_any(self.schema)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/test.py:525: in _gen_any
+    return self._object_gen(schema)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_ai_slim/pydantic_ai/models/test.py:575: in _object_gen
+    data[key] = self._gen_any(value)
+                ^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <pydantic_ai.models.test._JsonSchemaTestData object at 0x7939a9a55c10>
+schema = {'type': ['string', 'null']}
+
+    def _gen_any(self, schema: dict[str, Any] | bool) -> Any:  # noqa: C901
+        """Generate data for any JSON Schema."""
+        if isinstance(schema, bool):
+            # a boolean schema has no structure to generate from
+            return self._char()
+        elif 'const' in schema:
+            return schema['const']
+        elif enum := schema.get('enum'):
+            return enum[self.seed % len(enum)]
+        elif examples := schema.get('examples'):
+            return examples[self.seed % len(examples)]
+        elif ref := schema.get('$ref'):
+            return self._gen_any(self._resolve_ref(ref))
+        elif any_of := schema.get('anyOf'):
+            return self._gen_any(any_of[self.seed % len(any_of)])
+        elif schema.get('oneOf') and 'type' not in schema:
+            # a `oneOf` beside a `type` narrows that type, so the `type` drives generation
+            return self._one_of_gen(schema)
+    
+        match schema.get('type'):
+            case None:
+                # if there's no type or ref, we can't generate anything
+                return self._char()
+            case 'object':
+                return self._object_gen(schema)
+            case 'string':
+                return self._str_gen(schema)
+            case 'integer':
+                return self._int_gen(schema)
+            case 'number':
+                return self._number_gen(schema)
+            case 'boolean':
+                return self._bool_gen()
+            case 'array':
+                return self._array_gen(schema)
+            case 'null':
+                return None
+            case type_:
+>               raise NotImplementedError(f'Unknown type: {type_}, please submit a PR to extend JsonSchemaTestData!')
+E               NotImplementedError: Unknown type: ['string', 'null'], please submit a PR to extend JsonSchemaTestData!
+
+pydantic_ai_slim/pydantic_ai/models/test.py:539: NotImplementedError
+collection of 54 tests took 0.2s
+slowest test modules to collect: tests/models/test_model_test.py (0.17s)
+                              Summary of Failures                               
+┏━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃               ┃               ┃  Function     ┃              ┃               ┃
+┃  File         ┃  Function     ┃  Line         ┃  Error Line  ┃  Error        ┃
+┡━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│  tests/mode…  │  test_tool_…  │  860          │  896         │  NotImpleme…  │
+│  tests/mode…  │  test_tool_…  │  860          │  896         │  NotImpleme…  │
+└───────────────┴───────────────┴───────────────┴──────────────┴───────────────┘
+Results (2.85s):
+         2 failed
+        52 passed

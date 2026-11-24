@@ -1,0 +1,38 @@
+
+ RUN  v3.2.4 /w/repo
+
+ ❯  @openai/agents-core  test/run.stream.test.ts (3 tests | 1 failed) 20ms
+   ✓ Runner.run (streaming) > does not emit unhandled rejection when stream loop fails 4ms
+   ✓ Runner.run (streaming) > exposes model error to the consumer 1ms
+   × Runner.run (streaming) > emits agent_updated_stream_event with new agent on handoff 14ms
+     → expected Agent{ …(15) } to be Agent{ …(15) } // Object.is equality
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL   @openai/agents-core  test/run.stream.test.ts > Runner.run (streaming) > emits agent_updated_stream_event with new agent on handoff
+AssertionError: expected Agent{ …(15) } to be Agent{ …(15) } // Object.is equality
+
+- Expected
++ Received
+
+  {
+-   "name": "B",
++   "name": "A",
+  }
+
+ ❯ test/run.stream.test.ts:116:27
+    114|         e.type === 'agent_updated_stream_event',
+    115|     );
+    116|     expect(update?.agent).toBe(agentB);
+       |                           ^
+    117|   });
+    118| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  22:49:23
+   Duration  1.12s (transform 272ms, setup 0ms, collect 454ms, tests 20ms, environment 0ms, prepare 61ms)
+

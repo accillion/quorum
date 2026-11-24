@@ -1,0 +1,70 @@
+warning: unused import: `bumpalo_alloc::AllocErr`
+  --> crates/oxc_allocator/src/arena/mod.rs:26:9
+   |
+26 | pub use bumpalo_alloc::AllocErr;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `oxc_allocator` (lib) generated 1 warning (run `cargo fix --lib -p oxc_allocator` to apply 1 suggestion)
+   Compiling oxc_minifier v0.126.0 (/work/oxc/crates/oxc_minifier)
+    Finished `test` profile [unoptimized] target(s) in 3.81s
+     Running tests/mod.rs (/target/debug/deps/mod-4555748d6f814057)
+
+running 20 tests
+test peephole::remove_unused_expression::test_array_literal ... ok
+test peephole::remove_unused_expression::test_array_literal_containing_spread ... ok
+test peephole::remove_unused_expression::test_fold_call_expression ... ok
+test peephole::remove_unused_expression::test_fold_conditional_expression ... ok
+test peephole::remove_unused_expression::test_fold_binary_expression ... ok
+test peephole::remove_unused_expression::remove_unused_class_expression ... ok
+test peephole::remove_unused_expression::test_fold_template_literal ... ok
+test peephole::remove_unused_expression::test_fold_sequence_expr ... ok
+test peephole::remove_unused_expression::test_nullish_assign_preserves_guard ... FAILED
+test peephole::remove_unused_expression::test_new_constructor_side_effect ... ok
+test peephole::remove_unused_expression::test_object_literal ... ok
+test peephole::remove_unused_expression::test_fold_unary_expression_statement ... ok
+test peephole::remove_unused_expression::test_remove_unused_expression ... ok
+test peephole::remove_unused_expression::no_side_effects ... ok
+test peephole::remove_unused_expression::treeshake_options_annotations_false ... ok
+test peephole::remove_unused_expression::test_update_expression_respects_property_read_side_effects ... ok
+test peephole::remove_unused_expression::remove_unused_assignment_expression ... ok
+test peephole::remove_unused_expression::test_logical_expression ... ok
+test peephole::remove_unused_expression::test_fold_iife ... ok
+test peephole::remove_unused_expression::test_property_write_side_effects ... ok
+
+failures:
+
+---- peephole::remove_unused_expression::test_nullish_assign_preserves_guard stdout ----
+
+thread 'peephole::remove_unused_expression::test_nullish_assign_preserves_guard' (130) panicked at crates/oxc_minifier/tests/peephole/remove_unused_expression.rs:181:5:
+assertion `left == right` failed: 
+for source
+let rafId; export function foo() { if (rafId == null) { rafId = requestAnimationFrame(() => { console.log('callback'); }); } }
+expect
+let rafId;
+export function foo() {
+	rafId ??= requestAnimationFrame(() => {
+		console.log('callback');
+	});
+}
+
+got
+export function foo() {
+	requestAnimationFrame(() => {
+		console.log('callback');
+	});
+}
+
+  left: "export function foo() {\n\trequestAnimationFrame(() => {\n\t\tconsole.log('callback');\n\t});\n}\n"
+ right: "let rafId;\nexport function foo() {\n\trafId ??= requestAnimationFrame(() => {\n\t\tconsole.log('callback');\n\t});\n}\n"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    peephole::remove_unused_expression::test_nullish_assign_preserves_guard
+
+test result: FAILED. 19 passed; 1 failed; 0 ignored; 0 measured; 497 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p oxc_minifier --test mod`
+EXIT 101

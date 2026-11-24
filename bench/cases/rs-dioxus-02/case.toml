@@ -1,0 +1,36 @@
+schema = 1
+id = "rs-dioxus-02"
+kind = "bug"
+language = "rust"
+source_repo = "https://github.com/DioxusLabs/dioxus"
+source_commit = "e5b9c39f4e53ce86c0b1af2fb077913cf28f9365"
+source_commit_url = "https://github.com/DioxusLabs/dioxus/commit/e5b9c39f4e53ce86c0b1af2fb077913cf28f9365"
+source_commit_date = "2026-03-28"
+base_commit = "e5b9c39f4e53ce86c0b1af2fb077913cf28f9365"
+removed_paths = [
+  "packages/autofmt/tests/samples.rs",
+  "packages/autofmt/tests/samples/forloop_tuple.rsx",
+]
+base_reverts = []
+case_base_tree = "c96d18f4540517d926ee993855e9d79ae4aaaf93"
+case_commit_tree = "b593ba8847243eb56d1d5beac95fdaee91d95f8f"
+licence = "MIT OR Apache-2.0"
+licence_path = "LICENSE-MIT"
+licence_notice = """
+No copyright line in LICENSE-MIT or LICENSE-APACHE at base_commit.
+The crate manifest (packages/autofmt/Cargo.toml) declares license = "MIT OR Apache-2.0".
+"""
+agent_files = ["AGENTS.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "DioxusLabs__dioxus-5384"
+
+[repro]
+reproduced = true
+image = "rust@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1"
+command = "cargo test -p dioxus-autofmt --test samples"
+test_files = [
+  "packages/autofmt/tests/samples.rs",
+  "packages/autofmt/tests/samples/forloop_tuple.rsx",
+]
+fixed_exit = 0
+reverted_exit = 101

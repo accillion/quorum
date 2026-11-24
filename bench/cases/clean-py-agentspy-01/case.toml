@@ -1,0 +1,30 @@
+schema = 1
+id = "clean-py-agentspy-01"
+kind = "clean"
+language = "python"
+source_repo = "https://github.com/openai/openai-agents-python"
+source_commit = "aed6359047620cf90b3128f4295ef96969e017b0"
+source_commit_url = "https://github.com/openai/openai-agents-python/commit/aed6359047620cf90b3128f4295ef96969e017b0"
+source_commit_date = "2025-09-17"
+base_commit = "e486b3a6bdc90fe1826944b68c22ac3b559fb6dc"
+removed_paths = []
+base_reverts = []
+case_base_tree = "abf9a3093bf61ba2398a9d3c5184cc083dada75f"
+case_commit_tree = "fc7d03cb447f6a512507880a591ec69235177a16"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) 2025 OpenAI
+"""
+agent_files = ["AGENTS.md", "CLAUDE.md"]
+dataset = "hand-picked"
+dataset_instance = ""
+
+[clean]
+head_checked = "96b27992a8aaf8cb29244f5e0d90a5b6c7d2373f"
+head_checked_date = "2026-11-23"
+retained_share = 0.98
+later_commits = [
+  "2d665c9a67fdf3198a0daa0f9978b8239d78e78b Sandbox Agents (#2889)",
+]
+verdict = "no later fix, revert or substantial rewrite: the only later commit touching an added line (Sandbox Agents) moved Callable to a collections.abc import"

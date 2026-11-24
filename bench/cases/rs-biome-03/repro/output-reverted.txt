@@ -1,0 +1,34 @@
+   Compiling biome_js_analyze v0.5.7 (/work/biome/crates/biome_js_analyze)
+   Compiling biome_html_analyze v0.5.7 (/work/biome/crates/biome_html_analyze)
+   Compiling biome_configuration_macros v0.0.1 (/work/biome/crates/biome_configuration_macros)
+   Compiling biome_configuration v0.0.1 (/work/biome/crates/biome_configuration)
+   Compiling biome_service v0.0.0 (/work/biome/crates/biome_service)
+   Compiling biome_test_utils v0.0.0 (/work/biome/crates/biome_test_utils)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 34.90s
+     Running tests/spec_tests.rs (/target/debug/deps/spec_tests-eb3ae681bac0b0fd)
+
+running 6 tests
+test specs::correctness::no_unsafe_optional_chaining::invalid_ts ... FAILED
+test specs::correctness::no_unsafe_optional_chaining::invalid_cjs ... ok
+test specs::correctness::no_unsafe_optional_chaining::valid_js ... ok
+test specs::correctness::no_unsafe_optional_chaining::valid_arithmetic_js ... ok
+test specs::correctness::no_unsafe_optional_chaining::invalid_js ... ok
+test specs::correctness::no_unsafe_optional_chaining::valid_ts ... ok
+
+failures:
+
+---- specs::correctness::no_unsafe_optional_chaining::invalid_ts stdout ----
+
+thread 'specs::correctness::no_unsafe_optional_chaining::invalid_ts' (273) panicked at crates/biome_test_utils/src/lib.rs:1072:17:
+This test should generate diagnostics
+File: /work/biome/crates/biome_js_analyze/tests/specs/correctness/noUnsafeOptionalChaining/invalid.ts
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    specs::correctness::no_unsafe_optional_chaining::invalid_ts
+
+test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 2680 filtered out; finished in 0.10s
+
+error: test failed, to rerun pass `-p biome_js_analyze --test spec_tests`
+EXIT 101

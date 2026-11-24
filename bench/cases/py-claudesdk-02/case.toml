@@ -1,0 +1,29 @@
+schema = 1
+id = "py-claudesdk-02"
+kind = "bug"
+language = "python"
+source_repo = "https://github.com/anthropics/claude-agent-sdk-python"
+source_commit = "d47b18071e11574882aa2b27e9ccbaf6c31ce970"
+source_commit_url = "https://github.com/anthropics/claude-agent-sdk-python/commit/d47b18071e11574882aa2b27e9ccbaf6c31ce970"
+source_commit_date = "2026-06-26"
+base_commit = "d47b18071e11574882aa2b27e9ccbaf6c31ce970"
+removed_paths = ["tests/test_message_parser.py"]
+base_reverts = []
+case_base_tree = "d17e512379facd4ebb222d11ba2f6864fb37a05f"
+case_commit_tree = "cf63e0a9d56ee24d86b15371d15e9569ab470a8c"
+licence = "MIT"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright (c) 2025 Anthropic, PBC
+"""
+agent_files = ["CLAUDE.md"]
+dataset = "hand-picked"
+dataset_instance = ""
+
+[repro]
+reproduced = true
+image = "python@sha256:4209fae09a3e20afd863e528bfddc235da5fd5977983e1996cd54cc9a72e6267"
+command = 'pip install -q -e ".[dev]" && python -m pytest -p no:cacheprovider tests/test_message_parser.py'
+test_files = ["tests/test_message_parser.py"]
+fixed_exit = 0
+reverted_exit = 1

@@ -1,0 +1,36 @@
+== CASE COMMIT tree + repro/files
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /work/src/gix-imara-diff/Cargo.toml
+workspace: /work/src/Cargo.toml
+   Compiling gix-merge v0.14.0 (/work/src/gix-merge)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.23s
+     Running tests/merge/main.rs (/work/target/debug/deps/merge-cfb32c54a5dfd19a)
+
+running 1 test
+test blob::builtin_driver::text::false_conflict::myers_false_conflict_with_blank_line_ambiguity ... FAILED
+
+failures:
+
+---- blob::builtin_driver::text::false_conflict::myers_false_conflict_with_blank_line_ambiguity stdout ----
+
+thread 'blob::builtin_driver::text::false_conflict::myers_false_conflict_with_blank_line_ambiguity' (2044) panicked at gix-merge/tests/merge/blob/builtin_driver.rs:429:17:
+assertion `left == right` failed: Myers should resolve cleanly (git merge-file does). Output:
+
+<<<<<<< ours
+
+bravo_x
+=======
+>>>>>>> theirs
+charlie_x
+
+  left: Conflict
+ right: Complete
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    blob::builtin_driver::text::false_conflict::myers_false_conflict_with_blank_line_ambiguity
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 22 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p gix-merge --test merge`

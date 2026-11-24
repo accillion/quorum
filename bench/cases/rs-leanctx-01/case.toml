@@ -1,0 +1,33 @@
+schema = 1
+id = "rs-leanctx-01"
+kind = "bug"
+language = "rust"
+source_repo = "https://github.com/yvgude/lean-ctx"
+source_commit = "ea3cfec493aa2f67a24a9239845420f8182183fa"
+source_commit_url = "https://github.com/yvgude/lean-ctx/commit/ea3cfec493aa2f67a24a9239845420f8182183fa"
+source_commit_date = "2026-07-17"
+base_commit = "ea3cfec493aa2f67a24a9239845420f8182183fa"
+removed_paths = [
+  "rust/src/core/shell_allowlist/tests.rs",
+]
+base_reverts = []
+case_base_tree = "09a98c78492b996399a798eba44869df80f067d5"
+case_commit_tree = "ee46521aecc19e01eeb170f793b651d8afb7eaf4"
+licence = "Apache-2.0"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright 2026 Yves Gugger
+"""
+agent_files = ["AGENTS.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "yvgude__lean-ctx-969"
+
+[repro]
+reproduced = true
+image = "rust@sha256:6258907abe69656e41cd992e0b705cdcfabcbbe3db374f92ed2d47121282d4a1"
+command = "cargo test --manifest-path rust/Cargo.toml --lib core::shell_allowlist::tests"
+test_files = [
+  "rust/src/core/shell_allowlist/tests.rs",
+]
+fixed_exit = 0
+reverted_exit = 101

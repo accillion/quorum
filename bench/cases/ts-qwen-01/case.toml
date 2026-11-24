@@ -1,0 +1,30 @@
+schema = 1
+id = "ts-qwen-01"
+kind = "bug"
+language = "typescript"
+source_repo = "https://github.com/QwenLM/qwen-code"
+source_commit = "6f29d24fb90504aa486b4dd78b1fae2593068c9f"
+source_commit_url = "https://github.com/QwenLM/qwen-code/commit/6f29d24fb90504aa486b4dd78b1fae2593068c9f"
+source_commit_date = "2026-04-16"
+base_commit = "6f29d24fb90504aa486b4dd78b1fae2593068c9f"
+removed_paths = ["packages/cli/src/ui/hooks/useStatusLine.test.ts"]
+base_reverts = []
+case_base_tree = "67ba15320a3c7f8420cebf72103eb58c64b2b677"
+case_commit_tree = "8851b90286d134b6d5e3097fbb54a8a72a4eb8f9"
+licence = "Apache-2.0"
+licence_path = "LICENSE"
+licence_notice = """
+Copyright 2025 Google LLC
+Copyright 2025 Qwen
+"""
+agent_files = ["AGENTS.md"]
+dataset = "SWE-bench-Live/MultiLang"
+dataset_instance = "QwenLM__qwen-code-3310"
+
+[repro]
+reproduced = true
+image = "docker.io/library/node:20-bookworm@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5"
+command = "npm ci && npm run build && npm run test --workspace=packages/cli -- src/ui/hooks/useStatusLine.test.ts"
+test_files = ["packages/cli/src/ui/hooks/useStatusLine.test.ts"]
+fixed_exit = 0
+reverted_exit = 1

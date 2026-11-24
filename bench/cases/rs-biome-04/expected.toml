@@ -1,0 +1,18 @@
+[[defect]]
+id = "D1"
+severity = "medium"
+files = ["crates/biome_js_formatter/src/js/expressions/call_arguments.rs"]
+title = "Curried test.each(...)(name, callback) calls take the unbreakable test-call layout and overflow lineWidth"
+description = """
+`FormatJsCallArguments` (crates/biome_js_formatter/src/js/expressions/call_arguments.rs)
+uses the hugged single-line "test call" argument layout whenever
+`call.is_test_call_expression()` is true and the first argument is a string
+literal or template. Since 2.3.6 that shared syntax helper also classifies the
+curried `test.each([...])("name", cb)` / `it.each` / `describe.each` /
+`test.for` pattern as a test call (a change made for a lint rule), so the
+formatter keeps the outer call's arguments on the opening line even when the
+description pushes it past the configured `lineWidth`, instead of breaking
+the arguments onto separate lines as Prettier does (issue #10727). The fix
+detects the curried each form (outer call whose callee is a call to a
+`test.each`-style callee) and excludes it from the test-call layout.
+"""
