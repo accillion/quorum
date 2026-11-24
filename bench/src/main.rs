@@ -70,6 +70,14 @@ enum Cmd {
         #[arg(long)]
         case: Option<String>,
     },
+    /// Write a bug case's `fixed/` and `reverted/` reproduction trees
+    /// (case base or case commit, plus the repro test files) under --out.
+    ExportTrees {
+        #[arg(long)]
+        case: String,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// (Re)build the blind human queue of a finished run.
     Queue {
         #[arg(long)]
@@ -239,6 +247,20 @@ fn run(cli: Cli) -> Result<(), String> {
                     }
                 }
             }
+            Ok(())
+        }
+        Cmd::ExportTrees { case, out } => {
+            let cases = corpus::load_corpus(&bench.join("cases")).map_err(|e| e.to_string())?;
+            let c = cases
+                .iter()
+                .find(|c| c.id() == case)
+                .ok_or_else(|| format!("no case `{case}`"))?;
+            let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+            let m = rt
+                .block_on(quorum_bench::materialize::materialize(c, &cache))
+                .map_err(|e| e.to_string())?;
+            quorum_bench::repro::export_trees(c, &m, &out).map_err(|e| e.to_string())?;
+            println!("{}: fixed and reverted trees in {}", c.id(), out.display());
             Ok(())
         }
         Cmd::Queue { run } => quorum_bench::commands::cmd_queue(&root, &run),

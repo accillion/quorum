@@ -23,6 +23,7 @@ pub mod preflight;
 pub mod prices;
 pub mod proxy;
 pub mod quorum_run;
+pub mod repro;
 pub mod results;
 pub mod runid;
 pub mod runner;
